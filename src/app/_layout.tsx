@@ -1,27 +1,30 @@
 import { SplashScreen, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Text, View } from 'react-native';
 import { Provider } from 'react-redux';
 
-import { restoreSession } from '@/auth/auth-service';
 import { s } from '@/components/ui';
 import { ensureMigrated } from '@/db/migrate';
+import { seedTestSalesmen } from '@/db/seed';
 import { store, useAppSelector } from '@/store';
-import { useSyncEvents } from '@/sync/useSyncEvents';
 import { colors } from '@/theme';
 
 void SplashScreen.preventAutoHideAsync();
 
-/** Boot order: migrate SQLite → restore session from Keystore → show the right stack. */
+/** Start-up: prepare the database, then always open on the login page. */
 export default function RootLayout() {
+  const [ready, setReady] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
 
   useEffect(() => {
     ensureMigrated()
-      .then(restoreSession)
-      .catch((e: unknown) => setBootError(e instanceof Error ? e.message : String(e)));
+      .then(() => {
+        seedTestSalesmen();
+        setReady(true);
+      })
+      .catch((e: unknown) => setBootError(e instanceof Error ? e.message : String(e)))
+      .finally(() => void SplashScreen.hideAsync());
   }, []);
 
   if (bootError) {
@@ -32,6 +35,7 @@ export default function RootLayout() {
       </View>
     );
   }
+  if (!ready) return null; // splash stays visible
 
   return (
     <Provider store={store}>
@@ -42,35 +46,15 @@ export default function RootLayout() {
 }
 
 function RootStack() {
-  const { t } = useTranslation();
-  const status = useAppSelector((st) => st.session.status);
-  useSyncEvents(); // sync can run from the login screen too, so listen at the root
-
-  useEffect(() => {
-    if (status !== 'restoring') void SplashScreen.hideAsync();
-  }, [status]);
-
-  if (status === 'restoring') return null; // splash stays visible
-
-  const signedIn = status === 'signedIn';
+  const signedIn = useAppSelector((st) => st.session.session !== null);
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.primary },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '600' },
-        contentStyle: { backgroundColor: colors.bg },
-      }}
-    >
-      <Stack.Protected guard={signedIn}>
-        <Stack.Screen name="(app)" options={{ headerShown: false }} />
-        <Stack.Screen name="order/new" options={{ title: t('orders.new') }} />
-      </Stack.Protected>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
       <Stack.Protected guard={!signedIn}>
-        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="index" />
       </Stack.Protected>
-      {/* Open to everyone: a new phone needs the server address before anyone can sign in. */}
-      <Stack.Screen name="settings" options={{ title: t('settings.title') }} />
+      <Stack.Protected guard={signedIn}>
+        <Stack.Screen name="welcome" />
+      </Stack.Protected>
     </Stack>
   );
 }

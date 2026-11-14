@@ -1,14 +1,11 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { asc, eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Keyboard, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { login, LoginError } from '@/auth/auth-service';
-import { SyncPanel } from '@/components/SyncPanel';
+import { login } from '@/auth/auth-service';
 import { Button, PasswordField, SelectField, s, type SelectOption } from '@/components/ui';
 import { db } from '@/db/client';
 import { getMeta } from '@/db/meta';
@@ -16,13 +13,11 @@ import { users } from '@/db/schema';
 import { colors, font, radius, spacing } from '@/theme';
 
 /**
- * Offline sign-in, like the old Qt app: pick your name from the salesmen downloaded at the
- * last Sync, optionally a second salesman (multi-user mode), and type your VK Nex password.
- * A brand-new phone (no salesmen yet) shows Sync + Server settings in the card instead.
+ * Login page — the app's start page. Like the old Qt app: pick your name, optionally a
+ * second salesman (multi-user mode), and type your password. Checked on the phone.
  */
 export default function LoginScreen() {
   const { t } = useTranslation();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const { data: people } = useLiveQuery(
@@ -86,18 +81,10 @@ export default function LoginScreen() {
     setBusy(true);
     setError(null);
     try {
-      await login(userId, password, secondId || null);
-      // Stack.Protected switches to the app automatically once signedIn is set.
-    } catch (e) {
-      setError(
-        e instanceof LoginError
-          ? e.code === 'NO_USERS'
-            ? t('login.noUsers')
-            : e.code === 'DEVICE_BLOCKED'
-              ? t('login.blocked')
-              : t('login.badPassword')
-          : t('common.error'),
-      );
+      // On success Stack.Protected switches to the welcome page by itself.
+      if (!(await login(userId, password, secondId || null))) setError(t('login.badPassword'));
+    } catch {
+      setError(t('common.error'));
     } finally {
       setBusy(false);
     }
@@ -121,15 +108,6 @@ export default function LoginScreen() {
           </View>
           <Text style={st.title}>{t('login.title')}</Text>
           <Text style={st.subtitle}>{t('login.subtitle')}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('login.serverSettings')}
-            hitSlop={12}
-            onPress={() => router.push('/settings')}
-            style={[st.gear, { top: insets.top + spacing.md }]}
-          >
-            <Ionicons name="settings-outline" size={22} color={colors.onPrimaryMuted} />
-          </Pressable>
         </View>
 
         {/* White card overlapping the band */}
@@ -161,11 +139,7 @@ export default function LoginScreen() {
               <Button title={t('login.submit')} onPress={() => void submit()} loading={busy} style={{ marginTop: spacing.sm }} />
             </>
           ) : (
-            <View style={{ gap: spacing.md }}>
-              <Text style={s.body}>{t('login.noUsers')}</Text>
-              <SyncPanel reason="login-screen" />
-              <Button title={t('login.serverSettings')} variant="secondary" onPress={() => router.push('/settings')} />
-            </View>
+            <Text style={s.body}>{t('login.noUsers')}</Text>
           )}
         </View>
 
@@ -199,7 +173,6 @@ const st = StyleSheet.create({
   logoText: { fontSize: 24, fontWeight: '800', color: colors.text },
   title: { marginTop: spacing.xl, fontSize: 24, fontWeight: '800', color: colors.onPrimary, letterSpacing: 0.5 },
   subtitle: { marginTop: spacing.sm, fontSize: font.md, color: colors.onPrimaryMuted },
-  gear: { position: 'absolute', right: spacing.lg },
   card: {
     marginTop: -CARD_OVERLAP,
     marginHorizontal: spacing.lg + 4,

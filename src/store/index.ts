@@ -2,14 +2,10 @@ import { configureStore } from '@reduxjs/toolkit';
 import { useDispatch, useSelector } from 'react-redux';
 
 import session from './sessionSlice';
-import sync from './syncSlice';
 
-/**
- * Redux holds session + UI state only. Business data (customers, items, orders)
- * is read straight from SQLite with Drizzle live queries — no copying into Redux.
- */
+/** Redux holds the login session only. Salesmen are read straight from SQLite. */
 export const store = configureStore({
-  reducer: { session, sync },
+  reducer: { session },
 });
 
 export type RootState = ReturnType<typeof store.getState>;

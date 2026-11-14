@@ -1,9 +1,6 @@
 import type { ExpoConfig } from 'expo/config';
 
-/**
- * App config. APP_VARIANT comes from the EAS build profile in eas.json.
- * The VK Nex server address is entered on the phone (Server settings), not baked in here.
- */
+/** App config. APP_VARIANT comes from the EAS build profile in eas.json. */
 const IS_DEV = process.env.APP_VARIANT === 'development';
 
 const config: ExpoConfig = {
@@ -25,12 +22,8 @@ const config: ExpoConfig = {
       monochromeImage: './assets/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: false,
-    // Bluetooth Classic printers + GPS visits (Phase 1/4). Remove what you don't use.
-    permissions: [
-      'android.permission.BLUETOOTH_CONNECT',
-      'android.permission.BLUETOOTH_SCAN',
-      'android.permission.ACCESS_FINE_LOCATION',
-    ],
+    // Login only: no extra Android permissions. Add Bluetooth / location here when printing returns.
+    permissions: [],
   },
   ios: {
     supportsTablet: false,
@@ -39,11 +32,7 @@ const config: ExpoConfig = {
   plugins: [
     'expo-router',
     'expo-sqlite',
-    'expo-secure-store',
     'expo-localization',
-    // Sync talks to the VK Nex server PC over plain http:// on the office LAN.
-    // Android 9+ blocks cleartext HTTP unless this is on.
-    ['expo-build-properties', { android: { usesCleartextTraffic: true } }],
   ],
   experiments: {
     typedRoutes: true,

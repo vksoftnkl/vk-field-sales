@@ -3,7 +3,7 @@
  * app light on low-end phones and keeps the maroon/brass look consistent.
  */
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
@@ -24,23 +24,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { filterOptions } from '@/lib/search';
 import { colors, font, radius, spacing } from '@/theme';
 
+/** Full-width maroon button; shows a spinner and ignores taps while `loading`. */
 export function Button({
   title,
   onPress,
-  variant = 'primary',
   loading,
   disabled,
   style,
 }: {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'danger';
   loading?: boolean;
   disabled?: boolean;
   style?: ViewStyle;
 }) {
-  const bg = variant === 'primary' ? colors.primary : variant === 'danger' ? colors.danger : colors.surface;
-  const fg = variant === 'secondary' ? colors.primary : '#fff';
+  const fg = colors.onPrimary;
   return (
     <Pressable
       accessibilityRole="button"
@@ -48,8 +46,7 @@ export function Button({
       disabled={disabled || loading}
       style={({ pressed }) => [
         s.btn,
-        { backgroundColor: bg, opacity: disabled ? 0.5 : pressed ? 0.85 : 1 },
-        variant === 'secondary' && s.btnOutline,
+        { backgroundColor: colors.primary, opacity: disabled ? 0.5 : pressed ? 0.85 : 1 },
         style,
       ]}
     >
@@ -58,40 +55,15 @@ export function Button({
   );
 }
 
-/** Text input with a label; the border turns maroon while typing. */
-export function Field({ label, error, ...props }: TextInputProps & { label?: string; error?: string | null }) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <View style={s.field}>
-      {label ? <Text style={s.label}>{label}</Text> : null}
-      <TextInput
-        placeholderTextColor={colors.textMuted}
-        accessibilityLabel={label}
-        {...props}
-        onFocus={(e) => {
-          setFocused(true);
-          props.onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          props.onBlur?.(e);
-        }}
-        style={[s.input, focused && s.inputFocused, error ? { borderColor: colors.danger } : null, props.style]}
-      />
-      {error ? <Text style={s.error}>{error}</Text> : null}
-    </View>
-  );
-}
-
 /** Password input with a show/hide eye; the border turns maroon while typing. */
-export function PasswordField({ label, error, ...props }: Omit<TextInputProps, 'secureTextEntry'> & { label?: string; error?: string | null }) {
+export function PasswordField({ label, ...props }: Omit<TextInputProps, 'secureTextEntry'> & { label?: string }) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [focused, setFocused] = useState(false);
   return (
     <View style={s.field}>
       {label ? <Text style={s.label}>{label}</Text> : null}
-      <View style={[s.input, s.inputRow, focused && s.inputFocused, error ? { borderColor: colors.danger } : null]}>
+      <View style={[s.input, s.inputRow, focused && s.inputFocused]}>
         <TextInput
           placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
@@ -118,7 +90,6 @@ export function PasswordField({ label, error, ...props }: Omit<TextInputProps, '
           <Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textMuted} />
         </Pressable>
       </View>
-      {error ? <Text style={s.error}>{error}</Text> : null}
     </View>
   );
 }
@@ -231,31 +202,9 @@ export function SelectField({
   );
 }
 
-export function Card({ children, style }: { children: ReactNode; style?: ViewStyle }) {
-  return <View style={[s.card, style]}>{children}</View>;
-}
-
-export function Badge({ text, tone = 'muted' }: { text: string; tone?: 'muted' | 'success' | 'warning' | 'danger' | 'info' }) {
-  const c = tone === 'muted' ? colors.textMuted : colors[tone];
-  return (
-    <View style={[s.badge, { borderColor: c }]}>
-      <Text style={[s.badgeText, { color: c }]}>{text}</Text>
-    </View>
-  );
-}
-
-export function Row({ children, style }: { children: ReactNode; style?: ViewStyle }) {
-  return <View style={[{ flexDirection: 'row', alignItems: 'center' }, style]}>{children}</View>;
-}
-
-export function Empty({ text }: { text: string }) {
-  return <Text style={s.empty}>{text}</Text>;
-}
-
 export const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   btn: { height: 48, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
-  btnOutline: { borderWidth: 1.5, borderColor: colors.primary },
   btnText: { fontSize: font.md, fontWeight: '600' },
   field: { marginBottom: spacing.lg },
   label: { fontSize: font.sm, color: colors.textLabel, fontWeight: '600', marginBottom: spacing.xs + 2 },
@@ -294,19 +243,7 @@ export const s = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  error: { color: colors.danger, fontSize: font.sm, marginTop: spacing.xs },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
-  badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-  badgeText: { fontSize: 11, fontWeight: '600' },
   title: { fontSize: font.xl, fontWeight: '700', color: colors.text },
   body: { fontSize: font.md, color: colors.text },
   muted: { fontSize: font.sm, color: colors.textMuted },
-  empty: { textAlign: 'center', color: colors.textMuted, marginTop: spacing.xxl },
-  listRow: {
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
 });
