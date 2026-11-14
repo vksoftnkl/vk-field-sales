@@ -1,0 +1,97 @@
+{
+  "login": {
+    "title": "VKSMAN",
+    "subtitle": "Choose your name to start",
+    "password": "Password",
+    "submit": "Log in",
+    "nameRequired": "Select your name",
+    "passwordRequired": "Invalid input Details",
+    "noUsers": "No salesmen on this phone yet. Set the server address, then tap Sync while on the office Wi-Fi.",
+    "badPassword": "Authentication Password Incorrect",
+    "blocked": "This phone has been blocked by the office.",
+    "serverSettings": "Server settings",
+    "salesman": "Salesman",
+    "chooseSalesman": "Choose your name",
+    "secondSalesman": "Second salesman (multi-user mode)",
+    "none": "None",
+    "footer": "The salesman list comes from the last full sync."
+  },
+  "settings": {
+    "title": "Server settings",
+    "intro": "Enter the IP address of the PC running VK Nex. The phone must be on the same Wi-Fi.",
+    "host": "Server IP address",
+    "port": "Port",
+    "test": "Test connection",
+    "save": "Save",
+    "ok": "Connected to the server",
+    "hostRequired": "Enter the server IP address",
+    "badPort": "Port must be a number from 1 to 65535",
+    "deviceId": "Device ID (for approval in VK Nex)",
+    "syncHint": "After saving, tap Sync on the office Wi-Fi to download salesmen, customers and items."
+  },
+  "tabs": {
+    "today": "Today",
+    "customers": "Customers",
+    "orders": "Orders",
+    "sync": "Sync",
+    "more": "More"
+  },
+  "today": {
+    "hello": "Hello, {{name}}",
+    "pending": "Waiting to upload",
+    "rejected": "Needs attention",
+    "lastSync": "Last sync",
+    "never": "Never",
+    "newOrder": "New order",
+    "pendingApproval": "This phone is waiting for office approval in VK Nex. Orders upload once it is approved."
+  },
+  "customers": {
+    "search": "Search name, code or mobile",
+    "empty": "No customers yet. Tap Sync while on the office Wi-Fi.",
+    "outstanding": "Outstanding"
+  },
+  "orders": {
+    "new": "New order",
+    "addItem": "Add item",
+    "qty": "Qty",
+    "rate": "Rate",
+    "save": "Save order",
+    "saved": "Order saved. It uploads when you tap Sync.",
+    "empty": "No orders yet",
+    "total": "Total",
+    "tax": "Tax",
+    "taxable": "Taxable"
+  },
+  "sync": {
+    "now": "Sync now",
+    "running": "Syncing…",
+    "retry": "Retry",
+    "queue": "Upload queue",
+    "allClear": "Everything is uploaded",
+    "server": "Server",
+    "done": "Sync complete",
+    "notSet": "Server address is not set. Open Server settings.",
+    "unreachable": "Can't reach the server PC. Check you are on the office Wi-Fi and VK Nex is running.",
+    "notApproved": "This phone is waiting for approval in VK Nex. Device ID: {{id}}",
+    "blocked": "This phone has been blocked by the office.",
+    "rejected": "The server refused this phone: {{message}}"
+  },
+  "more": {
+    "logout": "Sign out",
+    "unsyncedWarn": "{{count}} documents are not uploaded yet. They stay on this phone and upload at the next Sync.",
+    "printer": "Printer",
+    "language": "Language",
+    "testPrint": "Test print",
+    "serverSettings": "Server settings"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "ok": "OK",
+    "error": "Something went wrong",
+    "search": "Search",
+    "noMatches": "No matches",
+    "close": "Close",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
+  }
+}
