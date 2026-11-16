@@ -6,8 +6,13 @@ phone against users downloaded during Sync, and the server trusts the **device**
 office has approved it (the new version of the old Qt app's `/checkMacAddress`).
 
 - Base URL: `http://<server-ip>:<port>/api/v1` — the IP and port are entered on the phone in
-  **Server settings** (default port `3011`). Plain HTTP on the LAN, so the Android build has
+  **Server settings** (default port `3012`). Plain HTTP on the LAN, so the Android build has
   `usesCleartextTraffic` on (`app.config.ts`).
+- Port `3012` is VK Nex's **phone port** (`MOBILE_HTTP_PORT` in VK Nex's `.env`): plain HTTP
+  beside its HTTPS port `3011`. The phone can't trust VK Nex's self-made certificate, so it
+  can't use `3011`. Only `/health`, `/auth/login` and `/mobile/*` answer on the phone port;
+  any other route the phone needs must be added to `PHONE_HTTP_ROUTES` in VK Nex's `src/main.ts`.
+  The server PC's firewall must allow TCP 3012.
 - Money in **paise**, rates in **basis points**.
 - One sync = `register` → `push` → `pull users, customers, items, item_prices`.
 

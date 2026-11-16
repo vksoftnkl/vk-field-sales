@@ -18,7 +18,8 @@ type Check = { ok: boolean; text: string } | null;
 
 /**
  * Sync with the VK Nex server PC on the office LAN, only when the salesman taps it. Sends every
- * customer added on the phone; each is marked synced as soon as VK Nex has it.
+ * customer added on the phone (each is marked synced as soon as VK Nex has it), then brings
+ * VK Nex's customers to the phone.
  */
 export default function SyncScreen() {
   const { t } = useTranslation();
@@ -69,8 +70,19 @@ export default function SyncScreen() {
     }
   };
 
-  const stepText = (step: SyncStep, done = 0, total = 0) =>
-    step === 'signIn' ? t('sync.stepSignIn') : step === 'masters' ? t('sync.stepMasters') : total ? t('sync.stepUpload', { n: Math.min(done + 1, total), total }) : t('sync.stepUploadNone');
+  const stepText = (step: SyncStep, done = 0, total = 0) => {
+    const n = Math.min(done + 1, total);
+    switch (step) {
+      case 'signIn':
+        return t('sync.stepSignIn');
+      case 'masters':
+        return t('sync.stepMasters');
+      case 'upload':
+        return total ? t('sync.stepUpload', { n, total }) : t('sync.stepUploadNone');
+      case 'download':
+        return total ? t('sync.stepDownload', { n, total }) : t('sync.stepDownloadList');
+    }
+  };
 
   const sync = async () => {
     if (progress) return;
@@ -115,6 +127,7 @@ export default function SyncScreen() {
   const sent = report?.outcomes.filter((o) => o.status !== 'refused').length ?? 0;
   const refused = report?.outcomes.filter((o) => o.status === 'refused').length ?? 0;
   const stop = report ? stopText(report) : null;
+  const got = report?.downloaded;
 
   return (
     <View style={st.root}>
@@ -140,7 +153,7 @@ export default function SyncScreen() {
                 setAddress(v);
                 setCheck(null);
               }}
-              placeholder="192.168.1.10:3011"
+              placeholder="192.168.1.10:3012"
               keyboardType="url"
               autoCapitalize="none"
               autoCorrect={false}
@@ -180,7 +193,7 @@ export default function SyncScreen() {
             ))}
           </Card>
 
-          {report && (report.outcomes.length > 0 || stop) ? (
+          {report && (report.outcomes.length > 0 || got || stop) ? (
             <Card title={t('sync.resultTitle')}>
               {report.outcomes.length > 0 ? <Text style={st.note}>{t('sync.summary', { sent, refused })}</Text> : null}
               {report.outcomes.map((o) => (
@@ -202,6 +215,16 @@ export default function SyncScreen() {
                   </View>
                 </View>
               ))}
+              {got ? (
+                <View style={[st.item, report.outcomes.length === 0 && st.itemFirst]}>
+                  <Ionicons name="cloud-download-outline" size={20} color={colors.success} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemOk}>{t('sync.received', { n: got.saved })}</Text>
+                    {got.removed > 0 ? <Text style={st.itemNote}>{t('sync.removed', { n: got.removed })}</Text> : null}
+                    {got.skipped > 0 ? <Text style={st.itemError}>{t('sync.skipped', { n: got.skipped })}</Text> : null}
+                  </View>
+                </View>
+              ) : null}
               {stop ? <StatusLine ok={false} text={stop} /> : null}
             </Card>
           ) : null}
@@ -277,6 +300,8 @@ const st = StyleSheet.create({
   itemName: { fontSize: font.md, fontWeight: '600', color: colors.text },
   itemError: { marginTop: 2, fontSize: font.sm, color: colors.danger },
   itemOk: { marginTop: 2, fontSize: font.sm, color: colors.success },
+  itemNote: { marginTop: 2, fontSize: font.sm, color: colors.textMuted },
+  itemFirst: { borderTopWidth: 0, paddingTop: 0 },
   footer: { paddingTop: spacing.md, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
   progress: { marginBottom: spacing.sm, fontSize: font.sm, color: colors.textMuted, textAlign: 'center' },
 });

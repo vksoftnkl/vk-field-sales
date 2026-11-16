@@ -22,7 +22,7 @@ function fakeServer(handler: (c: Call) => { status: number; body: unknown }) {
   return { calls, fetch };
 }
 
-const base = 'http://192.168.1.10:3011/api/v1';
+const base = 'http://192.168.1.10:3012/api/v1';
 const creds = () => ({ loginName: 'karthik', password: '1111' });
 
 test('signs in with the salesman, then sends the token and the mobile headers', async () => {
@@ -83,4 +83,23 @@ test('a wrong password is a 401 from sign-in; no server at all is a NetworkError
     },
   });
   await assert.rejects(down.health(), (e: unknown) => isNetworkError(e));
+});
+
+test('the download asks for pages of 200 and one customer by id', async () => {
+  const s = fakeServer((c) =>
+    c.url.endsWith('/auth/login')
+      ? { status: 200, body: { access_token: 't' } }
+      : c.url.includes('/mobile/customers/list')
+        ? { status: 200, body: { success: true, data: { items: [{ cusId: 'a' }], hasMore: false, total: 1, page: 2, pageSize: 200 } } }
+        : { status: 200, body: { success: true, data: { cusId: 'a', cusName: 'Kavin Stores' } } },
+  );
+  const api = createVkNexClient({ baseUrl: base, appVersion: '1.0.0', credentials: creds, fetch: s.fetch });
+  const page = await api.customerListPage(2);
+  assert.deepEqual(page.items, [{ cusId: 'a' }]);
+  assert.equal(page.hasMore, false);
+  assert.equal(s.calls[1]!.url, `${base}/mobile/customers/list?page=2&pageSize=200`);
+  const one = await api.getCustomer('a');
+  assert.equal(one.cusName, 'Kavin Stores');
+  assert.equal(s.calls[2]!.url, `${base}/mobile/customers/get?cusId=a`);
+  assert.equal(s.calls[2]!.headers.Authorization, 'Bearer t');
 });

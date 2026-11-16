@@ -6,7 +6,7 @@ import { Provider } from 'react-redux';
 
 import { s } from '@/components/ui';
 import { ensureMigrated } from '@/db/migrate';
-import { seedTestCompanies, seedTestCustomers, seedTestSalesmen } from '@/db/seed';
+import { seedTestCompanies, seedTestSalesmen } from '@/db/seed';
 import { ensureCurrentCompany } from '@/features/company/company';
 import { store, useAppSelector } from '@/store';
 import { colors } from '@/theme';
@@ -22,7 +22,6 @@ export default function RootLayout() {
     ensureMigrated()
       .then(() => {
         seedTestSalesmen();
-        seedTestCustomers();
         seedTestCompanies();
         ensureCurrentCompany();
         setReady(true);
@@ -51,12 +50,14 @@ export default function RootLayout() {
 
 function RootStack() {
   const signedIn = useAppSelector((st) => st.session.session !== null);
+  // redirectTo is required: without it expo-router opens the first allowed route in its own sort
+  // order (index, sync, customers, …), so login landed on Sync with nothing to go back to.
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-      <Stack.Protected guard={!signedIn}>
+      <Stack.Protected guard={!signedIn} redirectTo="/customers">
         <Stack.Screen name="index" />
       </Stack.Protected>
-      <Stack.Protected guard={signedIn}>
+      <Stack.Protected guard={signedIn} redirectTo="/">
         <Stack.Screen name="customers" />
         <Stack.Screen name="customer/new" />
         <Stack.Screen name="sync" />

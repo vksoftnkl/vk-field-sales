@@ -2,14 +2,25 @@ import Constants from 'expo-constants';
 
 import { getServerCredentials } from './credentials';
 import { apiBaseUrl, type ServerAddress } from './server-address';
-import { getServerAddress, markCustomerRefused, markCustomerSynced, pendingCustomers, saveCustomerOptions } from './sync-store';
+import { downloadCustomers } from './download-customers';
+import {
+  getServerAddress,
+  markCustomerRefused,
+  markCustomerSynced,
+  pendingCustomers,
+  saveCustomerOptions,
+  saveDownloadedCustomers,
+  type SavedDownload,
+} from './sync-store';
 import { uploadCustomers, type UploadOutcome } from './upload-customers';
 import { createVkNexClient, type CustomerOptions } from './vk-nex-api';
 
-export type SyncStep = 'signIn' | 'masters' | 'upload';
+export type SyncStep = 'signIn' | 'masters' | 'upload' | 'download';
 
 export interface SyncReport {
   outcomes: UploadOutcome[];
+  /** VK Nex's customers brought to the phone; absent when the run stopped before that step. */
+  downloaded?: SavedDownload & { skipped: number };
   /** Why the run stopped before the end (no address, server unreachable, sign-in refused …). */
   stoppedBy?: unknown;
   /** The step it stopped at. */
@@ -30,8 +41,10 @@ let running: Promise<SyncReport> | null = null;
 
 /**
  * Sync, started by the salesman: sign in to VK Nex, bring its areas, customer groups and price
- * levels, then send every customer added on the phone (POST /mobile/customers/create). Each one
- * is marked synced as soon as VK Nex has it. Only one run at a time; a second tap joins it.
+ * levels, send every customer added on the phone (POST /mobile/customers/create; each one is
+ * marked synced as soon as VK Nex has it), then bring all of VK Nex's customers to the phone.
+ * The upload goes first, so the download already has the new shops under VK Nex's ids.
+ * Only one run at a time; a second tap joins it.
  */
 export function runSync(onStep: (step: SyncStep, done?: number, total?: number) => void): Promise<SyncReport> {
   running ??= (async (): Promise<SyncReport> => {
@@ -63,7 +76,22 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
       markRefused: markCustomerRefused,
       onProgress: (done, total) => onStep('upload', done, total),
     });
-    return { outcomes: result.outcomes, stoppedBy: result.stoppedBy, stoppedAt: result.stoppedBy ? 'upload' : undefined };
+    if (result.stoppedBy) return { outcomes: result.outcomes, stoppedBy: result.stoppedBy, stoppedAt: 'upload' };
+
+    try {
+      const got = await downloadCustomers(
+        {
+          listPage: (page) => api.customerListPage(page),
+          get: (cusId) => api.getCustomer(cusId),
+          onProgress: (done, total) => onStep('download', done, total),
+        },
+        new Date().toISOString(),
+      );
+      const saved = saveDownloadedCustomers(got.rows, got.listedIds);
+      return { outcomes: result.outcomes, downloaded: { ...saved, skipped: got.skipped } };
+    } catch (e) {
+      return { outcomes: result.outcomes, stoppedBy: e, stoppedAt: 'download' };
+    }
   })().finally(() => {
     running = null;
   });

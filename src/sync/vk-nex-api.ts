@@ -183,6 +183,14 @@ export function createVkNexClient(opts: VkNexClientOptions) {
       authed<Envelope<{ items: CustomerSearchRow[] }>>('GET', `/mobile/customers/list?search=${encodeURIComponent(search)}&pageSize=50`).then(
         (r) => r.data.items,
       ),
+    /** One page of all customers (200 is VK Nex's largest page). */
+    customerListPage: (page: number, pageSize = 200) =>
+      authed<Envelope<{ items: CustomerSearchRow[]; hasMore: boolean }>>('GET', `/mobile/customers/list?page=${page}&pageSize=${pageSize}`).then(
+        (r) => r.data,
+      ),
+    /** The whole customer: VK Nex's desktop payload, same field names as the phone's table. */
+    getCustomer: (cusId: string) =>
+      authed<Envelope<Record<string, unknown>>>('GET', `/mobile/customers/get?cusId=${encodeURIComponent(cusId)}`).then((r) => r.data),
   };
 }
 

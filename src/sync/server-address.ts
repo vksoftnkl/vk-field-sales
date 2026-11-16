@@ -6,12 +6,12 @@ export interface ServerAddress {
   port: string;
 }
 
-export const DEFAULT_SERVER_PORT = '3011';
+export const DEFAULT_SERVER_PORT = '3012';
 const API_PREFIX = '/api/v1';
 
 /**
- * Accepts "192.168.1.10", "server-pc", "192.168.1.10:3011" or a pasted URL like
- * "http://192.168.1.10:3011/api/v1", and splits it into host and port (default 3011).
+ * Accepts "192.168.1.10", "server-pc", "192.168.1.10:3012" or a pasted URL like
+ * "http://192.168.1.10:3012/api/v1", and splits it into host and port (default 3012).
  * Null when nothing usable was typed.
  */
 export function parseServerAddress(input: string): ServerAddress | null {
@@ -31,8 +31,8 @@ export function isValidPort(port: string): boolean {
   return /^\d+$/.test(port) && n >= 1 && n <= 65535;
 }
 
-/** "192.168.1.10:3011", as shown in the address box. */
+/** "192.168.1.10:3012", as shown in the address box. */
 export const formatServerAddress = (a: ServerAddress): string => `${a.host}:${a.port}`;
 
-/** Base URL of VK Nex's API, e.g. http://192.168.1.10:3011/api/v1 */
+/** Base URL of VK Nex's API, e.g. http://192.168.1.10:3012/api/v1 */
 export const apiBaseUrl = (a: ServerAddress): string => `http://${a.host}:${a.port}${API_PREFIX}`;

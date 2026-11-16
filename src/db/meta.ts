@@ -9,9 +9,8 @@ import { deviceMeta } from './schema';
  *  - lastBeatIds: beats ticked last time on the customer list, comma-separated ('' = all beats).
  *  - companyId: company new bills and receipts are made for (Choose company).
  *  - serverHost, serverPort: where the VK Nex server PC is (Sync page).
- *  - testCustomersVersion: TEMPORARY, which version of the test shops this phone holds.
  */
-export type MetaKey = 'lastUserId' | 'lastBeatIds' | 'companyId' | 'serverHost' | 'serverPort' | 'testCustomersVersion';
+export type MetaKey = 'lastUserId' | 'lastBeatIds' | 'companyId' | 'serverHost' | 'serverPort';
 
 export function getMeta(key: MetaKey): string | null {
   const row = db.select().from(deviceMeta).where(eq(deviceMeta.key, key)).get();

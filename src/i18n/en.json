@@ -47,8 +47,9 @@
       "ordered": "Ordered",
       "received": "Received"
     },
-    "empty": "No customers on this phone yet.",
+    "empty": "No customers on this phone yet. Run Sync to get them from VK Nex.",
     "noMatches": "No shops match",
+    "readError": "Could not read the customers: {{message}}",
     "nBeats": "{{n}} beats",
     "nTypes": "{{n}} types",
     "chooseBeat": "Choose beat",
@@ -132,7 +133,7 @@
     "back": "Back to customers",
     "serverTitle": "Server",
     "address": "Server address",
-    "addressInvalid": "Enter the server PC's address, e.g. 192.168.1.10 or 192.168.1.10:3011",
+    "addressInvalid": "Enter the server PC's address, e.g. 192.168.1.10 or 192.168.1.10:3012",
     "test": "Test connection",
     "connected": "VK Nex is answering at {{address}}.",
     "noAnswer": "No answer from VK Nex at {{address}}. Check that the phone is on the office Wi-Fi and the server PC is on.",
@@ -157,6 +158,11 @@
     "stepMasters": "Getting areas, customer types and price levels…",
     "stepUpload": "Sending customer {{n}} of {{total}}…",
     "stepUploadNone": "Checking for customers to send…",
+    "stepDownloadList": "Getting the customer list from VK Nex…",
+    "stepDownload": "Getting customer {{n}} of {{total}} from VK Nex…",
+    "received": "{{n}} customers received from VK Nex.",
+    "removed": "{{n}} customers are no longer on VK Nex and were taken off the list.",
+    "skipped": "{{n}} customers could not be read from VK Nex and were skipped.",
     "syncNow": "Sync now"
   },
   "common": {

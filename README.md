@@ -39,13 +39,15 @@ database ([src/db/test-salesmen.ts](src/db/test-salesmen.ts)):
 | Murugan K | 2222 |
 | Priya R | 3333 |
 
-It also adds test companies, beats (Namakkal East, Namakkal West, Rasipuram), customer types and
-27 shops with unpaid bills ([src/db/test-customers.ts](src/db/test-customers.ts)). Namakkal East
-matches the mockups: its first seven shops, and filter counts 18 / 11 / 14. Changing the test
-shops? Bump `TEST_CUSTOMERS_VERSION` and phones reload them (unless they hold real customers).
+It also adds three test companies ([src/db/test-companies.ts](src/db/test-companies.ts)).
 
-Remove `src/db/test-salesmen.ts`, `src/db/test-customers.ts` and `src/db/seed.ts` when real
-salesmen and customers come from Sync.
+There are no test shops. The customer list shows the shops added on the phone with **New
+customer**; beats and customer types come from VK Nex on the first **Sync now**, so sync once
+before adding a shop. Migration `0005_remove_test_customers` clears the old test shops, their
+bills and the unused test beats and types from phones that had them.
+
+Remove `src/db/test-salesmen.ts`, `src/db/test-companies.ts` and `src/db/seed.ts` when real
+salesmen and companies come from Sync.
 
 ## Run it
 

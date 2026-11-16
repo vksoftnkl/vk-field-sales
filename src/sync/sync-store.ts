@@ -1,9 +1,10 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { getMeta, setMeta } from '@/db/meta';
 import { beats, customerBills, customers, customerTypes, itemPriceLevels } from '@/db/schema';
 
+import type { DownloadedCustomer } from './download-customers';
 import type { ServerAddress } from './server-address';
 import type { PendingCustomer } from './upload-customers';
 import type { CustomerOptions } from './vk-nex-api';
@@ -112,4 +113,41 @@ export function saveCustomerOptions(o: CustomerOptions): void {
     tx.delete(itemPriceLevels).run();
     if (o.priceLevels.length) tx.insert(itemPriceLevels).values(o.priceLevels.map((p) => ({ iplId: p.id, iplName: p.name }))).run();
   });
+}
+
+export interface SavedDownload {
+  /** Customers added or brought up to date. */
+  saved: number;
+  /** Synced customers VK Nex no longer has (deleted there): hidden on the phone. */
+  removed: number;
+}
+
+/**
+ * VK Nex's customers, as read by Sync, into the phone's table, in one transaction. A customer
+ * already on the phone gets VK Nex's values; what happened at the shop on this trip (the app_*
+ * columns) stays. Shops still waiting to upload are never touched. A synced customer VK Nex no
+ * longer lists is marked deleted, so it leaves the list and comes back if VK Nex restores it.
+ */
+export function saveDownloadedCustomers(rows: readonly DownloadedCustomer[], listedIds: readonly string[]): SavedDownload {
+  const listed = new Set(listedIds);
+  let removed = 0;
+  db.transaction((tx) => {
+    for (const row of rows) {
+      const { cusId: _id, ...fields } = row;
+      tx.insert(customers).values(row).onConflictDoUpdate({ target: customers.cusId, set: fields }).run();
+    }
+    const gone = tx
+      .select({ id: customers.cusId })
+      .from(customers)
+      .where(and(eq(customers.appPendingUpload, false), eq(customers.cusIsDeleted, false)))
+      .all()
+      .map((r) => r.id)
+      .filter((id) => !listed.has(id));
+    // In chunks: SQLite limits the number of values in one statement.
+    for (let i = 0; i < gone.length; i += 500) {
+      tx.update(customers).set({ cusIsDeleted: true }).where(inArray(customers.cusId, gone.slice(i, i + 500))).run();
+    }
+    removed = gone.length;
+  });
+  return { saved: rows.length, removed };
 }

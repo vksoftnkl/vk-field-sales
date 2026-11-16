@@ -36,6 +36,13 @@
       "when": 1794808769670,
       "tag": "0004_sync_customers",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794818682693,
+      "tag": "0005_remove_test_customers",
+      "breakpoints": true
     }
   ]
 }

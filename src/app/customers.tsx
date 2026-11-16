@@ -57,7 +57,7 @@ export default function CustomersScreen() {
 
   const { data: beatRows } = useLiveQuery(beatsQuery());
   const { data: typeRows } = useLiveQuery(customerTypesQuery());
-  const { data: rows, updatedAt } = useLiveQuery(customerListQuery(beatIds, typeIds), [beatKey, typeKey]);
+  const { data: rows, updatedAt, error: listError } = useLiveQuery(customerListQuery(beatIds, typeIds), [beatKey, typeKey]);
   const { data: beatCounts } = useLiveQuery(beatCountsQuery());
   const { data: typeCounts } = useLiveQuery(typeCountsQuery(beatIds), [beatKey]);
   const { data: pendingRows } = useLiveQuery(pendingUploadQuery());
@@ -161,8 +161,13 @@ export default function CustomersScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         ListEmptyComponent={
-          // Nothing until the first read finishes, so an empty message never flashes on open.
-          updatedAt ? <Text style={st.empty}>{filtered ? t('customers.noMatches') : t('customers.empty')}</Text> : undefined
+          // A failed read says why instead of looking like an empty list. Otherwise nothing until
+          // the first read finishes, so an empty message never flashes on open.
+          listError ? (
+            <Text style={[st.empty, { color: colors.danger }]}>{t('customers.readError', { message: listError.message })}</Text>
+          ) : updatedAt ? (
+            <Text style={st.empty}>{filtered ? t('customers.noMatches') : t('customers.empty')}</Text>
+          ) : undefined
         }
       />
 
