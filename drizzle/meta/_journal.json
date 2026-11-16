@@ -29,6 +29,13 @@
       "when": 1794805859922,
       "tag": "0003_customers_like_vk_nex",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794808769670,
+      "tag": "0004_sync_customers",
+      "breakpoints": true
     }
   ]
 }

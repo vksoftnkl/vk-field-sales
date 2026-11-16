@@ -23,16 +23,18 @@ function initials(name: string): string {
 /**
  * Side menu from the ☰ button, like the Qt app's DrawerMenu: who is logged in and for which
  * company, then Home, Switch company, Reports, Sync data, Settings and Log out.
- * Reports, Sync data and Settings are not built yet and say so.
+ * Reports and Settings are not built yet and say so.
  */
 export function AppMenu({
   visible,
   onClose,
   onSwitchCompany,
+  onSync,
 }: {
   visible: boolean;
   onClose: () => void;
   onSwitchCompany: () => void;
+  onSync: () => void;
 }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -61,7 +63,7 @@ export function AppMenu({
             <MenuItem icon="home-outline" label={t('menu.home')} active onPress={onClose} />
             <MenuItem icon="business-outline" label={t('menu.switchCompany')} onPress={onSwitchCompany} />
             <MenuItem icon="bar-chart-outline" label={t('menu.reports')} onPress={() => notYet(t('menu.reports'))} />
-            <MenuItem icon="sync-outline" label={t('menu.sync')} onPress={() => notYet(t('menu.sync'))} />
+            <MenuItem icon="sync-outline" label={t('menu.sync')} onPress={onSync} />
             <MenuItem icon="settings-outline" label={t('menu.settings')} onPress={() => notYet(t('menu.settings'))} />
             <View style={st.divider} />
             <MenuItem
@@ -76,8 +78,6 @@ export function AppMenu({
           </View>
 
           <View style={[st.foot, { paddingBottom: insets.bottom + spacing.lg }]}>
-            {/* Sync is not built yet, so there is no last-sync time to show. */}
-            <Text style={st.footStrong}>{t('menu.neverSynced')}</Text>
             <Text style={st.footMuted}>{t('menu.version', { version: Constants.expoConfig?.version ?? '' })}</Text>
           </View>
         </View>

@@ -59,6 +59,7 @@ function RootStack() {
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="customers" />
         <Stack.Screen name="customer/new" />
+        <Stack.Screen name="sync" />
       </Stack.Protected>
     </Stack>
   );

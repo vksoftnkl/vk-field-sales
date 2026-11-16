@@ -14,16 +14,23 @@ expo-router, SQLite (expo-sqlite + Drizzle) and Redux Toolkit.
   - **New customer** → VK Nex's customer fields (name, type, beat, address, state, phones, GST type,
     GST no., PAN, Aadhaar) with the server's own checks. Saved on the phone (works offline) and
     counted on the **Upload** button until Sync sends it.
+- **Sync** (Upload button, or ☰ → Sync data): server address + Test connection, then **Sync now**
+  signs in to VK Nex as the salesman, brings areas / customer types / price levels, and sends
+  every waiting customer to `POST /api/v1/mobile/customers/create`. Each one VK Nex accepts takes
+  VK Nex's id and code and is marked synced; refusals stay waiting with the reason shown.
+  Details: [docs/SYNC-API.md](docs/SYNC-API.md). Android builds allow plain HTTP to the server PC
+  (`expo-build-properties`, needs a new build; Expo Go already allows it).
 - The phone's `customers` table is a copy of VK Nex's `sales.customers` (same `cus_*` columns,
   from `ERP server/prisma/sales/customer.prisma`), plus phone-only `app_*` columns.
 - **☰ menu**: salesman and company, Home, **Switch company** (Choose company sheet), Reports,
   Sync data, Settings, **Log out**.
-- Not built yet, and they say so when tapped: Upload, Reports, Sync data, Settings. Tapping a
-  shop does nothing yet. Nothing talks to a server.
+- Not built yet, and they say so when tapped: Reports, Settings. Tapping a shop does nothing yet.
+  Only Sync talks to the server, and only when tapped. Pulling customers and salesmen from VK Nex
+  is not built yet.
 
 ## Test salesmen
 
-Sync with VK Nex is not built yet, so the app puts three test salesmen into an empty phone
+Salesmen don't come from VK Nex yet (Sync only sends new customers), so the app puts three test salesmen into an empty phone
 database ([src/db/test-salesmen.ts](src/db/test-salesmen.ts)):
 
 | Salesman | Password |
@@ -82,9 +89,11 @@ src/features/customers/  list queries, visit status, filters, new-customer valid
 src/features/company/    current company, Choose company sheet
 src/db/               schema (users, companies, beats, types, customers, bills), migrations, test data
 src/lib/              picker search, rupees, multi-select ids, uuidv7, GST state codes
+src/sync/             VK Nex client, customer upload, Sync page logic
+src/app/sync.tsx      Sync page
 src/i18n/             English + Tamil
 src/theme/            Maroon #8B1D1D / brass #C9A227
-docs/SYNC-API.md      Server contract for the future Sync with VK Nex
+docs/SYNC-API.md      Server contract for Sync with VK Nex (customer upload built; the rest planned)
 ```
 
 The full earlier app (customers, orders, sync, printing, GST) was removed on 2026-11-14.

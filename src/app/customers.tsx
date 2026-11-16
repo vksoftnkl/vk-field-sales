@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import type { TFunction } from 'i18next';
 import { memo, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppMenu } from '@/components/app-menu';
@@ -90,13 +90,6 @@ export default function CustomersScreen() {
     setMeta('lastBeatIds', serializeIdList(ids));
   };
 
-  // Not built yet. Shown so the page matches the approved design; it says so when tapped.
-  const upload = () =>
-    Alert.alert(
-      t('common.notYetTitle'),
-      pending > 0 ? `${t('customers.uploadWaiting', { n: pending })} ${t('customers.uploadNotYet')}` : t('customers.uploadNotYet'),
-    );
-
   const filtered = beatIds.length > 0 || typeIds.length > 0 || quick !== 'all' || query.trim() !== '';
 
   return (
@@ -115,7 +108,7 @@ export default function CustomersScreen() {
             {updatedAt ? `${beatTitle} · ${shopsLabel(rows.length)}` : ' '}
           </Text>
         </View>
-        <Pressable accessibilityRole="button" onPress={upload} style={({ pressed }) => [st.upload, pressed && { opacity: 0.85 }]}>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/sync')} style={({ pressed }) => [st.upload, pressed && { opacity: 0.85 }]}>
           <Ionicons name="share-outline" size={18} color={colors.text} />
           <Text style={st.uploadText}>{pending > 0 ? `${t('customers.upload')} · ${pending}` : t('customers.upload')}</Text>
         </Pressable>
@@ -199,7 +192,15 @@ export default function CustomersScreen() {
         onApply={setTypeIds}
         onClose={close}
       />
-      <AppMenu visible={overlay === 'menu'} onClose={close} onSwitchCompany={() => setOverlay('company')} />
+      <AppMenu
+        visible={overlay === 'menu'}
+        onClose={close}
+        onSwitchCompany={() => setOverlay('company')}
+        onSync={() => {
+          close();
+          router.push('/sync');
+        }}
+      />
       <CompanySheet visible={overlay === 'company'} onClose={close} />
     </View>
   );

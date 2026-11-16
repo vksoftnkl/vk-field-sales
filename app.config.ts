@@ -22,7 +22,7 @@ const config: ExpoConfig = {
       monochromeImage: './assets/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: false,
-    // Login only: no extra Android permissions. Add Bluetooth / location here when printing returns.
+    // No extra Android permissions (INTERNET is always there). Add Bluetooth / location here when printing returns.
     permissions: [],
   },
   ios: {
@@ -33,6 +33,9 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-sqlite',
     'expo-localization',
+    // Sync talks to the VK Nex server PC over plain HTTP on the office LAN; Android 9+ blocks
+    // that unless it is allowed here. Needs a new build (Expo Go already allows it).
+    ['expo-build-properties', { android: { usesCleartextTraffic: true } }],
   ],
   experiments: {
     typedRoutes: true,

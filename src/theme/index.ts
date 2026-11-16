@@ -18,6 +18,8 @@ export const colors = {
   /** Input outlines (a step darker than cards so fields read as tappable). */
   inputBorder: '#D6D3D1',
   danger: '#B91C1C',
+  /** Done / sent (green-700: 5:1 on white). */
+  success: '#15803D',
 } as const;
 
 /** Visit-status chips on the customer list (background / text). */

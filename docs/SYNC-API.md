@@ -114,23 +114,36 @@ Response: **one result per record**, never all-or-nothing:
 | `REJECTED` | Business rule failed; resending won't help | Shows the error in the Sync tab; the salesman can retry after a fix |
 | `RETRY` | Temporary (lock timeout, DB busy) | Sends it again at the next Sync |
 
-### New customers from the phone
+### New customers from the phone (built, uses VK Nex's existing routes)
 
-The New customer form saves a shop on the phone (it works offline) and Upload sends it as
-`"entity": "customer"`, `clientUuid` = the phone's `cusId` (UUIDv7), `payload` = `SaveCustomerDto`
-fields: `cusName, cusGroupId, cusAreaId, cusContactPerson, cusAddr1, cusAddr2, cusLandmark,
-cusCity, cusDistrict, cusStateName, cusStateCode, cusPin, cusPhone1, cusPhone2, cusWhatsappNo,
-cusEmail, cusGstType, cusGstNo, cusPanNo, cusAadharNo`. The phone already applies the server's
-refusals (name, state code, area, group, GST type ↔ GSTIN, GSTIN state, overseas state, duplicate
-name on the phone).
+Customers added on the phone are saved there first (offline) with `app_pending_upload = 1`. When
+the salesman taps **Sync now** (Sync page, from Upload or ☰ → Sync data), the phone:
 
-- **`cusPriceLevelId` is not sent**: salesmen don't choose price levels. The server must set one
-  (a default for mobile-created customers) or the save is refused with
-  `CUSTOMER_PRICE_LEVEL_NOT_FOUND`.
-- Keep the phone's `cusId` as the customer's id, so orders made on the phone for this shop
-  before the upload still point at it.
-- A refusal (e.g. `CUSTOMER_NAME_EXISTS` against a customer the phone hasn't pulled yet) comes back
-  as `REJECTED` with the error code.
+1. `POST /api/v1/auth/login` with `usrLoginName` / `usrPassword` (the user and password typed at
+   phone login, kept in memory only; the Sync page can take another VK Nex user) and
+   `device_type: "Mobile"`. Every later call sends `Authorization: Bearer <access_token>`,
+   `X-App-Platform: mobile` and `X-App-Version`; a 401 mid-run signs in again once.
+2. `GET /api/v1/mobile/customers/options`: areas, customer groups and price levels are saved on
+   the phone, so new customers point at ids VK Nex knows.
+3. For each waiting customer, oldest first, `POST /api/v1/mobile/customers/create` with the
+   `SaveCustomerDto` fields that have a value (no `cusId`: VK Nex makes the id). Fields:
+   `cusName, cusGroupId, cusAreaId, cusContactPerson, cusAddr1, cusAddr2, cusAddr3, cusLandmark,
+   cusCity, cusDistrict, cusStateName, cusStateCode, cusPin, cusPhone1, cusPhone2, cusWhatsappNo,
+   cusEmail, cusGstType, cusGstNo, cusPanNo, cusAadharNo, cusPriceLevelId`.
+   - `cusPriceLevelId`: salesmen don't choose one; the phone sends VK Nex's first price level
+     (lowest id). The office can change it on the desktop.
+4. Each customer VK Nex accepts is marked synced at once (one SQLite transaction): the phone's id
+   is replaced by VK Nex's `cusId`, `cus_code` and `cus_sync_date` are set, the upload flag and
+   error are cleared, and its unpaid bills move to the new id.
+5. A refusal for that customer (400 / 404 / 409 / 422, e.g. `CUSTOMER_UNKNOWN_GROUP`) is stored in
+   `app_sync_error`, shown on the Sync page, and the next customer is sent. No answer, 5xx, 401
+   after the retry, 403 or 426 stops the run; the rest stay waiting for the next Sync.
+
+**Lost answers.** The create route has no client id, so a request that VK Nex saved but whose
+answer never arrived is sent again next time and refused as `CUSTOMER_NAME_EXISTS`. The phone then
+searches `GET /mobile/customers/list?search=<name>` and, if a customer has the same name **and**
+the same mobile or GSTIN, takes it as this one (marked synced with that id) instead of refusing.
+A server-side `clientUuid` (below) would make this exact; worth adding to `/mobile/customers/create`.
 
 ### Idempotency (required)
 

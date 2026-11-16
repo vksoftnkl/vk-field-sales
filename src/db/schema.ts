@@ -170,6 +170,8 @@ export const customers = sqliteTable(
     appReceived: integer('app_received', { mode: 'boolean' }).notNull().default(false),
     /** Added on this phone and not yet sent to VK Nex; the Upload button counts these. */
     appPendingUpload: integer('app_pending_upload', { mode: 'boolean' }).notNull().default(false),
+    /** Why VK Nex refused the last upload ("CODE: message"); null when none. Cleared once it goes through. */
+    appSyncError: text('app_sync_error'),
   },
   (t) => [
     index('idx_cus_area').on(t.cusAreaId),
@@ -179,6 +181,15 @@ export const customers = sqliteTable(
     index('idx_cus_name').on(t.cusName),
   ],
 );
+
+/**
+ * Price levels, a copy of VK Nex's inventory item_price_levels (only the columns Sync brings,
+ * from GET /mobile/customers/options). VK Nex needs one on every customer.
+ */
+export const itemPriceLevels = sqliteTable('item_price_levels', {
+  iplId: integer('ipl_id').primaryKey(),
+  iplName: text('ipl_name').notNull(),
+});
 
 /** Unpaid bills per customer, like the Qt app's customer_balance. Amounts in paise. */
 export const customerBills = sqliteTable(

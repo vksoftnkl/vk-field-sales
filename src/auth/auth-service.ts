@@ -5,6 +5,7 @@ import { setMeta } from '@/db/meta';
 import { users, type User } from '@/db/schema';
 import { store } from '@/store';
 import { signedIn, signedOut, type Session } from '@/store/sessionSlice';
+import { setServerCredentials } from '@/sync/credentials';
 
 import { verifyPassword } from './password';
 
@@ -33,10 +34,13 @@ export async function login(userId: string, password: string, secondUserId?: str
     secondDisplayName: second?.displayName ?? null,
   };
   setMeta('lastUserId', user.id);
+  // Sync signs in to VK Nex as the same user; the password stays in memory only.
+  setServerCredentials({ loginName: user.loginName, password });
   store.dispatch(signedIn(session));
   return true;
 }
 
 export function logout(): void {
+  setServerCredentials(null);
   store.dispatch(signedOut());
 }
