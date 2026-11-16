@@ -8,6 +8,27 @@
       "when": 1794664624279,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794804457691,
+      "tag": "0001_customers",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794805229825,
+      "tag": "0002_companies_new_customer",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794805859922,
+      "tag": "0003_customers_like_vk_nex",
+      "breakpoints": true
     }
   ]
 }

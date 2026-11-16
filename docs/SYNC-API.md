@@ -114,6 +114,24 @@ Response: **one result per record**, never all-or-nothing:
 | `REJECTED` | Business rule failed; resending won't help | Shows the error in the Sync tab; the salesman can retry after a fix |
 | `RETRY` | Temporary (lock timeout, DB busy) | Sends it again at the next Sync |
 
+### New customers from the phone
+
+The New customer form saves a shop on the phone (it works offline) and Upload sends it as
+`"entity": "customer"`, `clientUuid` = the phone's `cusId` (UUIDv7), `payload` = `SaveCustomerDto`
+fields: `cusName, cusGroupId, cusAreaId, cusContactPerson, cusAddr1, cusAddr2, cusLandmark,
+cusCity, cusDistrict, cusStateName, cusStateCode, cusPin, cusPhone1, cusPhone2, cusWhatsappNo,
+cusEmail, cusGstType, cusGstNo, cusPanNo, cusAadharNo`. The phone already applies the server's
+refusals (name, state code, area, group, GST type ↔ GSTIN, GSTIN state, overseas state, duplicate
+name on the phone).
+
+- **`cusPriceLevelId` is not sent**: salesmen don't choose price levels. The server must set one
+  (a default for mobile-created customers) or the save is refused with
+  `CUSTOMER_PRICE_LEVEL_NOT_FOUND`.
+- Keep the phone's `cusId` as the customer's id, so orders made on the phone for this shop
+  before the upload still point at it.
+- A refusal (e.g. `CUSTOMER_NAME_EXISTS` against a customer the phone hasn't pulled yet) comes back
+  as `REJECTED` with the error code.
+
 ### Idempotency (required)
 
 The phone **will** resend records (timeouts, app killed mid-request). Add to each mobile-created table:
@@ -173,6 +191,10 @@ Row shapes the phone expects (see `src/api/types.ts`):
     defaults N=16384 r=8 p=1, 64-byte key). The phone checks the password with the same
     parameters (`src/auth/password.ts`). A password change in VK Nex reaches the phone at the
     next Sync. Until then, the old password still works on that phone.
-- **customers**: `id, code, name, mobile, gstin, stateCode, address, beatId, priceLevel, creditLimitPaise, creditBillLimit, outstandingPaise, isActive, updatedAt`
+- **customers**: rows of VK Nex's `sales.customers` with their Prisma field names, every scalar
+  field (`cusId, cusTitle, cusShort, cusCode, cusName, cusAddr1 … cusModifiedBy`), exactly as
+  `customer.prisma` has them. The phone keeps the same columns (`src/db/schema.ts`, `customers`), so
+  rows are stored unchanged. Decimals as strings, dates as `YYYY-MM-DD`, timestamps as ISO.
+  Customers that are deleted (`cusIsDeleted`) or deactivated come back in `deletedIds` or with the flag set.
 - **items**: `id, code, name, barcode, hsn, unit, mrpPaise, gstRateBp, cessRateBp, taxInclusive, isActive, updatedAt`
 - **item_prices**: `itemId, priceLevel, ratePaise` (for this scope, `deletedIds` are item ids whose prices were all removed)

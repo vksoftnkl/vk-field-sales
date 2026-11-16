@@ -81,7 +81,7 @@ export default function LoginScreen() {
     setBusy(true);
     setError(null);
     try {
-      // On success Stack.Protected switches to the welcome page by itself.
+      // On success Stack.Protected switches to the customer list by itself.
       if (!(await login(userId, password, secondId || null))) setError(t('login.badPassword'));
     } catch {
       setError(t('common.error'));

@@ -6,7 +6,8 @@ import { Provider } from 'react-redux';
 
 import { s } from '@/components/ui';
 import { ensureMigrated } from '@/db/migrate';
-import { seedTestSalesmen } from '@/db/seed';
+import { seedTestCompanies, seedTestCustomers, seedTestSalesmen } from '@/db/seed';
+import { ensureCurrentCompany } from '@/features/company/company';
 import { store, useAppSelector } from '@/store';
 import { colors } from '@/theme';
 
@@ -21,6 +22,9 @@ export default function RootLayout() {
     ensureMigrated()
       .then(() => {
         seedTestSalesmen();
+        seedTestCustomers();
+        seedTestCompanies();
+        ensureCurrentCompany();
         setReady(true);
       })
       .catch((e: unknown) => setBootError(e instanceof Error ? e.message : String(e)))
@@ -53,7 +57,8 @@ function RootStack() {
         <Stack.Screen name="index" />
       </Stack.Protected>
       <Stack.Protected guard={signedIn}>
-        <Stack.Screen name="welcome" />
+        <Stack.Screen name="customers" />
+        <Stack.Screen name="customer/new" />
       </Stack.Protected>
     </Stack>
   );
