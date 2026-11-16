@@ -73,3 +73,22 @@ export function countByQuickFilter(rows: readonly CustomerRow[]): Record<QuickFi
   for (const c of rows) for (const q of QUICK_FILTERS) if (passesQuick(c, q)) counts[q] += 1;
   return counts;
 }
+
+export interface AddressParts {
+  cusAddr1: string | null;
+  cusAddr2: string | null;
+  cusAddr3: string | null;
+  cusCity: string | null;
+  cusPin: string | null;
+}
+
+/** "12, Rasipuram Road, Namakkal": the address lines that are filled in, once each. */
+export function addressLine(c: AddressParts): string {
+  const parts: string[] = [];
+  for (const p of [c.cusAddr1, c.cusAddr2, c.cusAddr3, c.cusCity]) {
+    const v = p?.trim();
+    if (v && !parts.some((x) => x.toLocaleLowerCase().includes(v.toLocaleLowerCase()))) parts.push(v);
+  }
+  const line = parts.join(', ');
+  return c.cusPin ? (line ? `${line} - ${c.cusPin}` : c.cusPin) : line;
+}

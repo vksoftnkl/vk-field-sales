@@ -6,11 +6,21 @@
  */
 export function formatRupees(paise: number): string {
   const rupees = Math.round(Math.abs(paise) / 100);
-  const digits = String(rupees);
-  const last3 = digits.slice(-3);
-  const rest = digits.slice(0, -3);
-  const grouped = rest ? `${rest.replace(/\B(?=(\d{2})+$)/g, ',')},${last3}` : last3;
-  return `${paise < 0 && rupees > 0 ? '-' : ''}₹${grouped}`;
+  return `${paise < 0 && rupees > 0 ? '-' : ''}₹${group(String(rupees))}`;
+}
+
+const group = (rupees: string) => {
+  const last3 = rupees.slice(-3);
+  const rest = rupees.slice(0, -3);
+  return rest ? `${rest.replace(/\B(?=(\d{2})+$)/g, ',')},${last3}` : last3;
+};
+
+/** Rupees and paise with Indian grouping, as on bills and statements: 3845000 → "₹38,450.00". */
+export function formatAmount(paise: number): string {
+  const abs = Math.abs(Math.round(paise));
+  const rupees = String(Math.floor(abs / 100));
+  const p = String(abs % 100).padStart(2, '0');
+  return `${paise < 0 && abs > 0 ? '-' : ''}₹${group(rupees)}.${p}`;
 }
 
 /** Today's date on the phone as YYYY-MM-DD (local time, not UTC). */

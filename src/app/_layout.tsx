@@ -6,7 +6,7 @@ import { Provider } from 'react-redux';
 
 import { s } from '@/components/ui';
 import { ensureMigrated } from '@/db/migrate';
-import { seedTestCompanies, seedTestSalesmen } from '@/db/seed';
+import { seedTestSalesmen } from '@/db/seed';
 import { ensureCurrentCompany } from '@/features/company/company';
 import { store, useAppSelector } from '@/store';
 import { colors } from '@/theme';
@@ -22,7 +22,6 @@ export default function RootLayout() {
     ensureMigrated()
       .then(() => {
         seedTestSalesmen();
-        seedTestCompanies();
         ensureCurrentCompany();
         setReady(true);
       })
@@ -60,6 +59,14 @@ function RootStack() {
       <Stack.Protected guard={signedIn} redirectTo="/">
         <Stack.Screen name="customers" />
         <Stack.Screen name="customer/new" />
+        <Stack.Screen name="customer/[id]" />
+        <Stack.Screen name="customer/edit/[id]" />
+        <Stack.Screen name="customer/ledger/[id]" />
+        <Stack.Screen name="order/company/[customerId]" />
+        <Stack.Screen name="order/[customerId]" />
+        <Stack.Screen name="order/item" />
+        <Stack.Screen name="order/summary" />
+        <Stack.Screen name="checkin/[customerId]" />
         <Stack.Screen name="sync" />
       </Stack.Protected>
     </Stack>

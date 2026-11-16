@@ -4,7 +4,7 @@
  * After editing this file run `npm run db:generate` to create a new migration in /drizzle.
  */
 import { sql } from 'drizzle-orm';
-import { index, integer, numeric, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, numeric, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 /** Small key/value store for device settings (e.g. the salesman picked last time). */
 export const deviceMeta = sqliteTable('device_meta', {
@@ -170,6 +170,13 @@ export const customers = sqliteTable(
     appReceived: integer('app_received', { mode: 'boolean' }).notNull().default(false),
     /** Added on this phone and not yet sent to VK Nex; the Upload button counts these. */
     appPendingUpload: integer('app_pending_upload', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * A customer from VK Nex edited on this phone (mobiles, Aadhaar, PAN), not yet sent. Sync
+     * sends it with PUT /mobile/customers/update; the Upload button counts these too.
+     */
+    appPendingUpdate: integer('app_pending_update', { mode: 'boolean' }).notNull().default(false),
+    /** Which of those fields the salesman changed ('cusPhone1' …): only these are sent. */
+    appEditedFields: text('app_edited_fields', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
     /** Why VK Nex refused the last upload ("CODE: message"); null when none. Cleared once it goes through. */
     appSyncError: text('app_sync_error'),
   },
@@ -203,6 +210,263 @@ export const customerBills = sqliteTable(
     balancePaise: integer('balance_paise').notNull(),
   },
   (t) => [index('ix_customer_bills_customer').on(t.customerId)],
+);
+
+/**
+ * VK Nex's financial years of the company Sync signs in to (public.fiscal_years, only the
+ * columns the ledger needs). Sync brings this year and last year.
+ */
+export const fiscalYears = sqliteTable('fiscal_years', {
+  /** fy_year_name, e.g. '2026-2027': the accYear of VK Nex's reports. */
+  fyYearName: text('fy_year_name').primaryKey(),
+  /** YYYY-MM-DD */
+  fyBeginDate: text('fy_begin_date').notNull(),
+  fyEndDate: text('fy_end_date').notNull(),
+});
+
+/**
+ * One customer's ledger statement for one financial year, as VK Nex's Ledger Statement
+ * (reports/ledger-statement/vouchers) gave it at the last Sync. Signed paise: debit (the
+ * customer owes) is +, credit is −.
+ */
+export const ledgerYears = sqliteTable(
+  'ledger_years',
+  {
+    customerId: text('customer_id').notNull(),
+    accYear: text('acc_year').notNull(),
+    /** The period read: the year's first day … today (this year) or the year's last day. */
+    fromDate: text('from_date').notNull(),
+    toDate: text('to_date').notNull(),
+    /** Balance brought forward at fromDate. */
+    openingPaise: integer('opening_paise').notNull(),
+    /** Balance at toDate. */
+    closingPaise: integer('closing_paise').notNull(),
+    /** When Sync read it (ISO time). */
+    syncedOn: text('synced_on').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.customerId, t.accYear] })],
+);
+
+/** The vouchers of a ledger year, one row each, in VK Nex's order (VoucherRow fields). */
+export const ledgerRows = sqliteTable(
+  'ledger_rows',
+  {
+    customerId: text('customer_id').notNull(),
+    voucherId: text('voucher_id').notNull(),
+    accYear: text('acc_year').notNull(),
+    /** Position in VK Nex's order within the year (date, voucher serial, id). */
+    seq: integer('seq').notNull(),
+    /** YYYY-MM-DD */
+    date: text('date').notNull(),
+    voucherTypeName: text('voucher_type_name'),
+    voucherNo: text('voucher_no'),
+    /** 'NORMAL' | 'CANCELLED' | 'REVERSAL' */
+    rowKind: text('row_kind').notNull(),
+    particulars: text('particulars'),
+    narration: text('narration'),
+    /** Where the voucher came from: 'SALES' + 'SALE_BILL' is a sales bill (Recent bills). */
+    srcModule: text('src_module'),
+    srcDocType: text('src_doc_type'),
+    billRefs: text('bill_refs', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+    debitPaise: integer('debit_paise').notNull(),
+    creditPaise: integer('credit_paise').notNull(),
+    /** Running balance after this voucher (signed, DR +). */
+    balancePaise: integer('balance_paise').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.customerId, t.voucherId] }), index('ix_ledger_rows_customer_year').on(t.customerId, t.accYear, t.seq)],
+);
+
+/** Item groups for the Order entry filter (VK Nex inventory.item_group_master: only what the phone needs). */
+export const itemGroupMaster = sqliteTable('item_group_master', {
+  itgId: text('itg_id').primaryKey(),
+  itgName: text('itg_name').notNull(),
+  itgSort: integer('itg_sort').notNull().default(0),
+});
+
+/** Item brands for the Order entry filter (VK Nex inventory.item_brand_master). */
+export const itemBrandMaster = sqliteTable('item_brand_master', {
+  brandId: text('brand_id').primaryKey(),
+  brandName: text('brand_name').notNull(),
+  brandSort: integer('brand_sort').notNull().default(0),
+});
+
+/** Items a salesman can order (VK Nex inventory.item_master, from GET /mobile/items/list). */
+export const itemMaster = sqliteTable(
+  'item_master',
+  {
+    itemId: text('item_id').primaryKey(),
+    itemCode: text('item_code'),
+    itemNameEn: text('item_name_en').notNull(),
+    itemNameTa: text('item_name_ta'),
+    /** null = shared by every company. */
+    itemCompanyId: text('item_company_id'),
+    itemGroupId: text('item_group_id').notNull(),
+    itemBrandId: text('item_brand_id'),
+    itemAllowLoading: integer('item_allow_loading', { mode: 'boolean' }).notNull().default(false),
+    itemAllowFreight: integer('item_allow_freight', { mode: 'boolean' }).notNull().default(false),
+    itemAllowPromo: integer('item_allow_promo', { mode: 'boolean' }).notNull().default(false),
+    itemInclTax: integer('item_incl_tax', { mode: 'boolean' }).notNull().default(false),
+    itemSortOrder: integer('item_sort_order'),
+    itemHsnCode: text('item_hsn_code'),
+    /** The item's default tax rate % as VK Nex resolved it ('5.000'; '0.000' when the company is not GST applicable). */
+    appTaxPerc: text('app_tax_perc'),
+    /** VK Nex's tax_rate_master id of that tax. */
+    appTaxId: text('app_tax_id'),
+  },
+  (t) => [index('ix_item_group').on(t.itemGroupId), index('ix_item_brand').on(t.itemBrandId)],
+);
+
+/**
+ * One orderable unit of an item in one company: VK Nex's item_unit_conversion (iuc_*) with the
+ * price row (ipm_*) and the available stock (isb_*) that apply in that company. Money and
+ * quantities as exact text ('168.00'), as VK Nex sends them.
+ */
+export const itemUnits = sqliteTable(
+  'item_units',
+  {
+    /** The company these prices and this stock are for. */
+    appCompanyId: text('app_company_id').notNull(),
+    iucId: text('iuc_id').notNull(),
+    iucItemId: text('iuc_item_id').notNull(),
+    appUnitName: text('app_unit_name').notNull(),
+    iucToBaseFactor: numeric('iuc_to_base_factor').notNull(),
+    iucIsDefaultUnit: integer('iuc_is_default_unit', { mode: 'boolean' }).notNull().default(false),
+    iucUomWeight: numeric('iuc_uom_weight').notNull(),
+    /**
+     * Whether a live VK Nex price row prices this unit today. false = every ipm_* below is null,
+     * and the unit must not be offered at a price.
+     */
+    appPriced: integer('app_priced', { mode: 'boolean' }).notNull().default(true),
+    /** Sales price per price level 1..4 (A..D); null when VK Nex has none for that level. */
+    ipmSalesPriceA: numeric('ipm_sales_price_a'),
+    ipmSalesPriceB: numeric('ipm_sales_price_b'),
+    ipmSalesPriceC: numeric('ipm_sales_price_c'),
+    ipmSalesPriceD: numeric('ipm_sales_price_d'),
+    /** MRP (price level 5). */
+    ipmMaxPrice: numeric('ipm_max_price'),
+    /** The lowest the line may sell at (price level 6). */
+    ipmMinPrice: numeric('ipm_min_price'),
+    /** Cooly (loading) and freight per unit. */
+    ipmLoadingCharge: numeric('ipm_loading_charge'),
+    ipmFreightCharge: numeric('ipm_freight_charge'),
+    /**
+     * Saleable stock free to sell in the company (all branches and godowns, on hand − reserved),
+     * in this unit, at the last Sync (this phone's unsent orders not taken off).
+     */
+    isbAvailableQty: numeric('isb_available_qty').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.appCompanyId, t.iucId] }), index('ix_item_units_item').on(t.appCompanyId, t.iucItemId)],
+);
+
+/**
+ * Sales orders taken on the phone (a copy of VK Nex's sales.sale_order, only the columns the
+ * phone fills). Sync sends each one to POST /mobile/orders/create with so_id as soClientUuid, so a
+ * resend after a lost answer finds the order VK Nex already saved. VK Nex gives it its own id and
+ * number (so_order_refno) and saves it as DRAFT for the office to confirm.
+ */
+export const saleOrder = sqliteTable(
+  'sale_order',
+  {
+    soId: text('so_id').primaryKey(),
+    soCompanyId: text('so_company_id').notNull(),
+    soPriceLevel: integer('so_price_level'),
+    /** YYYY-MM-DD and ISO time. */
+    soOrderDate: text('so_order_date').notNull(),
+    soOrderDatetime: text('so_order_datetime').notNull(),
+    soCustId: text('so_cust_id').notNull(),
+    soCustName: text('so_cust_name').notNull(),
+    soHasLoad: integer('so_has_load', { mode: 'boolean' }).notNull().default(false),
+    soHasFreight: integer('so_has_freight', { mode: 'boolean' }).notNull().default(false),
+    /** The phone's salesman (users.id). */
+    soUserId: text('so_user_id').notNull(),
+    soTotItems: integer('so_tot_items').notNull(),
+    /** Total quantity ("bags"). */
+    soTotBags: numeric('so_tot_bags').notNull(),
+    soGrossAmt: numeric('so_gross_amt').notNull(),
+    soItemDisc: numeric('so_item_disc').notNull(),
+    soFreightAmt: numeric('so_freight_amt').notNull(),
+    soLoadAmt: numeric('so_load_amt').notNull(),
+    soOrderAmt: numeric('so_order_amt').notNull(),
+    soRemarks: text('so_remarks'),
+    soCreatedOn: text('so_created_on').notNull(),
+    /** VK Nex's order number, status and financial year, from its answer to the upload. */
+    soOrderRefno: text('so_order_refno'),
+    /** 'DRAFT' when VK Nex saved it; a resend reads the status VK Nex has by then. */
+    soStatus: text('so_status'),
+    soAccYear: text('so_acc_year'),
+    /** Phone only: VK Nex's order has no vehicle column (the Qt app put it in the remarks). */
+    appVehicleNo: text('app_vehicle_no'),
+    /** Not yet on VK Nex. */
+    appPendingUpload: integer('app_pending_upload', { mode: 'boolean' }).notNull().default(true),
+    appSyncError: text('app_sync_error'),
+    /** VK Nex's so_id (the phone's so_id is the client uuid it was sent with). */
+    appServerSoId: text('app_server_so_id'),
+    /** When VK Nex took it (ISO time). */
+    appSyncedOn: text('app_synced_on'),
+  },
+  (t) => [index('ix_so_cust').on(t.soCustId), index('ix_so_pending').on(t.appPendingUpload)],
+);
+
+/** Lines of a phone order (VK Nex's sales.sale_order_item, the columns the phone fills). */
+export const saleOrderItem = sqliteTable(
+  'sale_order_item',
+  {
+    soiId: text('soi_id').primaryKey(),
+    soiOrderId: text('soi_order_id').notNull(),
+    soiLineNo: integer('soi_line_no').notNull(),
+    soiItemId: text('soi_item_id').notNull(),
+    soiItemUnitId: text('soi_item_unit_id').notNull(),
+    soiPriceLevel: integer('soi_price_level'),
+    soiIsPromo: integer('soi_is_promo', { mode: 'boolean' }).notNull().default(false),
+    soiOrderQty: numeric('soi_order_qty').notNull(),
+    soiNetQty: numeric('soi_net_qty').notNull(),
+    soiRate: numeric('soi_rate').notNull(),
+    soiMaxPrice: numeric('soi_max_price').notNull(),
+    soiItemDiscPerc: numeric('soi_item_disc_perc').notNull(),
+    /** Discount in rupees per unit (the Qt app's "Disc (qty)"). */
+    soiItemDiscQty: numeric('soi_item_disc_qty').notNull(),
+    soiItemDiscAmt: numeric('soi_item_disc_amt').notNull(),
+    soiGrossAmt: numeric('soi_gross_amt').notNull(),
+    soiFreightQty: numeric('soi_freight_qty').notNull(),
+    soiFreightAmt: numeric('soi_freight_amt').notNull(),
+    soiLoadQty: numeric('soi_load_qty').notNull(),
+    soiLoadAmt: numeric('soi_load_amt').notNull(),
+    /** Gross − discount (freight and cooly are on the order). */
+    soiNetAmt: numeric('soi_net_amt').notNull(),
+  },
+  (t) => [index('ix_soi_order').on(t.soiOrderId), index('ix_soi_unit').on(t.soiItemUnitId)],
+);
+
+/**
+ * Shop visits without an order (Check in). Sync sends each one to POST /mobile/visits/create
+ * (VK Nex's sales.customer_visit) with id as cvClientUuid, so a resend is never saved twice.
+ */
+export const visits = sqliteTable(
+  'visits',
+  {
+    id: text('id').primaryKey(),
+    /** The company the salesman worked for at the check-in (Choose company); null on rows made before it was kept. */
+    companyId: text('company_id'),
+    customerId: text('customer_id').notNull(),
+    userId: text('user_id').notNull(),
+    /** 'shopClosed' | 'noOrder' | 'shopBusy' | 'ownerAway' | 'paymentPending' | 'nextVisit' | null */
+    reason: text('reason'),
+    remarks: text('remarks'),
+    latitude: real('latitude'),
+    longitude: real('longitude'),
+    /** Metres. */
+    accuracyM: real('accuracy_m'),
+    /** When the location was read (ISO); null when none could be read. */
+    locatedAt: text('located_at'),
+    visitedAt: text('visited_at').notNull(),
+    appPendingUpload: integer('app_pending_upload', { mode: 'boolean' }).notNull().default(true),
+    /** Why VK Nex refused it last time (shown on the Sync page); it stays waiting. */
+    appSyncError: text('app_sync_error'),
+    /** VK Nex's cv_id, and when it took the visit. */
+    appServerId: text('app_server_id'),
+    appSyncedOn: text('app_synced_on'),
+  },
+  (t) => [index('ix_visits_customer').on(t.customerId), index('ix_visits_pending').on(t.appPendingUpload)],
 );
 
 export type Customer = typeof customers.$inferSelect;

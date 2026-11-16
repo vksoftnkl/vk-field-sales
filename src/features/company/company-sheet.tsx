@@ -1,9 +1,10 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 
 import { BottomSheet, ChoiceRow, useDraft } from '@/components/sheet';
 import { Button } from '@/components/ui';
+import { colors, font, spacing } from '@/theme';
 
 import { companiesQuery, currentCompanyQuery, switchCompany } from './company';
 
@@ -33,6 +34,7 @@ export function CompanySheet({ visible, onClose }: { visible: boolean; onClose: 
         />
       }
     >
+      {list.length === 0 ? <Text style={st.none}>{t('company.none')}</Text> : null}
       {list.map((c) => (
         <ChoiceRow
           key={c.id}
@@ -46,4 +48,7 @@ export function CompanySheet({ visible, onClose }: { visible: boolean; onClose: 
   );
 }
 
-const st = StyleSheet.create({ button: { height: 52 } });
+const st = StyleSheet.create({
+  button: { height: 52 },
+  none: { paddingVertical: spacing.lg, fontSize: font.md, color: colors.textMuted },
+});

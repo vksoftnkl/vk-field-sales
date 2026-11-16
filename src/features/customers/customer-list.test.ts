@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { countByQuickFilter, filterCustomers, visitStatus, type CustomerRow } from './customer-list.ts';
+import { addressLine, countByQuickFilter, filterCustomers, visitStatus, type CustomerRow } from './customer-list.ts';
 
 interface Shop {
   name: string;
@@ -78,4 +78,14 @@ test('search and quick filter combine', () => {
 test('counts per quick filter agree with what each filter shows', () => {
   assert.deepEqual(countByQuickFilter(shops), { all: 6, notBilled: 4, notCollected: 4 });
   assert.deepEqual(countByQuickFilter([]), { all: 0, notBilled: 0, notCollected: 0 });
+});
+
+test('address line: filled parts once each, then the PIN', () => {
+  const a = { cusAddr1: '12, Rasipuram Road', cusAddr2: null, cusAddr3: '', cusCity: 'Namakkal', cusPin: null };
+  assert.equal(addressLine(a), '12, Rasipuram Road, Namakkal');
+  assert.equal(
+    addressLine({ cusAddr1: '1/112/B1, Sri Musnam Road', cusAddr2: 'Thillai Nagar, Andimadam', cusAddr3: null, cusCity: 'Andimadam', cusPin: '621801' }),
+    '1/112/B1, Sri Musnam Road, Thillai Nagar, Andimadam - 621801',
+  );
+  assert.equal(addressLine({ cusAddr1: null, cusAddr2: null, cusAddr3: null, cusCity: null, cusPin: null }), '');
 });

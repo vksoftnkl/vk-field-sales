@@ -69,6 +69,187 @@ export interface CustomerSearchRow {
   cusGstNo: string | null;
 }
 
+/** A financial year of the company (GET /master-lookups/fiscal-years/by-company/:id). */
+export interface FiscalYearOption {
+  id: string;
+  /** '2026-2027': the accYear of VK Nex's reports. */
+  name: string;
+  beginDate: string | null;
+  endDate: string | null;
+  status: string;
+  isCurrent: boolean;
+}
+
+/** { amount: '38450.00', side: 'DR' | 'CR' } — VK Nex never uses a minus sign for balances. */
+export interface SidedAmount {
+  amount: string;
+  side: 'DR' | 'CR';
+}
+
+/** One voucher of GET /reports/ledger-statement/vouchers (the fields the phone keeps). */
+export interface LedgerVoucherRow {
+  voucherId: string;
+  accYear: string;
+  date: string;
+  voucherTypeName: string | null;
+  voucherNo: string | null;
+  rowKind: string;
+  particulars: string | null;
+  narration: string | null;
+  billRefs: string[];
+  debit: string;
+  credit: string;
+  balance: SidedAmount;
+  src: { module: string | null; docType: string | null; docId: string | null };
+}
+
+export interface LedgerVouchersPage {
+  /** Balance at fromDate, before this page's first row. */
+  broughtForward: SidedAmount;
+  rows: LedgerVoucherRow[];
+  /** Balance after this page's last row. */
+  carriedForward: SidedAmount;
+  page: { page: number; pageSize: number; totalRows: number };
+}
+
+export interface LedgerQuery {
+  companyId: string;
+  accYear: string;
+  ledgerId: string;
+  fromDate: string;
+  toDate: string;
+  page: number;
+  pageSize: number;
+}
+
+/** GET /mobile/items/options: what Order entry picks from. */
+export interface ItemOptions {
+  /** Active companies: the phone's Choose company list. */
+  companies: { id: string; name: string; place: string | null }[];
+  /** position = VK Nex's sort order; null = unsorted (after the sorted ones). */
+  itemGroups: { id: string; name: string; position: number | null }[];
+  brands: { id: string; name: string; position: number | null }[];
+  /** Selling levels without Cost (7). 1-4 price from priceA-priceD, 5 is the MRP, 6 the minimum. */
+  priceLevels: { id: number; name: string }[];
+}
+
+/** One unit an item is ordered in, priced as VK Nex's /master-lookups/item-price prices it. */
+export interface MobileItemUnit {
+  /** item_unit_conversion.iuc_id: what an order line's soiItemUnitId takes. */
+  iucId: string;
+  unitId: string;
+  unitName: string | null;
+  /** Quantity in this unit × factor = quantity in the base unit. */
+  factor: number;
+  isDefaultUnit: boolean;
+  isBaseUnit: boolean;
+  weight: number;
+  /** false = no live price row prices the unit today: every price below is null. */
+  priced: boolean;
+  /** Money as text, two decimals. */
+  priceA: string | null;
+  priceB: string | null;
+  priceC: string | null;
+  priceD: string | null;
+  mrp: string | null;
+  minPrice: string | null;
+  loadingCharge: string | null;
+  freightCharge: string | null;
+  /** Saleable stock free to sell in the company, in this unit (3 decimals). */
+  availableQty: number;
+}
+
+/** One orderable item of GET /mobile/items/list (the fields the phone keeps). */
+export interface MobileItem {
+  itemId: string;
+  itemCode: string | null;
+  itemNameEn: string;
+  itemNameTa: string | null;
+  itemGroupId: string;
+  itemBrandId: string | null;
+  allowLoading: boolean;
+  allowFreight: boolean;
+  allowPromo: boolean;
+  inclTax: boolean;
+  hsnCode: string | null;
+  taxId: string | null;
+  /** '5.000'; '0.000' when the company is not GST applicable. */
+  taxPerc: string;
+  units: MobileItemUnit[];
+}
+
+export interface ItemListPage {
+  items: MobileItem[];
+  total: number;
+  hasMore: boolean;
+  /** The branch the prices were read for (the phone's own, else the company's default). */
+  branchId: string | null;
+}
+
+/** VK Nex's answer to POST /mobile/orders/create, for a new order and a resend alike. */
+export interface CreatedOrder {
+  soId: string;
+  soOrderRefno: string;
+  /** Now: 'DRAFT' when just saved; a resend reads the stored one. */
+  soStatus: string;
+  soAccYear: string;
+  /** This soClientUuid was saved before; nothing was written this time. */
+  duplicate: boolean;
+  /** A resend of an order the office has deleted since. */
+  soIsDeleted: boolean;
+}
+
+/** VK Nex's answer to POST /mobile/visits/create. */
+export interface CreatedVisit {
+  cvId: string;
+  cvClientUuid: string;
+  cvVisitAt: string;
+  duplicate: boolean;
+}
+
+/** The middle part of a JWT, read (not checked: VK Nex checks it on every request). */
+export function readTokenClaims(token: string): Record<string, unknown> {
+  const part = token.split('.')[1];
+  if (!part) return {};
+  try {
+    const json = decodeBase64Url(part);
+    const claims: unknown = JSON.parse(json);
+    return claims && typeof claims === 'object' ? (claims as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/** base64url → UTF-8 text, by hand: no atob / Buffer on every JS engine the app runs on. */
+function decodeBase64Url(s: string): string {
+  const clean = s.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, '');
+  const bytes: number[] = [];
+  let buf = 0;
+  let bits = 0;
+  for (const ch of clean) {
+    const v = B64.indexOf(ch);
+    if (v < 0) throw new Error('bad base64');
+    buf = (buf << 6) | v;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((buf >> bits) & 0xff);
+    }
+  }
+  let out = '';
+  for (let i = 0; i < bytes.length; ) {
+    const b = bytes[i]!;
+    const n = b < 0x80 ? 1 : b < 0xe0 ? 2 : b < 0xf0 ? 3 : 4;
+    let cp = n === 1 ? b : b & (0xff >> (n + 1));
+    for (let k = 1; k < n; k++) cp = (cp << 6) | ((bytes[i + k] ?? 0) & 0x3f);
+    out += String.fromCodePoint(cp);
+    i += n;
+  }
+  return out;
+}
+
 interface Envelope<T> {
   success: boolean;
   message?: string;
@@ -86,6 +267,11 @@ export interface VkNexClientOptions {
   appVersion: string;
   /** Asked at sign-in, so a password typed on the Sync page is used straight away. */
   credentials: () => ServerCredentials | null;
+  /**
+   * This phone's device uid (VK Nex's fixed.device_master.dev_device_uid, entered on the Device
+   * List screen). Sent at sign-in and with every order, visit and item list.
+   */
+  deviceUid?: string;
   fetch?: FetchLike;
   timeoutMs?: number;
 }
@@ -108,11 +294,15 @@ function readError(status: number, body: unknown): ApiError {
   return new ApiError(status, message, details);
 }
 
+type Method = 'GET' | 'POST' | 'PUT';
+
 export function createVkNexClient(opts: VkNexClientOptions) {
   const doFetch: FetchLike = opts.fetch ?? (fetch as unknown as FetchLike);
   let token: string | null = null;
+  /** dev_id of the registered device VK Nex matched at sign-in; null = not registered (or blocked). */
+  let deviceId: string | null = null;
 
-  async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, auth = true): Promise<T> {
+  async function call<T>(method: Method, path: string, body?: unknown, auth = true): Promise<T> {
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'X-App-Platform': 'mobile',
@@ -150,17 +340,15 @@ export function createVkNexClient(opts: VkNexClientOptions) {
   async function login(): Promise<void> {
     const c = opts.credentials();
     if (!c) throw new ApiError(401, 'No VK Nex user to sign in with');
-    const r = await call<{ access_token: string }>(
-      'POST',
-      '/auth/login',
-      { usrLoginName: c.loginName, usrPassword: c.password, app_version: opts.appVersion, device_type: 'Mobile' },
-      false,
-    );
+    const body: Record<string, string> = { usrLoginName: c.loginName, usrPassword: c.password, app_version: opts.appVersion, device_type: 'Mobile' };
+    if (opts.deviceUid) body.device_id = opts.deviceUid;
+    const r = await call<{ access_token: string; device_id?: string | null }>('POST', '/auth/login', body, false);
     token = r.access_token;
+    deviceId = typeof r.device_id === 'string' && r.device_id ? r.device_id : null;
   }
 
   /** Signs in when needed, and once more if the token has run out mid-sync. */
-  async function authed<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  async function authed<T>(method: Method, path: string, body?: unknown): Promise<T> {
     if (!token) await login();
     try {
       return await call<T>(method, path, body);
@@ -188,6 +376,50 @@ export function createVkNexClient(opts: VkNexClientOptions) {
       authed<Envelope<{ items: CustomerSearchRow[]; hasMore: boolean }>>('GET', `/mobile/customers/list?page=${page}&pageSize=${pageSize}`).then(
         (r) => r.data,
       ),
+    /** Changes a customer: the save payload with cusId (only the fields sent change). */
+    updateCustomer: (payload: Record<string, unknown>) =>
+      authed<Envelope<SavedCustomer>>('PUT', '/mobile/customers/update', payload).then((r) => r.data),
+    /**
+     * The company VK Nex signed the user in to (the token's company_id): the books the Ledger
+     * statement reads. Null before sign-in or for a user without a company.
+     */
+    companyId: (): string | null => {
+      const c = token ? readTokenClaims(token).company_id : null;
+      return typeof c === 'string' && c ? c : null;
+    },
+    fiscalYears: (companyId: string) =>
+      authed<Envelope<FiscalYearOption[]>>('GET', `/master-lookups/fiscal-years/by-company/${encodeURIComponent(companyId)}`).then((r) => r.data),
+    /** One page of a ledger's vouchers for a period inside one financial year (≤ 1000 a page). */
+    ledgerPage: (q: LedgerQuery) => {
+      const qs = Object.entries(q)
+        .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+        .join('&');
+      return authed<Envelope<LedgerVouchersPage>>('GET', `/reports/ledger-statement/vouchers?${qs}`).then((r) => r.data);
+    },
+    /**
+     * Whether VK Nex matched this phone to a registered, active device at the last sign-in. Orders
+     * and visits are refused (403 MOBILE_DEVICE_*) until it is.
+     */
+    deviceRegistered: (): boolean => deviceId !== null,
+    itemOptions: () => authed<Envelope<ItemOptions>>('GET', '/mobile/items/options').then((r) => r.data),
+    /**
+     * One page of the items orderable for a company, with units, prices and stock (≤ 500 a page).
+     * The phone's device uid is sent only once VK Nex knows the phone: then prices are its branch's.
+     * Otherwise VK Nex answers for the company's default branch (an unknown uid would be a 403).
+     */
+    itemListPage: (companyId: string, page: number, pageSize = 500) => {
+      const device = deviceId && opts.deviceUid ? `&deviceUid=${encodeURIComponent(opts.deviceUid)}` : '';
+      return authed<Envelope<ItemListPage>>(
+        'GET',
+        `/mobile/items/list?companyId=${encodeURIComponent(companyId)}&page=${page}&pageSize=${pageSize}${device}`,
+      ).then((r) => r.data);
+    },
+    /** One order with its lines. Safe to resend: the same soClientUuid answers the order saved before. */
+    createOrder: (payload: Record<string, unknown>) =>
+      authed<Envelope<CreatedOrder>>('POST', '/mobile/orders/create', { ...payload, deviceUid: opts.deviceUid }).then((r) => r.data),
+    /** One check-in. Safe to resend, as orders. */
+    createVisit: (payload: Record<string, unknown>) =>
+      authed<Envelope<CreatedVisit>>('POST', '/mobile/visits/create', { ...payload, deviceUid: opts.deviceUid }).then((r) => r.data),
     /** The whole customer: VK Nex's desktop payload, same field names as the phone's table. */
     getCustomer: (cusId: string) =>
       authed<Envelope<Record<string, unknown>>>('GET', `/mobile/customers/get?cusId=${encodeURIComponent(cusId)}`).then((r) => r.data),

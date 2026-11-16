@@ -43,6 +43,34 @@
       "when": 1794818682693,
       "tag": "0005_remove_test_customers",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794824184131,
+      "tag": "0006_ledger_and_customer_edits",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794826880879,
+      "tag": "0007_orders_items_visits",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794829811198,
+      "tag": "0008_orders_visits_upload",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794831639514,
+      "tag": "0009_remove_test_companies",
+      "breakpoints": true
     }
   ]
 }

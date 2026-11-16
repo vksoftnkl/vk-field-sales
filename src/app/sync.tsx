@@ -10,7 +10,8 @@ import { Button, PasswordField, TextField } from '@/components/ui';
 import { getServerCredentials, setServerCredentials } from '@/sync/credentials';
 import { runSync, testConnection, type SyncReport, type SyncStep } from '@/sync/run-sync';
 import { formatServerAddress, parseServerAddress } from '@/sync/server-address';
-import { getServerAddress, pendingCustomersQuery, saveServerAddress } from '@/sync/sync-store';
+import { isLedgerStepError } from '@/sync/download-ledgers';
+import { getDeviceUid, getServerAddress, saveServerAddress, waitingOrdersQuery, waitingToSendQuery, waitingVisitsQuery } from '@/sync/sync-store';
 import { isApiError, isNetworkError } from '@/sync/vk-nex-api';
 import { colors, font, radius, spacing } from '@/theme';
 
@@ -18,8 +19,8 @@ type Check = { ok: boolean; text: string } | null;
 
 /**
  * Sync with the VK Nex server PC on the office LAN, only when the salesman taps it. Sends every
- * customer added on the phone (each is marked synced as soon as VK Nex has it), then brings
- * VK Nex's customers to the phone.
+ * customer added, every edit, order and check-in made on the phone (each is marked synced as soon
+ * as VK Nex has it), then brings VK Nex's customers, companies, items and ledgers to the phone.
  */
 export default function SyncScreen() {
   const { t } = useTranslation();
@@ -40,7 +41,11 @@ export default function SyncScreen() {
 
   const [progress, setProgress] = useState<string | null>(null);
   const [report, setReport] = useState<SyncReport | null>(null);
-  const { data: pending } = useLiveQuery(pendingCustomersQuery());
+  const { data: pending } = useLiveQuery(waitingToSendQuery());
+  const { data: waitingOrders } = useLiveQuery(waitingOrdersQuery());
+  const { data: waitingVisits } = useLiveQuery(waitingVisitsQuery());
+  const [deviceUid] = useState(getDeviceUid);
+  const waitingCount = pending.length + waitingOrders.length + waitingVisits.length;
 
   /** Reads and saves the address box; null (with the error shown) when it is not usable. */
   const takeAddress = () => {
@@ -79,8 +84,18 @@ export default function SyncScreen() {
         return t('sync.stepMasters');
       case 'upload':
         return total ? t('sync.stepUpload', { n, total }) : t('sync.stepUploadNone');
+      case 'update':
+        return total ? t('sync.stepUpdate', { n, total }) : t('sync.stepUpdateNone');
+      case 'orders':
+        return total ? t('sync.stepOrders', { n, total }) : t('sync.stepOrdersNone');
+      case 'visits':
+        return total ? t('sync.stepVisits', { n, total }) : t('sync.stepVisitsNone');
+      case 'items':
+        return total ? t('sync.stepItems', { n, total }) : t('sync.stepItemsNone');
       case 'download':
         return total ? t('sync.stepDownload', { n, total }) : t('sync.stepDownloadList');
+      case 'ledger':
+        return total ? t('sync.stepLedger', { n, total }) : t('sync.stepLedgerYears');
     }
   };
 
@@ -89,7 +104,7 @@ export default function SyncScreen() {
     const a = takeAddress();
     if (!a) return;
     if (showSignIn) {
-      if (!loginName.trim() || !password) return setReport({ outcomes: [], stoppedBy: new Error('NO_SIGN_IN'), stoppedAt: 'signIn' });
+      if (!loginName.trim() || !password) return setReport({ outcomes: [], updates: [], stoppedBy: new Error('NO_SIGN_IN'), stoppedAt: 'signIn' });
       setServerCredentials({ loginName: loginName.trim(), password });
     }
     setReport(null);
@@ -124,10 +139,37 @@ export default function SyncScreen() {
     return t('common.error');
   };
 
+  /** Why the ledgers did not come, in words; null when they came (or the run stopped before). */
+  const ledgerText = (e: unknown): string | null => {
+    if (!e) return null;
+    if (isLedgerStepError(e)) return e.code === 'NO_COMPANY' ? t('sync.ledgerNoCompany') : t('sync.ledgerNoYear');
+    if (isApiError(e) && e.status === 403) return t('sync.ledgerNoRight');
+    if (isNetworkError(e)) return t('sync.noAnswer', { address });
+    return t('sync.ledgerFailed', { message: errorText(e) });
+  };
+
   const sent = report?.outcomes.filter((o) => o.status !== 'refused').length ?? 0;
   const refused = report?.outcomes.filter((o) => o.status === 'refused').length ?? 0;
   const stop = report ? stopText(report) : null;
   const got = report?.downloaded;
+  const updates = report?.updates ?? [];
+  const updatesSent = updates.filter((u) => u.status === 'updated').length;
+  const ledgerStop = report ? ledgerText(report.ledgerStoppedBy) : null;
+  const ledger = report?.ledger;
+  const orders = report?.orders ?? [];
+  const ordersSent = orders.filter((o) => o.status === 'uploaded' || o.status === 'alreadySaved').length;
+  const visits = report?.visits ?? [];
+  const visitsSent = visits.filter((v) => v.status === 'uploaded' || v.status === 'alreadySaved').length;
+  const items = report?.items;
+  const itemsStop = report?.itemsStoppedBy
+    ? isNetworkError(report.itemsStoppedBy)
+      ? t('sync.noAnswer', { address })
+      : t('sync.itemsFailed', { message: errorText(report.itemsStoppedBy) })
+    : null;
+  const deviceStop = report?.sendRefusedBy ? t('sync.deviceRefused', { message: errorText(report.sendRefusedBy) }) : null;
+  const hasResult =
+    !!report &&
+    (report.outcomes.length > 0 || updates.length > 0 || orders.length > 0 || visits.length > 0 || !!got || !!stop || !!ledger || !!ledgerStop || !!items || !!itemsStop || !!deviceStop);
 
   return (
     <View style={st.root}>
@@ -180,20 +222,41 @@ export default function SyncScreen() {
             )}
           </Card>
 
-          <Card title={t('sync.waitingTitle', { n: pending.length })}>
-            {pending.length === 0 ? <Text style={st.note}>{t('sync.nothingWaiting')}</Text> : null}
+          <Card title={t('sync.deviceTitle')}>
+            <Text style={st.deviceUid} selectable accessibilityLabel={deviceUid.split('').join(' ')}>
+              {deviceUid}
+            </Text>
+            {report?.deviceRegistered === true ? (
+              <StatusLine ok text={t('sync.deviceRegistered')} />
+            ) : report?.deviceRegistered === false ? (
+              <StatusLine ok={false} text={t('sync.deviceNotRegistered', { uid: deviceUid })} />
+            ) : (
+              <Text style={[st.note, { marginTop: spacing.sm, marginBottom: 0 }]}>{t('sync.deviceNote')}</Text>
+            )}
+          </Card>
+
+          <Card title={t('sync.waitingTitle', { n: waitingCount })}>
+            {waitingCount === 0 ? <Text style={st.note}>{t('sync.nothingWaiting')}</Text> : null}
             {pending.map((c) => (
               <View key={c.cusId} style={st.item}>
                 <Ionicons name={c.appSyncError ? 'alert-circle' : 'time-outline'} size={20} color={c.appSyncError ? colors.danger : colors.textMuted} />
                 <View style={{ flex: 1 }}>
-                  <Text style={st.itemName}>{c.cusName}</Text>
+                  <Text style={st.itemName}>
+                    {c.cusName} <Text style={st.itemTag}>· {c.isNew ? t('sync.tagNew') : t('sync.tagEdit')}</Text>
+                  </Text>
                   {c.appSyncError ? <Text style={st.itemError}>{c.appSyncError}</Text> : null}
                 </View>
               </View>
             ))}
+            {waitingOrders.map((o) => (
+              <WaitingRow key={`o-${o.id}`} name={o.customerName} tag={t('sync.tagOrder')} error={o.appSyncError} />
+            ))}
+            {waitingVisits.map((v) => (
+              <WaitingRow key={`v-${v.id}`} name={v.customerName ?? ''} tag={t('sync.tagVisit')} error={v.appSyncError} />
+            ))}
           </Card>
 
-          {report && (report.outcomes.length > 0 || got || stop) ? (
+          {report && hasResult ? (
             <Card title={t('sync.resultTitle')}>
               {report.outcomes.length > 0 ? <Text style={st.note}>{t('sync.summary', { sent, refused })}</Text> : null}
               {report.outcomes.map((o) => (
@@ -215,8 +278,64 @@ export default function SyncScreen() {
                   </View>
                 </View>
               ))}
+              {updates.length > 0 ? (
+                <Text style={[st.note, report.outcomes.length > 0 && { marginTop: spacing.md }]}>
+                  {t('sync.updatesSummary', { sent: updatesSent, refused: updates.length - updatesSent })}
+                </Text>
+              ) : null}
+              {updates.map((u) => (
+                <View key={`u-${u.cusId}`} style={st.item}>
+                  <Ionicons
+                    name={u.status === 'refused' ? 'close-circle' : 'checkmark-circle'}
+                    size={20}
+                    color={u.status === 'refused' ? colors.danger : colors.success}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemName}>{u.name}</Text>
+                    <Text style={u.status === 'refused' ? st.itemError : st.itemOk}>{u.status === 'refused' ? u.error : t('sync.updated')}</Text>
+                  </View>
+                </View>
+              ))}
+              {orders.length > 0 ? (
+                <Text style={[st.note, (report.outcomes.length > 0 || updates.length > 0) && { marginTop: spacing.md }]}>
+                  {t('sync.ordersSummary', { sent: ordersSent, refused: orders.length - ordersSent })}
+                </Text>
+              ) : null}
+              {orders.map((o) => {
+                const ok = o.status === 'uploaded' || o.status === 'alreadySaved';
+                return (
+                  <ResultRow
+                    key={`o-${o.localId}`}
+                    ok={ok}
+                    name={`${t('sync.tagOrder')} · ${o.customerName}`}
+                    text={
+                      ok
+                        ? t(o.status === 'uploaded' ? 'sync.orderUploaded' : 'sync.orderAlreadySaved', { refno: o.orderRefno ?? '', status: o.orderStatus ?? '' })
+                        : (o.error ?? '')
+                    }
+                    note={o.deletedOnServer ? t('sync.orderDeletedOnServer') : undefined}
+                  />
+                );
+              })}
+              {visits.length > 0 ? (
+                <Text style={[st.note, (report.outcomes.length > 0 || updates.length > 0 || orders.length > 0) && { marginTop: spacing.md }]}>
+                  {t('sync.visitsSummary', { sent: visitsSent, refused: visits.length - visitsSent })}
+                </Text>
+              ) : null}
+              {visits.map((v) => {
+                const ok = v.status === 'uploaded' || v.status === 'alreadySaved';
+                return (
+                  <ResultRow
+                    key={`v-${v.localId}`}
+                    ok={ok}
+                    name={`${t('sync.tagVisit')} · ${v.customerName}`}
+                    text={ok ? t(v.status === 'uploaded' ? 'sync.visitUploaded' : 'sync.visitAlreadySaved') : (v.error ?? '')}
+                  />
+                );
+              })}
+              {deviceStop ? <StatusLine ok={false} text={deviceStop} /> : null}
               {got ? (
-                <View style={[st.item, report.outcomes.length === 0 && st.itemFirst]}>
+                <View style={[st.item, report.outcomes.length === 0 && updates.length === 0 && orders.length === 0 && visits.length === 0 && st.itemFirst]}>
                   <Ionicons name="cloud-download-outline" size={20} color={colors.success} />
                   <View style={{ flex: 1 }}>
                     <Text style={st.itemOk}>{t('sync.received', { n: got.saved })}</Text>
@@ -225,6 +344,25 @@ export default function SyncScreen() {
                   </View>
                 </View>
               ) : null}
+              {items ? (
+                <View style={st.item}>
+                  <Ionicons name="cube-outline" size={20} color={colors.success} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemOk}>{t('sync.itemsReceived', { items: items.items, companies: items.companies })}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {itemsStop ? <StatusLine ok={false} text={itemsStop} /> : null}
+              {ledger ? (
+                <View style={st.item}>
+                  <Ionicons name="document-text-outline" size={20} color={colors.success} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemOk}>{t('sync.ledgerReceived', { n: ledger.read })}</Text>
+                    {ledger.skipped > 0 ? <Text style={st.itemNote}>{t('sync.ledgerSkipped', { n: ledger.skipped })}</Text> : null}
+                  </View>
+                </View>
+              ) : null}
+              {ledgerStop ? <StatusLine ok={false} text={ledgerStop} /> : null}
               {stop ? <StatusLine ok={false} text={stop} /> : null}
             </Card>
           ) : null}
@@ -247,6 +385,35 @@ export default function SyncScreen() {
 function errorText(e: unknown): string {
   if (isApiError(e)) return e.code ? `${e.code}: ${e.message}` : e.message;
   return e instanceof Error ? e.message : String(e);
+}
+
+/** One record still on the phone: a waiting order or check-in, with the last refusal. */
+function WaitingRow({ name, tag, error }: { name: string; tag: string; error: string | null }) {
+  return (
+    <View style={st.item}>
+      <Ionicons name={error ? 'alert-circle' : 'time-outline'} size={20} color={error ? colors.danger : colors.textMuted} />
+      <View style={{ flex: 1 }}>
+        <Text style={st.itemName}>
+          {name} <Text style={st.itemTag}>· {tag}</Text>
+        </Text>
+        {error ? <Text style={st.itemError}>{error}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+/** One record of the last Sync: sent (with VK Nex's answer) or not (with why). */
+function ResultRow({ ok, name, text, note }: { ok: boolean; name: string; text: string; note?: string }) {
+  return (
+    <View style={st.item}>
+      <Ionicons name={ok ? 'checkmark-circle' : 'close-circle'} size={20} color={ok ? colors.success : colors.danger} />
+      <View style={{ flex: 1 }}>
+        <Text style={st.itemName}>{name}</Text>
+        <Text style={ok ? st.itemOk : st.itemError}>{text}</Text>
+        {note ? <Text style={st.itemNote}>{note}</Text> : null}
+      </View>
+    </View>
+  );
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
@@ -298,10 +465,12 @@ const st = StyleSheet.create({
   status: { flex: 1, fontSize: font.sm },
   item: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   itemName: { fontSize: font.md, fontWeight: '600', color: colors.text },
+  itemTag: { fontSize: font.sm, fontWeight: '400', color: colors.textMuted },
   itemError: { marginTop: 2, fontSize: font.sm, color: colors.danger },
   itemOk: { marginTop: 2, fontSize: font.sm, color: colors.success },
   itemNote: { marginTop: 2, fontSize: font.sm, color: colors.textMuted },
   itemFirst: { borderTopWidth: 0, paddingTop: 0 },
+  deviceUid: { fontSize: font.xl, fontWeight: '700', letterSpacing: 1, color: colors.text, fontVariant: ['tabular-nums'] },
   footer: { paddingTop: spacing.md, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
   progress: { marginBottom: spacing.sm, fontSize: font.sm, color: colors.textMuted, textAlign: 'center' },
 });

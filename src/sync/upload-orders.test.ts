@@ -1,0 +1,201 @@
+// Run with: npm test
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import {
+  CUSTOMER_NOT_SENT,
+  remarksWithVehicle,
+  toOrderPayload,
+  uploadOrders,
+  type OrderHeader,
+  type OrderLine,
+  type OrderUploadDeps,
+  type PendingOrder,
+} from './upload-orders.ts';
+import { ApiError, NetworkError, type CreatedOrder } from './vk-nex-api.ts';
+
+const header = (id: string, over: Partial<OrderHeader> = {}): OrderHeader => ({
+  soId: id,
+  soCompanyId: 'comp-1',
+  soPriceLevel: 1,
+  soOrderDate: '2026-11-16',
+  soOrderDatetime: '2026-11-16T05:12:00.000Z',
+  soCustId: 'cus-1',
+  soCustName: 'Kavin Stores',
+  soHasLoad: false,
+  soHasFreight: true,
+  soUserId: 'test-karthik',
+  soTotItems: 1,
+  soTotBags: '2',
+  soGrossAmt: '336.00',
+  soItemDisc: '0.00',
+  soFreightAmt: '10.00',
+  soLoadAmt: '0.00',
+  soOrderAmt: '346.00',
+  soRemarks: null,
+  soCreatedOn: '2026-11-16T05:12:00.000Z',
+  soOrderRefno: null,
+  soStatus: null,
+  soAccYear: null,
+  appVehicleNo: null,
+  appPendingUpload: true,
+  appSyncError: null,
+  appServerSoId: null,
+  appSyncedOn: null,
+  ...over,
+});
+
+const line = (orderId: string, lineNo: number, over: Partial<OrderLine> = {}): OrderLine => ({
+  soiId: `${orderId}-l${lineNo}`,
+  soiOrderId: orderId,
+  soiLineNo: lineNo,
+  soiItemId: 'item-1',
+  soiItemUnitId: 'iuc-1',
+  soiPriceLevel: 1,
+  soiIsPromo: false,
+  soiOrderQty: '2',
+  soiNetQty: '2',
+  soiRate: '168.00',
+  soiMaxPrice: '180.00',
+  soiItemDiscPerc: '0',
+  soiItemDiscQty: '0',
+  soiItemDiscAmt: '0.00',
+  soiGrossAmt: '336.00',
+  soiFreightQty: '2',
+  soiFreightAmt: '10.00',
+  soiLoadQty: '0',
+  soiLoadAmt: '0.00',
+  soiNetAmt: '336.00',
+  ...over,
+});
+
+const order = (id: string, over: Partial<PendingOrder> = {}): PendingOrder => ({
+  header: header(id),
+  lines: [line(id, 1)],
+  customerPending: false,
+  customerPriceLevelId: 2,
+  ...over,
+});
+
+const created = (soId: string, over: Partial<CreatedOrder> = {}): CreatedOrder => ({
+  soId,
+  soOrderRefno: 'sor00042',
+  soStatus: 'DRAFT',
+  soAccYear: '2026-2027',
+  duplicate: false,
+  soIsDeleted: false,
+  ...over,
+});
+
+function fakeDeps(create: OrderUploadDeps['create']) {
+  const synced: [string, CreatedOrder][] = [];
+  const refused: [string, string][] = [];
+  const deps: OrderUploadDeps = {
+    create,
+    markSynced: (id, c) => synced.push([id, c]),
+    markRefused: (id, e) => refused.push([id, e]),
+  };
+  return { deps, synced, refused };
+}
+
+test('the payload is the desktop order without server-filled keys; the phone id is soClientUuid', () => {
+  const p = toOrderPayload(order('ord-1', { lines: [line('ord-1', 2, { soiItemId: 'item-2' }), line('ord-1', 1)] }));
+  assert.equal(p.soClientUuid, 'ord-1');
+  assert.equal(p.soCompanyId, 'comp-1');
+  assert.equal(p.soPriceLevel, 1);
+  assert.equal(p.soHasFreight, true);
+  assert.equal(p.soHasLoad, false);
+  assert.equal(p.soOrderAmt, '346.00');
+  for (const k of ['soId', 'soBranchId', 'soAccYear', 'soDeviceId', 'soStatus', 'soOrderRefno', 'soUserId', 'soCreatedOn', 'soRemarks']) {
+    assert.equal(k in p, false, `${k} must not be sent`);
+  }
+  const items = p.items as Record<string, unknown>[];
+  assert.deepEqual(
+    items.map((i) => i.soiLineNo),
+    [1, 2],
+  );
+  assert.equal(items[0]!.soiItemUnitId, 'iuc-1');
+  assert.equal(items[0]!.soiIsPromo, false);
+  for (const k of ['soiId', 'soiOrderId']) assert.equal(k in items[0]!, false, `${k} must not be sent`);
+});
+
+test("an order saved without a price level takes the customer's", () => {
+  const p = toOrderPayload(order('ord-1', { header: header('ord-1', { soPriceLevel: null }) }));
+  assert.equal(p.soPriceLevel, 2);
+});
+
+test('the vehicle number rides in the remarks after ###, as in the Qt app', () => {
+  assert.equal(remarksWithVehicle('Deliver by noon', 'TN28 AB 1234'), 'Deliver by noon###TN28 AB 1234');
+  assert.equal(remarksWithVehicle(null, 'TN28'), '###TN28');
+  assert.equal(remarksWithVehicle('  ', null), null);
+  assert.equal(remarksWithVehicle('x'.repeat(600), null)!.length, 500);
+  const p = toOrderPayload(order('o', { header: header('o', { soRemarks: 'Rush', appVehicleNo: 'TN28' }) }));
+  assert.equal(p.soRemarks, 'Rush###TN28');
+});
+
+test('each order VK Nex takes is marked synced; a resend answered as duplicate counts as sent', async () => {
+  const f = fakeDeps(async (p) => created(`srv-${String(p.soClientUuid)}`, { duplicate: p.soClientUuid === 'b' }));
+  const r = await uploadOrders([order('a'), order('b')], f.deps);
+  assert.equal(r.stoppedBy, undefined);
+  assert.deepEqual(
+    r.outcomes.map((o) => [o.localId, o.status, o.orderRefno]),
+    [
+      ['a', 'uploaded', 'sor00042'],
+      ['b', 'alreadySaved', 'sor00042'],
+    ],
+  );
+  assert.deepEqual(
+    f.synced.map(([id, c]) => [id, c.soId]),
+    [
+      ['a', 'srv-a'],
+      ['b', 'srv-b'],
+    ],
+  );
+});
+
+test('an order for a shop not yet on VK Nex waits without a request', async () => {
+  let calls = 0;
+  const f = fakeDeps(async () => {
+    calls++;
+    return created('x');
+  });
+  const r = await uploadOrders([order('a', { customerPending: true })], f.deps);
+  assert.equal(calls, 0);
+  assert.equal(r.outcomes[0]!.status, 'waiting');
+  assert.deepEqual(f.refused, [['a', CUSTOMER_NOT_SENT]]);
+});
+
+test('a refusal of one order is noted and the next one is sent', async () => {
+  const f = fakeDeps(async (p) => {
+    if (p.soClientUuid === 'a') {
+      throw new ApiError(422, 'No financial year', [{ field: 'soOrderDate', message: 'No financial year', code: 'MOBILE_NO_FISCAL_YEAR' }]);
+    }
+    return created('srv-b');
+  });
+  const r = await uploadOrders([order('a'), order('b')], f.deps);
+  assert.deepEqual(
+    r.outcomes.map((o) => o.status),
+    ['refused', 'uploaded'],
+  );
+  assert.deepEqual(f.refused, [['a', 'MOBILE_NO_FISCAL_YEAR: No financial year']]);
+});
+
+test('a 403 (phone not registered) stops the orders but is not a stop of the whole Sync', async () => {
+  const f = fakeDeps(async () => {
+    throw new ApiError(403, 'Phone not registered', [{ field: 'deviceUid', message: 'Add the phone', code: 'MOBILE_DEVICE_NOT_REGISTERED' }]);
+  });
+  const r = await uploadOrders([order('a'), order('b')], f.deps);
+  assert.equal(r.refusedBy?.code, 'MOBILE_DEVICE_NOT_REGISTERED');
+  assert.equal(r.stoppedBy, undefined);
+  assert.equal(r.outcomes.length, 0);
+  assert.equal(f.refused.length, 0, 'orders are not marked: they are fine, the phone is not');
+});
+
+test('no answer stops the run; the rest stay waiting', async () => {
+  const f = fakeDeps(async () => {
+    throw new NetworkError('timeout');
+  });
+  const r = await uploadOrders([order('a'), order('b')], f.deps);
+  assert.ok(r.stoppedBy instanceof NetworkError);
+  assert.equal(f.synced.length + f.refused.length, 0);
+});

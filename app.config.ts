@@ -22,8 +22,8 @@ const config: ExpoConfig = {
       monochromeImage: './assets/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: false,
-    // No extra Android permissions (INTERNET is always there). Add Bluetooth / location here when printing returns.
-    permissions: [],
+    // Location for Check in (expo-location adds ACCESS_COARSE/FINE_LOCATION). Add Bluetooth here when printing returns.
+    permissions: ['android.permission.ACCESS_COARSE_LOCATION', 'android.permission.ACCESS_FINE_LOCATION'],
   },
   ios: {
     supportsTablet: false,
@@ -33,6 +33,8 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-sqlite',
     'expo-localization',
+    // Check in saves where the visit happened (foreground only, never in the background).
+    ['expo-location', { locationWhenInUsePermission: 'VKSMAN saves your location with each shop visit (Check in).' }],
     // Sync talks to the VK Nex server PC over plain HTTP on the office LAN; Android 9+ blocks
     // that unless it is allowed here. Needs a new build (Expo Go already allows it).
     ['expo-build-properties', { android: { usesCleartextTraffic: true } }],
@@ -42,8 +44,9 @@ const config: ExpoConfig = {
   },
   extra: {
     eas: {
-      // Filled in by `npx eas-cli@latest init`
-      projectId: process.env.EAS_PROJECT_ID,
+      // From `npx eas-cli@latest init` (Expo account prathap.ramesh). Not a secret; it must be
+      // in this file because .env is not uploaded to the EAS build servers.
+      projectId: '903f30a0-24c9-47ea-8044-8c0088cea7da',
     },
   },
 };

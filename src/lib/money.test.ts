@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { daysBetween, formatRupees, todayISO } from './money.ts';
+import { daysBetween, formatAmount, formatRupees, todayISO } from './money.ts';
 
 test('rupees use Indian grouping (lakh, crore)', () => {
   assert.equal(formatRupees(0), '₹0');
@@ -36,4 +36,12 @@ test('daysBetween counts whole days, across months and years', () => {
   assert.equal(daysBetween('2025-12-31', '2026-01-01'), 1);
   assert.equal(daysBetween('2026-11-20', '2026-11-16'), 0);
   assert.equal(daysBetween('not a date', '2026-11-16'), 0);
+});
+
+test('amounts keep their paise, with Indian grouping', () => {
+  assert.equal(formatAmount(0), '₹0.00');
+  assert.equal(formatAmount(3845000), '₹38,450.00');
+  assert.equal(formatAmount(12345678), '₹1,23,456.78');
+  assert.equal(formatAmount(5), '₹0.05');
+  assert.equal(formatAmount(-51000), '-₹510.00');
 });

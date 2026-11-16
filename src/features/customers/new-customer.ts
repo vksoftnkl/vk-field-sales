@@ -126,16 +126,56 @@ export function validateNewCustomer(form: NewCustomerForm): Partial<Record<FormF
     errors[field] ??= e;
   };
   for (const field of requiredFields(f.cusGstType)) if (!f[field]) set(field, 'required');
-  if (f.cusPhone1 && !MOBILE.test(f.cusPhone1)) set('cusPhone1', 'mobile');
+  contactErrors(f, set);
   if (f.cusWhatsappNo && !MOBILE.test(f.cusWhatsappNo)) set('cusWhatsappNo', 'mobile');
-  // Phone 2 may be a landline with its STD code.
-  if (f.cusPhone2 && !/^\d{6,15}$/.test(f.cusPhone2)) set('cusPhone2', 'phone');
   if (f.cusPin && !/^[1-9]\d{5}$/.test(f.cusPin)) set('cusPin', 'pincode');
   if (f.cusEmail && !EMAIL.test(f.cusEmail)) set('cusEmail', 'email');
   if (f.cusGstNo && !GSTIN.test(f.cusGstNo)) set('cusGstNo', 'gstin');
   if (f.cusGstNo && f.cusStateCode && f.cusGstNo.slice(0, 2) !== f.cusStateCode) set('cusGstNo', 'gstinState');
   if (f.cusGstType === 'OVERSEAS' && f.cusStateCode !== OVERSEAS_STATE_CODE) set('cusStateCode', 'overseasState');
+  return errors;
+}
+
+/** The fields Edit customer changes on a VK Nex customer (the Qt app's CustomerUpdate.qml). */
+export type CustomerEditForm = Pick<NewCustomerForm, 'cusPhone1' | 'cusPhone2' | 'cusAadharNo' | 'cusPanNo'>;
+export type EditField = keyof CustomerEditForm;
+export const EDIT_FIELDS: readonly EditField[] = ['cusPhone1', 'cusPhone2', 'cusAadharNo', 'cusPanNo'];
+
+/** Mobiles, PAN and Aadhaar: the checks New customer and Edit customer share (VK Nex's formats). */
+function contactErrors(f: CustomerEditForm, set: (field: EditField, e: FieldError) => void): void {
+  if (f.cusPhone1 && !MOBILE.test(f.cusPhone1)) set('cusPhone1', 'mobile');
+  // Phone 2 may be a landline with its STD code.
+  if (f.cusPhone2 && !/^\d{6,15}$/.test(f.cusPhone2)) set('cusPhone2', 'phone');
   if (f.cusPanNo && !PAN.test(f.cusPanNo)) set('cusPanNo', 'pan');
   if (f.cusAadharNo && !/^[2-9]\d{11}$/.test(f.cusAadharNo)) set('cusAadharNo', 'aadhaar');
+}
+
+export function cleanCustomerEdit(f: CustomerEditForm): CustomerEditForm {
+  return {
+    cusPhone1: cleanPhone(f.cusPhone1),
+    cusPhone2: cleanPhone(f.cusPhone2),
+    cusPanNo: f.cusPanNo.replace(/\s/g, '').toUpperCase(),
+    cusAadharNo: digits(f.cusAadharNo),
+  };
+}
+
+/** The fields whose cleaned value differs from what the screen opened with. */
+export function changedEditFields(form: CustomerEditForm, original: CustomerEditForm): EditField[] {
+  const now = cleanCustomerEdit(form);
+  const was = cleanCustomerEdit(original);
+  return EDIT_FIELDS.filter((f) => now[f] !== was[f]);
+}
+
+/**
+ * Problems per field (empty = OK to save). All four may be blank, as on VK Nex. Only the fields
+ * the salesman changed are checked: an old VK Nex value (a landline in Mobile 1) never blocks
+ * fixing the PAN.
+ */
+export function validateCustomerEdit(form: CustomerEditForm, original?: CustomerEditForm): Partial<Record<EditField, FieldError>> {
+  const changed = new Set(original ? changedEditFields(form, original) : EDIT_FIELDS);
+  const errors: Partial<Record<EditField, FieldError>> = {};
+  contactErrors(cleanCustomerEdit(form), (field, e) => {
+    if (changed.has(field)) errors[field] ??= e;
+  });
   return errors;
 }

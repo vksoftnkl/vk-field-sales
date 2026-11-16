@@ -1,11 +1,11 @@
-import { and, asc, count, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, or, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { beats, customerBills, customers, customerTypes } from '@/db/schema';
+import { beats, customerBills, customers, customerTypes, itemPriceLevels, ledgerYears } from '@/db/schema';
 import { stateName } from '@/lib/gst-states';
 import { uuidv7 } from '@/lib/uuid';
 
-import type { NewCustomerForm } from './new-customer';
+import type { CustomerEditForm, EditField, NewCustomerForm } from './new-customer';
 
 /** Customer-list reads and writes. Always local SQLite, never the network. Use reads with useLiveQuery. */
 
@@ -31,8 +31,15 @@ const ofTypes = (typeIds: readonly string[]) => (typeIds.length ? inArray(custom
 const live = () => and(eq(customers.cusIsActive, true), eq(customers.cusIsDeleted, false));
 
 /**
+ * What the customer owes as of the last Sync: the closing of the latest ledger year VK Nex gave
+ * (VK Nex's own balance), or null when Sync brought no ledger for this customer.
+ */
+const ledgerBalance = sql<number | null>`(select ${ledgerYears.closingPaise} from ${ledgerYears} where ${ledgerYears.customerId} = ${customers.cusId} order by ${ledgerYears.fromDate} desc limit 1)`;
+
+/**
  * Active shops of the ticked beats and types ([] = all), in visiting order, with their unpaid
- * bills summed up: the same shape as the Qt app's customer list query.
+ * bills summed up: the same shape as the Qt app's customer list query. The amount is VK Nex's
+ * ledger balance once Sync has brought it, else the phone's unpaid bills.
  */
 export function customerListQuery(beatIds: readonly string[], typeIds: readonly string[]) {
   return db
@@ -48,7 +55,7 @@ export function customerListQuery(beatIds: readonly string[], typeIds: readonly 
       appOrderStatus: customers.appOrderStatus,
       appReceived: customers.appReceived,
       billCount: sql<number>`count(${customerBills.id})`.mapWith(Number),
-      outstandingPaise: sql<number>`coalesce(sum(${customerBills.balancePaise}), 0)`.mapWith(Number),
+      outstandingPaise: sql<number>`coalesce(${ledgerBalance}, sum(${customerBills.balancePaise}), 0)`.mapWith(Number),
       oldestBillDate: sql<string | null>`min(${customerBills.billDate})`,
     })
     .from(customers)
@@ -75,9 +82,77 @@ export const typeCountsQuery = (beatIds: readonly string[]) =>
     .where(and(live(), inBeats(beatIds)))
     .groupBy(customers.cusGroupId);
 
-/** Shops added on this phone that Upload still has to send. */
+/** Shops added and customers edited on this phone that Upload still has to send. */
 export const pendingUploadQuery = () =>
-  db.select({ n: count() }).from(customers).where(eq(customers.appPendingUpload, true));
+  db
+    .select({ n: count() })
+    .from(customers)
+    .where(and(or(eq(customers.appPendingUpload, true), eq(customers.appPendingUpdate, true)), eq(customers.cusIsDeleted, false)));
+
+/** One customer for Customer detail and Edit customer, with its type and price level names. */
+export const customerDetailQuery = (cusId: string) =>
+  db
+    .select({
+      cusId: customers.cusId,
+      cusName: customers.cusName,
+      cusShort: customers.cusShort,
+      cusCode: customers.cusCode,
+      cusAddr1: customers.cusAddr1,
+      cusAddr2: customers.cusAddr2,
+      cusAddr3: customers.cusAddr3,
+      cusCity: customers.cusCity,
+      cusDistrict: customers.cusDistrict,
+      cusPin: customers.cusPin,
+      cusPhone1: customers.cusPhone1,
+      cusPhone2: customers.cusPhone2,
+      cusAadharNo: customers.cusAadharNo,
+      cusPanNo: customers.cusPanNo,
+      cusFreightCharge: customers.cusFreightCharge,
+      cusLoadingCharge: customers.cusLoadingCharge,
+      typeName: customerTypes.name,
+      priceLevelName: itemPriceLevels.iplName,
+      appPendingUpload: customers.appPendingUpload,
+      appPendingUpdate: customers.appPendingUpdate,
+      appSyncError: customers.appSyncError,
+      outstandingPaise: sql<number>`coalesce(${ledgerBalance}, (select sum(${customerBills.balancePaise}) from ${customerBills} where ${customerBills.customerId} = ${customers.cusId}), 0)`.mapWith(
+        Number,
+      ),
+    })
+    .from(customers)
+    .leftJoin(customerTypes, eq(customerTypes.id, customers.cusGroupId))
+    .leftJoin(itemPriceLevels, eq(itemPriceLevels.iplId, customers.cusPriceLevelId))
+    .where(eq(customers.cusId, cusId));
+
+export type CustomerDetail = Awaited<ReturnType<ReturnType<typeof customerDetailQuery>['all']>>[number];
+
+/**
+ * Edit customer, saved on the phone (works offline). A VK Nex customer is marked for the next
+ * Sync with the fields that changed (added to any still unsent); a shop still waiting to be
+ * created goes up with these values anyway. Nothing changed = nothing to send.
+ */
+export function saveCustomerEdit(cusId: string, f: CustomerEditForm, changed: readonly EditField[], userId: string): void {
+  if (changed.length === 0) return;
+  const row = db
+    .select({ isNew: customers.appPendingUpload, edited: customers.appEditedFields })
+    .from(customers)
+    .where(eq(customers.cusId, cusId))
+    .get();
+  if (!row) throw new Error('CUSTOMER_NOT_ON_PHONE');
+  const edited = [...new Set([...row.edited, ...changed])];
+  db.update(customers)
+    .set({
+      cusPhone1: f.cusPhone1 || null,
+      cusPhone2: f.cusPhone2 || null,
+      cusAadharNo: f.cusAadharNo || null,
+      cusPanNo: f.cusPanNo || null,
+      cusModifiedOn: new Date().toISOString(),
+      cusModifiedBy: userId,
+      // A new edit is a new try: the reason the last one was refused no longer applies.
+      ...(row.isNew ? {} : { appPendingUpdate: true, appEditedFields: edited, appSyncError: null }),
+    })
+    .where(eq(customers.cusId, cusId))
+    .run();
+}
 
 /** Is there already a live shop with this name? VK Nex refuses a second one (CUSTOMER_NAME_EXISTS). */
 export function customerNameExists(name: string): boolean {

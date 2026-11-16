@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppMenu } from '@/components/app-menu';
 import { MultiPickSheet, type PickOption } from '@/components/sheet';
 import { Chip } from '@/components/ui';
-import { getMeta, setMeta } from '@/db/meta';
+import { getMeta, metaQuery, setMeta } from '@/db/meta';
 import { CompanySheet } from '@/features/company/company-sheet';
 import { countByQuickFilter, filterCustomers, visitStatus, type CustomerRow, type QuickFilter } from '@/features/customers/customer-list';
 import {
@@ -23,6 +23,7 @@ import {
   typeCountsQuery,
 } from '@/features/customers/queries';
 import { QuickFilterSheet } from '@/features/customers/quick-filter-sheet';
+import { pendingOrdersCountQuery, pendingVisitsCountQuery } from '@/features/orders/queries';
 import { daysBetween, formatRupees, todayISO } from '@/lib/money';
 import { parseIdList, serializeIdList } from '@/lib/selection';
 import { colors, font, radius, spacing, statusColors } from '@/theme';
@@ -57,11 +58,17 @@ export default function CustomersScreen() {
 
   const { data: beatRows } = useLiveQuery(beatsQuery());
   const { data: typeRows } = useLiveQuery(customerTypesQuery());
-  const { data: rows, updatedAt, error: listError } = useLiveQuery(customerListQuery(beatIds, typeIds), [beatKey, typeKey]);
+  // The amounts come from the ledgers Sync saves after the customers: read again when it does.
+  const { data: ledgerMark } = useLiveQuery(metaQuery('ledgerSyncedAt'));
+  const ledgerKey = ledgerMark[0]?.value ?? '';
+  const { data: rows, updatedAt, error: listError } = useLiveQuery(customerListQuery(beatIds, typeIds), [beatKey, typeKey, ledgerKey]);
   const { data: beatCounts } = useLiveQuery(beatCountsQuery());
   const { data: typeCounts } = useLiveQuery(typeCountsQuery(beatIds), [beatKey]);
   const { data: pendingRows } = useLiveQuery(pendingUploadQuery());
-  const pending = pendingRows[0]?.n ?? 0;
+  const { data: pendingOrders } = useLiveQuery(pendingOrdersCountQuery());
+  const { data: pendingVisits } = useLiveQuery(pendingVisitsCountQuery());
+  // Shops, edits, orders and check-ins still to send (each table is watched on its own).
+  const pending = (pendingRows[0]?.n ?? 0) + (pendingOrders[0]?.n ?? 0) + (pendingVisits[0]?.n ?? 0);
 
   const shown = useMemo(() => filterCustomers(rows, query, quick), [rows, query, quick]);
   // Counts in the filter sheet: shops of these beats and types, before the search box narrows them.
@@ -215,9 +222,12 @@ function Gap() {
   return <View style={{ height: spacing.sm }} />;
 }
 
-/** "4 bills · oldest 65 days", "1 bill · 3 days" or "No unpaid bills". */
+/**
+ * "4 bills · oldest 65 days", "1 bill · 3 days" or "No unpaid bills". Nothing when the phone has
+ * no bills but VK Nex's balance says the customer owes (bills don't come from VK Nex yet).
+ */
 function billLine(t: TFunction, c: CustomerRow, today: string): string {
-  if (c.billCount === 0 || !c.oldestBillDate) return t('customers.noBills');
+  if (c.billCount === 0 || !c.oldestBillDate) return c.outstandingPaise > 0 ? '' : t('customers.noBills');
   const d = daysBetween(c.oldestBillDate, today);
   const age = d === 0 ? t('customers.today') : d === 1 ? t('customers.oneDay') : t('customers.nDays', { n: d });
   if (c.billCount === 1) return `${t('customers.oneBill')} · ${age}`;
@@ -234,14 +244,21 @@ const CustomerCard = memo(function CustomerCard({ c, today }: { c: CustomerRow; 
   // VK Nex allows a customer without a name; fall back to the short name or code.
   const name = c.cusName ?? c.cusShort ?? c.cusCode ?? '';
   return (
-    <View style={st.card} accessible accessibilityLabel={`${name}, ${amount}, ${bills}, ${statusText}`}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={[name, amount, bills, statusText].filter(Boolean).join(', ')}
+      onPress={() => router.push({ pathname: '/customer/[id]', params: { id: c.cusId } })}
+      style={({ pressed }) => [st.card, pressed && { backgroundColor: colors.bg }]}
+    >
       <View style={st.cardLeft}>
         <Text style={st.name} numberOfLines={2}>
           {name}
         </Text>
-        <Text style={st.meta} numberOfLines={1}>
-          {bills}
-        </Text>
+        {bills ? (
+          <Text style={st.meta} numberOfLines={1}>
+            {bills}
+          </Text>
+        ) : null}
       </View>
       <View style={st.cardRight}>
         <Text style={st.amount}>{amount}</Text>
@@ -251,7 +268,7 @@ const CustomerCard = memo(function CustomerCard({ c, today }: { c: CustomerRow; 
           </Text>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 });
 

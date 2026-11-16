@@ -3,7 +3,16 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { GST_STATES, stateName } from '../../lib/gst-states.ts';
-import { cleanNewCustomer, cleanPhone, emptyNewCustomer, validateNewCustomer, type NewCustomerForm } from './new-customer.ts';
+import {
+  changedEditFields,
+  cleanCustomerEdit,
+  cleanNewCustomer,
+  cleanPhone,
+  emptyNewCustomer,
+  validateCustomerEdit,
+  validateNewCustomer,
+  type NewCustomerForm,
+} from './new-customer.ts';
 
 const ok: NewCustomerForm = { ...emptyNewCustomer('33'), cusName: 'Sri Balaji Stores', cusGroupId: 'type-retail', cusAreaId: 'beat-nkl-east' };
 const regular = { ...ok, cusGstType: 'REGULAR' as const, cusGstNo: '33AABCS1234K1Z5' };
@@ -69,4 +78,27 @@ test('GST state list: unique two-digit codes, Tamil Nadu is 33', () => {
   assert.equal(stateName('33'), 'Tamil Nadu');
   assert.equal(stateName('96'), 'Other Country');
   assert.equal(stateName('99'), undefined);
+});
+
+test('Edit customer: mobiles, PAN and Aadhaar checked as on New customer; all may be blank', () => {
+  const blank = { cusPhone1: '', cusPhone2: '', cusAadharNo: '', cusPanNo: '' };
+  assert.deepEqual(validateCustomerEdit(blank), {});
+  assert.deepEqual(validateCustomerEdit({ ...blank, cusPhone1: '98420 678' }), { cusPhone1: 'mobile' });
+  assert.deepEqual(validateCustomerEdit({ ...blank, cusPhone2: '04286 222333' }), {});
+  assert.deepEqual(validateCustomerEdit({ ...blank, cusPanNo: 'abcde1234', cusAadharNo: '1234 5678 9012' }), { cusPanNo: 'pan', cusAadharNo: 'aadhaar' });
+  assert.deepEqual(cleanCustomerEdit({ cusPhone1: '+91 98430 12345', cusPhone2: '', cusAadharNo: '2345-6789-0123', cusPanNo: 'abcde1234f ' }), {
+    cusPhone1: '9843012345',
+    cusPhone2: '',
+    cusAadharNo: '234567890123',
+    cusPanNo: 'ABCDE1234F',
+  });
+});
+
+test('Edit customer checks only what the salesman changed', () => {
+  const was = { cusPhone1: '04286222333', cusPhone2: '', cusAadharNo: '', cusPanNo: '' };
+  const now = { ...was, cusPanNo: 'abcde1234f' };
+  assert.deepEqual(changedEditFields(now, was), ['cusPanNo']);
+  assert.deepEqual(validateCustomerEdit(now, was), {});
+  assert.deepEqual(validateCustomerEdit({ ...now, cusPhone1: '04286 222334' }, was), { cusPhone1: 'mobile' });
+  assert.deepEqual(changedEditFields({ ...was, cusPhone1: '04286 222333' }, was), []);
 });

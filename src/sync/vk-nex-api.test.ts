@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createVkNexClient, isApiError, isNetworkError } from './vk-nex-api.ts';
+import { createVkNexClient, isApiError, isNetworkError, readTokenClaims } from './vk-nex-api.ts';
 
 interface Call {
   url: string;
@@ -102,4 +102,88 @@ test('the download asks for pages of 200 and one customer by id', async () => {
   assert.equal(one.cusName, 'Kavin Stores');
   assert.equal(s.calls[2]!.url, `${base}/mobile/customers/get?cusId=a`);
   assert.equal(s.calls[2]!.headers.Authorization, 'Bearer t');
+});
+
+// A VK Nex access token's shape: header.claims.signature, base64url (the phone only reads the claims).
+const b64url = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const jwt = (claims: unknown) => `${b64url({ alg: 'HS256' })}.${b64url(claims)}.sig`;
+
+test("the login company is read from VK Nex's token", async () => {
+  assert.deepEqual(readTokenClaims(jwt({ sub: 'u1', company_id: 'comp-1', user_name: 'வேல்' })), { sub: 'u1', company_id: 'comp-1', user_name: 'வேல்' });
+  assert.deepEqual(readTokenClaims('not-a-jwt'), {});
+  assert.deepEqual(readTokenClaims('a.%%%.c'), {});
+  const s = fakeServer(() => ({ status: 200, body: { access_token: jwt({ sub: 'u1', company_id: 'comp-1' }) } }));
+  const api = createVkNexClient({ baseUrl: base, appVersion: '1.0.0', credentials: creds, fetch: s.fetch });
+  assert.equal(api.companyId(), null);
+  await api.login();
+  assert.equal(api.companyId(), 'comp-1');
+});
+
+test('ledger pages, fiscal years and customer updates go to their VK Nex routes', async () => {
+  const s = fakeServer((c) => {
+    if (c.url.endsWith('/auth/login')) return { status: 200, body: { access_token: 'tok' } };
+    if (c.url.includes('/fiscal-years/')) return { status: 200, body: { success: true, data: [{ id: 'fy', name: '2026-2027', beginDate: '2026-04-01', endDate: '2027-03-31', status: 'OPEN', isCurrent: true }] } };
+    if (c.url.includes('/ledger-statement/')) return { status: 200, body: { success: true, data: { broughtForward: { amount: '0.00', side: 'DR' }, rows: [], carriedForward: { amount: '0.00', side: 'DR' }, page: { page: 1, pageSize: 1000, totalRows: 0 } } } };
+    return { status: 200, body: { success: true, data: { cusId: 'c1', cusCode: 'C1', cusName: 'A' } } };
+  });
+  const api = createVkNexClient({ baseUrl: base, appVersion: '1.0.0', credentials: creds, fetch: s.fetch });
+  const years = await api.fiscalYears('comp-1');
+  assert.equal(years[0]!.name, '2026-2027');
+  await api.ledgerPage({ companyId: 'comp-1', accYear: '2026-2027', ledgerId: 'c1', fromDate: '2026-04-01', toDate: '2026-11-16', page: 1, pageSize: 1000 });
+  await api.updateCustomer({ cusId: 'c1', cusPhone1: '9843012345' });
+  assert.equal(s.calls[1]!.url, `${base}/master-lookups/fiscal-years/by-company/comp-1`);
+  assert.equal(
+    s.calls[2]!.url,
+    `${base}/reports/ledger-statement/vouchers?companyId=comp-1&accYear=2026-2027&ledgerId=c1&fromDate=2026-04-01&toDate=2026-11-16&page=1&pageSize=1000`,
+  );
+  assert.equal(s.calls[3]!.method, 'PUT');
+  assert.equal(s.calls[3]!.url, `${base}/mobile/customers/update`);
+  assert.deepEqual(s.calls[3]!.body, { cusId: 'c1', cusPhone1: '9843012345' });
+});
+
+test('the device uid goes to sign-in; VK Nex saying which device it matched marks the phone registered', async () => {
+  const s = fakeServer((c) =>
+    c.url.endsWith('/auth/login')
+      ? { status: 200, body: { access_token: 't', device_id: 'dev-9' } }
+      : { status: 200, body: { success: true, data: { items: [], total: 0, hasMore: false, branchId: 'br-1' } } },
+  );
+  const api = createVkNexClient({ baseUrl: base, appVersion: '1.0.0', credentials: creds, fetch: s.fetch, deviceUid: 'VKSMAN-0123456789AB' });
+  assert.equal(api.deviceRegistered(), false);
+  await api.login();
+  assert.equal((s.calls[0]!.body as Record<string, unknown>).device_id, 'VKSMAN-0123456789AB');
+  assert.equal(api.deviceRegistered(), true);
+  await api.itemListPage('comp-1', 2);
+  assert.equal(s.calls[1]!.url, `${base}/mobile/items/list?companyId=comp-1&page=2&pageSize=500&deviceUid=VKSMAN-0123456789AB`);
+});
+
+test('a phone VK Nex does not know lists items without its uid (an unknown uid is a 403)', async () => {
+  const s = fakeServer((c) =>
+    c.url.endsWith('/auth/login')
+      ? { status: 200, body: { access_token: 't', device_id: null } }
+      : { status: 200, body: { success: true, data: { items: [], total: 0, hasMore: false, branchId: null } } },
+  );
+  const api = createVkNexClient({ baseUrl: base, appVersion: '1.0.0', credentials: creds, fetch: s.fetch, deviceUid: 'VKSMAN-0123456789AB' });
+  await api.itemListPage('comp-1', 1);
+  assert.equal(api.deviceRegistered(), false);
+  assert.equal(s.calls[1]!.url, `${base}/mobile/items/list?companyId=comp-1&page=1&pageSize=500`);
+});
+
+test('orders and visits carry the device uid in the body', async () => {
+  const s = fakeServer((c) => {
+    if (c.url.endsWith('/auth/login')) return { status: 200, body: { access_token: 't', device_id: 'dev-9' } };
+    if (c.url.endsWith('/mobile/orders/create')) {
+      return {
+        status: 201,
+        body: { success: true, data: { soId: 'so-1', soOrderRefno: 'sor00042', soStatus: 'DRAFT', soAccYear: '2026-2027', duplicate: false, soIsDeleted: false } },
+      };
+    }
+    return { status: 201, body: { success: true, data: { cvId: 'cv-1', cvClientUuid: 'v-1', cvVisitAt: '2026-11-16T05:10:02.000Z', duplicate: true } } };
+  });
+  const api = createVkNexClient({ baseUrl: base, appVersion: '1.0.0', credentials: creds, fetch: s.fetch, deviceUid: 'VKSMAN-0123456789AB' });
+  const o = await api.createOrder({ soClientUuid: 'o-1' });
+  assert.equal(o.soOrderRefno, 'sor00042');
+  assert.deepEqual(s.calls[1]!.body, { soClientUuid: 'o-1', deviceUid: 'VKSMAN-0123456789AB' });
+  const v = await api.createVisit({ cvClientUuid: 'v-1' });
+  assert.equal(v.duplicate, true);
+  assert.deepEqual(s.calls[2]!.body, { cvClientUuid: 'v-1', deviceUid: 'VKSMAN-0123456789AB' });
 });
