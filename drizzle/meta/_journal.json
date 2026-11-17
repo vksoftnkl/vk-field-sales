@@ -71,6 +71,27 @@
       "when": 1794831639514,
       "tag": "0009_remove_test_companies",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794891619414,
+      "tag": "0010_sale_bills",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794894771635,
+      "tag": "0011_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794895484340,
+      "tag": "0012_tender_surcharge",
+      "breakpoints": true
     }
   ]
 }

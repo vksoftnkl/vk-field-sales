@@ -7,6 +7,10 @@ import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } f
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, PasswordField, TextField } from '@/components/ui';
+import { toPaise } from '@/features/orders/order-math';
+import { waitingReceiptsQuery } from '@/features/receipts/queries';
+import { waitingBillsQuery } from '@/features/sales/queries';
+import { formatAmount } from '@/lib/money';
 import { getServerCredentials, setServerCredentials } from '@/sync/credentials';
 import { runSync, testConnection, type SyncReport, type SyncStep } from '@/sync/run-sync';
 import { formatServerAddress, parseServerAddress } from '@/sync/server-address';
@@ -44,8 +48,10 @@ export default function SyncScreen() {
   const { data: pending } = useLiveQuery(waitingToSendQuery());
   const { data: waitingOrders } = useLiveQuery(waitingOrdersQuery());
   const { data: waitingVisits } = useLiveQuery(waitingVisitsQuery());
+  const { data: bills } = useLiveQuery(waitingBillsQuery());
+  const { data: waitingReceipts } = useLiveQuery(waitingReceiptsQuery());
   const [deviceUid] = useState(getDeviceUid);
-  const waitingCount = pending.length + waitingOrders.length + waitingVisits.length;
+  const waitingCount = pending.length + waitingOrders.length + waitingVisits.length + waitingReceipts.length;
 
   /** Reads and saves the address box; null (with the error shown) when it is not usable. */
   const takeAddress = () => {
@@ -90,6 +96,10 @@ export default function SyncScreen() {
         return total ? t('sync.stepOrders', { n, total }) : t('sync.stepOrdersNone');
       case 'visits':
         return total ? t('sync.stepVisits', { n, total }) : t('sync.stepVisitsNone');
+      case 'receipts':
+        return total ? t('sync.stepReceipts', { n, total }) : t('sync.stepReceiptsNone');
+      case 'receiptData':
+        return total ? t('sync.stepReceiptData', { n, total }) : t('sync.stepReceiptDataNone');
       case 'items':
         return total ? t('sync.stepItems', { n, total }) : t('sync.stepItemsNone');
       case 'download':
@@ -160,6 +170,14 @@ export default function SyncScreen() {
   const ordersSent = orders.filter((o) => o.status === 'uploaded' || o.status === 'alreadySaved').length;
   const visits = report?.visits ?? [];
   const visitsSent = visits.filter((v) => v.status === 'uploaded' || v.status === 'alreadySaved').length;
+  const rcts = report?.receipts ?? [];
+  const rctsSent = rcts.filter((r) => r.status === 'uploaded' || r.status === 'alreadySaved').length;
+  const receiptData = report?.receiptData;
+  const receiptDataStop = report?.receiptDataStoppedBy
+    ? isNetworkError(report.receiptDataStoppedBy)
+      ? t('sync.noAnswer', { address })
+      : t('sync.receiptDataFailed', { message: errorText(report.receiptDataStoppedBy) })
+    : null;
   const items = report?.items;
   const itemsStop = report?.itemsStoppedBy
     ? isNetworkError(report.itemsStoppedBy)
@@ -169,7 +187,20 @@ export default function SyncScreen() {
   const deviceStop = report?.sendRefusedBy ? t('sync.deviceRefused', { message: errorText(report.sendRefusedBy) }) : null;
   const hasResult =
     !!report &&
-    (report.outcomes.length > 0 || updates.length > 0 || orders.length > 0 || visits.length > 0 || !!got || !!stop || !!ledger || !!ledgerStop || !!items || !!itemsStop || !!deviceStop);
+    (report.outcomes.length > 0 ||
+      updates.length > 0 ||
+      orders.length > 0 ||
+      visits.length > 0 ||
+      rcts.length > 0 ||
+      !!got ||
+      !!stop ||
+      !!ledger ||
+      !!ledgerStop ||
+      !!items ||
+      !!itemsStop ||
+      !!receiptData ||
+      !!receiptDataStop ||
+      !!deviceStop);
 
   return (
     <View style={st.root}>
@@ -254,7 +285,24 @@ export default function SyncScreen() {
             {waitingVisits.map((v) => (
               <WaitingRow key={`v-${v.id}`} name={v.customerName ?? ''} tag={t('sync.tagVisit')} error={v.appSyncError} />
             ))}
+            {waitingReceipts.map((r) => (
+              <WaitingRow
+                key={`r-${r.id}`}
+                name={r.customerName}
+                tag={t('sync.tagReceipt', { no: r.refNo, amount: formatAmount(toPaise(r.amount) ?? 0) })}
+                error={r.appSyncError}
+              />
+            ))}
           </Card>
+
+          {bills.length > 0 ? (
+            <Card title={t('sync.billsTitle', { n: bills.length })}>
+              <Text style={st.note}>{t('sync.billsNote')}</Text>
+              {bills.map((b) => (
+                <WaitingRow key={`b-${b.id}`} name={b.customerName} tag={`${b.refNo} · ${formatAmount(toPaise(b.amount) ?? 0)}`} error={null} />
+              ))}
+            </Card>
+          ) : null}
 
           {report && hasResult ? (
             <Card title={t('sync.resultTitle')}>
@@ -333,6 +381,24 @@ export default function SyncScreen() {
                   />
                 );
               })}
+              {rcts.length > 0 ? (
+                <Text style={[st.note, { marginTop: spacing.md }]}>{t('sync.receiptsSummary', { sent: rctsSent, refused: rcts.length - rctsSent })}</Text>
+              ) : null}
+              {rcts.map((r) => {
+                const ok = r.status === 'uploaded' || r.status === 'alreadySaved';
+                return (
+                  <ResultRow
+                    key={`r-${r.localId}`}
+                    ok={ok}
+                    name={`${t('sync.tagReceiptNo', { no: r.phoneRefno })} · ${r.customerName}`}
+                    text={
+                      ok
+                        ? t(r.status === 'uploaded' ? 'sync.receiptUploaded' : 'sync.receiptAlreadySaved', { refno: r.voucherRefno ?? '', status: r.voucherStatus ?? '' })
+                        : (r.error ?? '')
+                    }
+                  />
+                );
+              })}
               {deviceStop ? <StatusLine ok={false} text={deviceStop} /> : null}
               {got ? (
                 <View style={[st.item, report.outcomes.length === 0 && updates.length === 0 && orders.length === 0 && visits.length === 0 && st.itemFirst]}>
@@ -353,6 +419,15 @@ export default function SyncScreen() {
                 </View>
               ) : null}
               {itemsStop ? <StatusLine ok={false} text={itemsStop} /> : null}
+              {receiptData ? (
+                <View style={st.item}>
+                  <Ionicons name="receipt-outline" size={20} color={colors.success} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemOk}>{t('sync.receiptDataDone', { bills: receiptData.bills, companies: receiptData.companies })}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {receiptDataStop ? <StatusLine ok={false} text={receiptDataStop} /> : null}
               {ledger ? (
                 <View style={st.item}>
                   <Ionicons name="document-text-outline" size={20} color={colors.success} />

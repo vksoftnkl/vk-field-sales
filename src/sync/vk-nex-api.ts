@@ -207,6 +207,67 @@ export interface CreatedVisit {
   duplicate: boolean;
 }
 
+/**
+ * GET /mobile/receipts/options: the branch VK Nex books the phone's receipts in, and the company's
+ * active tenders (cash, UPI, bank, cheque, card / wallet). Keys as the server session's builder
+ * wrote them (2026-11-17, not yet checked live on :3011).
+ */
+export interface MobileTender {
+  /** acc_tender_master.tnd_id: goes as tdTenderId. */
+  tenderId: string;
+  /** Goes as tdTenderTypeId: 1 cash, 2 card, 3 UPI, 4 wallet, 5 cheque, 6 bank. */
+  typeId: number | string;
+  typeCode?: string | null;
+  name?: string | null;
+  shortName?: string | null;
+  needsRef?: boolean | null;
+  refLabel?: string | null;
+  /** The tender to start a receipt with. */
+  isDefault?: boolean | null;
+  /** Surcharge the customer pays on top (text, '1.00' % and '0.00' flat); it goes inside tdAmount. */
+  surchargePerc?: string | number | null;
+  surchargeAmount?: string | number | null;
+}
+
+export interface ReceiptOptions {
+  companyId?: string;
+  branchId: string | null;
+  tenders: MobileTender[];
+}
+
+/** One open bill of a company's customer, in VK Nex's /receipts/open-items order. Amounts in rupees. */
+export interface MobileOpenBill {
+  partyId: string;
+  billId: string;
+  billAccYear: string;
+  billType?: string | null;
+  docRefno?: string | null;
+  docDate?: string | null;
+  dueDate?: string | null;
+  billAmount: number | string;
+  pendingAmount: number | string;
+}
+
+export interface OpenBillsPage {
+  items: MobileOpenBill[];
+  hasMore: boolean;
+}
+
+/**
+ * VK Nex's answer to POST /mobile/receipts/create (posted at once; a resend answers duplicate with
+ * the status it has by then, which can be CANCELLED). Only the keys the phone keeps are typed.
+ */
+export interface CreatedReceipt {
+  avhVoucherId: string;
+  avhVoucherRefno: string | null;
+  avhVoucherStatus: string;
+  avhAccYear: string;
+  duplicate: boolean;
+  /** What VK Nex kept on account (text). */
+  onAccount?: string | null;
+  avhIsDeleted?: boolean;
+}
+
 /** The middle part of a JWT, read (not checked: VK Nex checks it on every request). */
 export function readTokenClaims(token: string): Record<string, unknown> {
   const part = token.split('.')[1];
@@ -417,6 +478,20 @@ export function createVkNexClient(opts: VkNexClientOptions) {
     /** One order with its lines. Safe to resend: the same soClientUuid answers the order saved before. */
     createOrder: (payload: Record<string, unknown>) =>
       authed<Envelope<CreatedOrder>>('POST', '/mobile/orders/create', { ...payload, deviceUid: opts.deviceUid }).then((r) => r.data),
+    /** A company's tenders for receipts (and the branch VK Nex books them in). */
+    receiptOptions: (companyId: string) => {
+      const device = deviceId && opts.deviceUid ? `&deviceUid=${encodeURIComponent(opts.deviceUid)}` : '';
+      return authed<Envelope<ReceiptOptions>>('GET', `/mobile/receipts/options?companyId=${encodeURIComponent(companyId)}${device}`).then((r) => r.data);
+    },
+    /** One page of a company's open bills, every customer, in the order VK Nex fills them. */
+    openBillsPage: (companyId: string, page: number, pageSize = 200) =>
+      authed<Envelope<OpenBillsPage>>(
+        'GET',
+        `/mobile/receipts/open-bills?companyId=${encodeURIComponent(companyId)}&page=${page}&pageSize=${pageSize}`,
+      ).then((r) => r.data),
+    /** One receipt, saved and posted. Safe to resend: the same avhClientUuid answers the receipt saved before. */
+    createReceipt: (payload: Record<string, unknown>) =>
+      authed<Envelope<CreatedReceipt>>('POST', '/mobile/receipts/create', { ...payload, deviceUid: opts.deviceUid }).then((r) => r.data),
     /** One check-in. Safe to resend, as orders. */
     createVisit: (payload: Record<string, unknown>) =>
       authed<Envelope<CreatedVisit>>('POST', '/mobile/visits/create', { ...payload, deviceUid: opts.deviceUid }).then((r) => r.data),

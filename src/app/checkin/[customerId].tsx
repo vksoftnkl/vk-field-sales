@@ -11,7 +11,7 @@ import { ScreenHeader } from '@/components/screen-header';
 import { Button, TextField } from '@/components/ui';
 import { useDateNames } from '@/components/use-date-names';
 import { currentCompanyQuery } from '@/features/company/company';
-import { customerName, orderCustomerQuery, saveVisit, VISIT_REASONS, type VisitFix, type VisitReason } from '@/features/orders/queries';
+import { COLLECTION_REASONS, customerName, orderCustomerQuery, saveVisit, VISIT_REASONS, type VisitFix, type VisitReason } from '@/features/orders/queries';
 import { formatDay } from '@/lib/date-range';
 import { todayISO } from '@/lib/money';
 import { useAppSelector } from '@/store';
@@ -39,12 +39,16 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * Check in · no order (the Qt app's OrderCheckin.qml): why no order was taken, remarks, and
- * where the salesman was (the Qt app switched GPS on but never kept the place). Saved on the
- * phone; the next Sync sends it to VK Nex.
+ * Check in · no order (the Qt app's OrderCheckin.qml), or · no collection (ReceiptCheckin.qml,
+ * opened with kind=collection from Receipt): why nothing was taken, remarks, and where the
+ * salesman was (the Qt app switched GPS on but never kept the place). Saved on the phone; the
+ * next Sync sends it to VK Nex.
  */
 export default function CheckInScreen() {
-  const { customerId } = useLocalSearchParams<{ customerId: string }>();
+  const { customerId, kind, companyId: forCompany } = useLocalSearchParams<{ customerId: string; kind?: string; companyId?: string }>();
+  const collection = kind === 'collection';
+  const reasons = collection ? COLLECTION_REASONS : VISIT_REASONS;
+  const reasonKey = (r: VisitReason) => (collection ? `checkIn.collectionReasons.${r}` : `checkIn.reasons.${r}`);
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const names = useDateNames();
@@ -100,11 +104,13 @@ export default function CheckInScreen() {
     setSubmitted(true);
     if (saved.current || !reason || loc.kind === 'locating') return;
     try {
-      // The company chosen in Choose company, if it is one VK Nex sent (else Sync picks it at upload).
-      const companyId = currentCompanyQuery().get()?.id ?? null;
-      saveVisit({ customerId, companyId, reason, remarks, fix: loc.kind === 'fix' ? loc.fix : null }, userId);
+      // The receipt's company, else the one chosen in Choose company (else Sync picks it at upload).
+      const companyId = forCompany ?? currentCompanyQuery().get()?.id ?? null;
+      saveVisit({ customerId, companyId, reason, remarks, fix: loc.kind === 'fix' ? loc.fix : null, kind: collection ? 'collection' : 'order' }, userId);
       saved.current = true;
-      router.back();
+      // A no-collection visit ends the receipt too: back to the customer.
+      if (collection) router.dismissTo({ pathname: '/customer/[id]', params: { id: customerId } });
+      else router.back();
       Alert.alert(t('checkIn.savedTitle'), t('checkIn.savedText'));
     } catch {
       Alert.alert(t('common.error'));
@@ -115,16 +121,16 @@ export default function CheckInScreen() {
 
   return (
     <View style={st.root}>
-      <ScreenHeader title={t('checkIn.title')} subtitle={c ? customerName(c) : undefined} backLabel={t('checkIn.back')} />
+      <ScreenHeader title={collection ? t('checkIn.collectionTitle') : t('checkIn.title')} subtitle={c ? customerName(c) : undefined} backLabel={collection ? t('receipt.back') : t('checkIn.back')} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView contentContainerStyle={st.body} keyboardShouldPersistTaps="handled">
           <LocationCard loc={loc} onRetry={() => void locate()} dateText={(iso) => formatDay(todayISO(new Date(iso)), names)} />
 
-          <View accessibilityRole="radiogroup" accessibilityLabel={t('checkIn.reason')} style={{ gap: 6 }}>
+          <View accessibilityRole="radiogroup" accessibilityLabel={collection ? t('checkIn.collectionReason') : t('checkIn.reason')} style={{ gap: 6 }}>
             <Text style={st.legend} accessibilityRole="header">
-              {t('checkIn.reason')}
+              {collection ? t('checkIn.collectionReason') : t('checkIn.reason')}
             </Text>
-            {VISIT_REASONS.map((r) => {
+            {reasons.map((r) => {
               const on = reason === r;
               return (
                 <Pressable
@@ -136,8 +142,8 @@ export default function CheckInScreen() {
                 >
                   <Ionicons name={on ? 'radio-button-on' : 'radio-button-off'} size={20} color={on ? colors.primary : colors.inputBorder} />
                   <View style={{ flex: 1, gap: 1 }}>
-                    <Text style={[st.reasonText, on && { fontWeight: '600' }]}>{t(`checkIn.reasons.${r}`)}</Text>
-                    <Text style={st.reasonOther}>{i18n.t(`checkIn.reasons.${r}`, { lng: other })}</Text>
+                    <Text style={[st.reasonText, on && { fontWeight: '600' }]}>{t(reasonKey(r))}</Text>
+                    <Text style={st.reasonOther}>{i18n.t(reasonKey(r), { lng: other })}</Text>
                   </View>
                 </Pressable>
               );

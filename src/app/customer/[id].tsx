@@ -7,8 +7,9 @@ import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useDateNames } from '@/components/use-date-names';
+import { getMeta } from '@/db/meta';
 import { addressLine } from '@/features/customers/customer-list';
-import { companiesQuery } from '@/features/company/company';
+import { companiesQuery, ensureCurrentCompany } from '@/features/company/company';
 import { customerDetailQuery } from '@/features/customers/queries';
 import { currentBalance, recentBills, type LedgerRow } from '@/features/ledger/ledger';
 import { ledgerRowsQuery, ledgerYearsQuery } from '@/features/ledger/queries';
@@ -48,6 +49,20 @@ export default function CustomerDetailScreen() {
     if (list.length === 0) return Alert.alert(t('order.noCompaniesTitle'), t('order.noCompaniesText'));
     if (list.length === 1) return router.push({ pathname: '/order/[customerId]', params: { customerId: id, companyId: list[0]!.id } });
     router.push({ pathname: '/order/company/[customerId]', params: { customerId: id } });
+  };
+  /** Receipt: VK Nex takes a receipt for one company, so with several the salesman picks one first. */
+  const startReceipt = () => {
+    const list = companiesQuery().all();
+    if (list.length === 0) return Alert.alert(t('order.noCompaniesTitle'), t('order.noCompaniesText'));
+    if (list.length === 1) return router.push({ pathname: '/receipt/[customerId]', params: { customerId: id, companyId: list[0]!.id } });
+    router.push({ pathname: '/receipt/company/[customerId]', params: { customerId: id } });
+  };
+  /** Sales: bills are made for the company picked on the phone (Choose company), as in the Qt app. */
+  const startSale = () => {
+    ensureCurrentCompany();
+    const companyId = getMeta('companyId');
+    if (!companyId) return Alert.alert(t('order.noCompaniesTitle'), t('order.noCompaniesText'));
+    router.push({ pathname: '/sales/[customerId]', params: { customerId: id, companyId } });
   };
 
   const header = (
@@ -101,14 +116,14 @@ export default function CustomerDetailScreen() {
 
   const actions: { key: string; label: string; icon: IconName; primary?: boolean; onPress: () => void }[] = [
     { key: 'order', label: t('customerDetail.order'), icon: 'clipboard-outline', onPress: startOrder },
-    { key: 'sales', label: t('customerDetail.sales'), icon: 'cart-outline', primary: true, onPress: () => notYet(t('customerDetail.sales')) },
+    { key: 'sales', label: t('customerDetail.sales'), icon: 'cart-outline', primary: true, onPress: startSale },
     {
       key: 'checkIn',
       label: t('customerDetail.checkIn'),
       icon: 'location-outline',
       onPress: () => router.push({ pathname: '/checkin/[customerId]', params: { customerId: id } }),
     },
-    { key: 'receipt', label: t('customerDetail.receipt'), icon: 'receipt-outline', onPress: () => notYet(t('customerDetail.receipt')) },
+    { key: 'receipt', label: t('customerDetail.receipt'), icon: 'receipt-outline', onPress: startReceipt },
     { key: 'return', label: t('customerDetail.return'), icon: 'return-up-back-outline', onPress: () => notYet(t('customerDetail.return')) },
     {
       key: 'ledger',

@@ -16,8 +16,13 @@ import {
   itemUnits,
   ledgerRows,
   ledgerYears,
+  openBills,
+  receipts,
+  receiptTenders,
+  saleBill,
   saleOrder,
   saleOrderItem,
+  tenders,
   visits,
 } from '@/db/schema';
 
@@ -28,9 +33,11 @@ import type { LedgerDownload } from './download-ledgers';
 import type { ServerAddress } from './server-address';
 import type { PendingCustomer } from './upload-customers';
 import type { PendingOrder } from './upload-orders';
+import type { ReceiptData } from './download-receipt-data';
+import type { PendingReceipt } from './upload-receipts';
 import type { PendingVisit } from './upload-visits';
 import type { PendingEdit } from './update-customers';
-import type { CreatedOrder, CreatedVisit, CustomerOptions, ItemOptions } from './vk-nex-api';
+import type { CreatedOrder, CreatedReceipt, CreatedVisit, CustomerOptions, ItemOptions } from './vk-nex-api';
 
 /** What Sync reads from and writes to the phone's database. */
 
@@ -100,9 +107,11 @@ export function markCustomerSynced(localId: string, saved: { cusId: string; cusC
   const now = new Date().toISOString();
   db.transaction((tx) => {
     tx.update(customerBills).set({ customerId: saved.cusId }).where(eq(customerBills.customerId, localId)).run();
-    // Orders and check-ins at the new shop go to VK Nex under its id.
+    // Orders, check-ins, bills and receipts at the new shop go to VK Nex under its id.
     tx.update(saleOrder).set({ soCustId: saved.cusId }).where(eq(saleOrder.soCustId, localId)).run();
     tx.update(visits).set({ customerId: saved.cusId }).where(eq(visits.customerId, localId)).run();
+    tx.update(saleBill).set({ sbCustId: saved.cusId }).where(eq(saleBill.sbCustId, localId)).run();
+    tx.update(receipts).set({ avhPartyId: saved.cusId }).where(eq(receipts.avhPartyId, localId)).run();
     const clash = saved.cusId !== localId && tx.select({ id: customers.cusId }).from(customers).where(eq(customers.cusId, saved.cusId)).get();
     if (clash) {
       tx.delete(customers).where(eq(customers.cusId, localId)).run();
@@ -342,6 +351,60 @@ export function markOrderSynced(localId: string, created: CreatedOrder): void {
 
 export function markOrderRefused(localId: string, error: string): void {
   db.update(saleOrder).set({ appSyncError: error }).where(eq(saleOrder.soId, localId)).run();
+}
+
+/** Receipts not yet on VK Nex, oldest first, with their payment lines. A receipt for a shop still waiting to upload waits for it. */
+export function pendingReceipts(): PendingReceipt[] {
+  const heads = db
+    .select({ header: receipts, customerPending: customers.appPendingUpload })
+    .from(receipts)
+    .leftJoin(customers, eq(customers.cusId, receipts.avhPartyId))
+    .where(eq(receipts.appPendingUpload, true))
+    .orderBy(asc(receipts.avhCreatedOn))
+    .all();
+  const ids = heads.map((h) => h.header.avhClientUuid);
+  const lines: (typeof receiptTenders.$inferSelect)[] = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    lines.push(...db.select().from(receiptTenders).where(inArray(receiptTenders.tdSrcDocId, ids.slice(i, i + 500))).all());
+  }
+  return heads.map((h) => ({
+    header: h.header,
+    lines: lines.filter((l) => l.tdSrcDocId === h.header.avhClientUuid),
+    customerPending: h.customerPending === true,
+  }));
+}
+
+/** VK Nex has the receipt (posted now, or before under the same client uuid): keep its id, number and status. */
+export function markReceiptSynced(localId: string, created: CreatedReceipt): void {
+  db.update(receipts)
+    .set({
+      avhVoucherId: created.avhVoucherId,
+      avhVoucherRefno: created.avhVoucherRefno,
+      avhVoucherStatus: created.avhVoucherStatus,
+      appSyncedOn: new Date().toISOString(),
+      appPendingUpload: false,
+      appSyncError: null,
+    })
+    .where(eq(receipts.avhClientUuid, localId))
+    .run();
+}
+
+export function markReceiptRefused(localId: string, error: string): void {
+  db.update(receipts).set({ appSyncError: error }).where(eq(receipts.avhClientUuid, localId)).run();
+}
+
+/**
+ * The companies' tenders and open bills, as VK Nex gave them: each company read in full replaces
+ * what the phone had for it. Receipts sent in this Sync are already inside VK Nex's figures.
+ */
+export function saveReceiptData(d: ReceiptData): void {
+  if (d.companyIds.length === 0) return;
+  db.transaction((tx) => {
+    tx.delete(tenders).where(inArray(tenders.companyId, d.companyIds)).run();
+    for (let i = 0; i < d.tenders.length; i += CHUNK) tx.insert(tenders).values(d.tenders.slice(i, i + CHUNK)).run();
+    tx.delete(openBills).where(inArray(openBills.companyId, d.companyIds)).run();
+    for (let i = 0; i < d.bills.length; i += CHUNK) tx.insert(openBills).values(d.bills.slice(i, i + CHUNK)).onConflictDoNothing().run();
+  });
 }
 
 /** Check-ins not yet on VK Nex, oldest first. */

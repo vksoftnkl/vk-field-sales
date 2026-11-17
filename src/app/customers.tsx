@@ -24,6 +24,7 @@ import {
 } from '@/features/customers/queries';
 import { QuickFilterSheet } from '@/features/customers/quick-filter-sheet';
 import { pendingOrdersCountQuery, pendingVisitsCountQuery } from '@/features/orders/queries';
+import { pendingReceiptsCountQuery } from '@/features/receipts/queries';
 import { daysBetween, formatRupees, todayISO } from '@/lib/money';
 import { parseIdList, serializeIdList } from '@/lib/selection';
 import { colors, font, radius, spacing, statusColors } from '@/theme';
@@ -67,8 +68,9 @@ export default function CustomersScreen() {
   const { data: pendingRows } = useLiveQuery(pendingUploadQuery());
   const { data: pendingOrders } = useLiveQuery(pendingOrdersCountQuery());
   const { data: pendingVisits } = useLiveQuery(pendingVisitsCountQuery());
-  // Shops, edits, orders and check-ins still to send (each table is watched on its own).
-  const pending = (pendingRows[0]?.n ?? 0) + (pendingOrders[0]?.n ?? 0) + (pendingVisits[0]?.n ?? 0);
+  const { data: pendingReceipts } = useLiveQuery(pendingReceiptsCountQuery());
+  // Shops, edits, orders, check-ins and receipts still to send (each table is watched on its own).
+  const pending = (pendingRows[0]?.n ?? 0) + (pendingOrders[0]?.n ?? 0) + (pendingVisits[0]?.n ?? 0) + (pendingReceipts[0]?.n ?? 0);
 
   const shown = useMemo(() => filterCustomers(rows, query, quick), [rows, query, quick]);
   // Counts in the filter sheet: shops of these beats and types, before the search box narrows them.

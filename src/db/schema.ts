@@ -438,6 +438,245 @@ export const saleOrderItem = sqliteTable(
 );
 
 /**
+ * Bills made on the phone (Sales): a copy of VK Nex's sales.sale_bill, only the columns the phone
+ * fills, same names. sb_id is made on the phone and would go up as the client uuid. Every bill is
+ * a credit bill (the Qt app's payment step was never finished). The number is the phone's own
+ * series (see features/sales/bill-number.ts).
+ *
+ * VK Nex has no route for phone bills yet (its bill lines also need a godown the phone doesn't
+ * have), so Sync does not send these: they stay on the phone with app_pending_upload set.
+ */
+export const saleBill = sqliteTable(
+  'sale_bill',
+  {
+    sbId: text('sb_id').primaryKey(),
+    sbCompanyId: text('sb_company_id').notNull(),
+    /** '2026-2027'. */
+    sbAccYear: text('sb_acc_year').notNull(),
+    /** 'MOBILE' and the phone's device uid ('VKSMAN-…'). */
+    sbDeviceType: text('sb_device_type').notNull(),
+    sbDeviceId: text('sb_device_id').notNull(),
+    sbDocType: text('sb_doc_type').notNull().default('TAX_INVOICE'),
+    /** 'CREDIT' (VK Nex: CASH | CREDIT). */
+    sbBillType: text('sb_bill_type').notNull(),
+    sbPriceLevel: integer('sb_price_level').notNull(),
+    /** Serial in the phone's series for this company and year, and the printed number. */
+    sbBillSlno: integer('sb_bill_slno').notNull(),
+    sbBillRefno: text('sb_bill_refno').notNull(),
+    /** YYYY-MM-DD and ISO time. */
+    sbBillDate: text('sb_bill_date').notNull(),
+    sbBillDatetime: text('sb_bill_datetime').notNull(),
+    sbDueDays: integer('sb_due_days'),
+    sbDueDate: text('sb_due_date'),
+    sbCustId: text('sb_cust_id').notNull(),
+    sbCustName: text('sb_cust_name').notNull(),
+    sbCustGstin: text('sb_cust_gstin'),
+    sbCustStcd: text('sb_cust_stcd'),
+    sbHasLoad: integer('sb_has_load', { mode: 'boolean' }).notNull().default(false),
+    sbHasFreight: integer('sb_has_freight', { mode: 'boolean' }).notNull().default(false),
+    /** The phone's salesman (users.id). */
+    sbUserId: text('sb_user_id').notNull(),
+    sbTotItems: integer('sb_tot_items').notNull(),
+    sbTotBags: numeric('sb_tot_bags').notNull(),
+    sbGrossAmt: numeric('sb_gross_amt').notNull(),
+    sbItemDisc: numeric('sb_item_disc').notNull(),
+    /** The bill discount (before tax). */
+    sbCashDisc: numeric('sb_cash_disc').notNull(),
+    sbTaxableAmt: numeric('sb_taxable_amt').notNull(),
+    sbCgstAmt: numeric('sb_cgst_amt').notNull(),
+    sbSgstAmt: numeric('sb_sgst_amt').notNull(),
+    sbIgstAmt: numeric('sb_igst_amt').notNull(),
+    sbTaxAmt: numeric('sb_tax_amt').notNull(),
+    sbRoundOff: numeric('sb_round_off').notNull(),
+    sbBillAmt: numeric('sb_bill_amt').notNull(),
+    sbCreditAmt: numeric('sb_credit_amt').notNull(),
+    sbBalanceAmt: numeric('sb_balance_amt').notNull(),
+    sbPayStatus: text('sb_pay_status').notNull().default('UNPAID'),
+    sbRemarks: text('sb_remarks'),
+    sbCreatedOn: text('sb_created_on').notNull(),
+    /** Not yet on VK Nex. */
+    appPendingUpload: integer('app_pending_upload', { mode: 'boolean' }).notNull().default(true),
+    appSyncError: text('app_sync_error'),
+  },
+  (t) => [
+    index('ix_sb_cust').on(t.sbCustId),
+    index('ix_sb_pending').on(t.appPendingUpload),
+    index('ix_sb_series').on(t.sbCompanyId, t.sbDeviceId, t.sbAccYear, t.sbBillSlno),
+  ],
+);
+
+/** Lines of a phone bill (VK Nex's sales.sale_bill_item, the columns the phone fills). */
+export const saleBillItem = sqliteTable(
+  'sale_bill_item',
+  {
+    sbiId: text('sbi_id').primaryKey(),
+    sbiBillId: text('sbi_bill_id').notNull(),
+    sbiLineNo: integer('sbi_line_no').notNull(),
+    sbiItemId: text('sbi_item_id').notNull(),
+    sbiItemUnitId: text('sbi_item_unit_id').notNull(),
+    /** Base units in one of this unit: this phone's bills take stock off the item in base units. */
+    sbiToBaseFactor: numeric('sbi_to_base_factor').notNull(),
+    sbiHsnCode: text('sbi_hsn_code'),
+    sbiPriceLevel: integer('sbi_price_level'),
+    sbiIsTaxIncl: integer('sbi_is_tax_incl', { mode: 'boolean' }).notNull().default(false),
+    sbiIsPromo: integer('sbi_is_promo', { mode: 'boolean' }).notNull().default(false),
+    sbiBillQty: numeric('sbi_bill_qty').notNull(),
+    sbiNetQty: numeric('sbi_net_qty').notNull(),
+    /** Stock left in the unit when the bill was made. */
+    sbiAvailableStock: numeric('sbi_available_stock').notNull(),
+    sbiRate: numeric('sbi_rate').notNull(),
+    sbiRatePreTax: numeric('sbi_rate_pre_tax').notNull(),
+    sbiMaxPrice: numeric('sbi_max_price'),
+    sbiMinPrice: numeric('sbi_min_price'),
+    sbiItemDiscPerc: numeric('sbi_item_disc_perc').notNull(),
+    /** Discount in rupees per unit (the Qt app's "Disc (qty)"). */
+    sbiItemDiscQty: numeric('sbi_item_disc_qty').notNull(),
+    sbiItemDiscAmt: numeric('sbi_item_disc_amt').notNull(),
+    /** This line's share of the bill discount. */
+    sbiCashDiscPerc: numeric('sbi_cash_disc_perc').notNull(),
+    sbiCashDiscAmt: numeric('sbi_cash_disc_amt').notNull(),
+    sbiGrossAmt: numeric('sbi_gross_amt').notNull(),
+    sbiTaxId: text('sbi_tax_id'),
+    sbiTaxableAmt: numeric('sbi_taxable_amt').notNull(),
+    sbiTaxPerc: numeric('sbi_tax_perc').notNull(),
+    sbiTaxAmt: numeric('sbi_tax_amt').notNull(),
+    sbiCgstPerc: numeric('sbi_cgst_perc').notNull(),
+    sbiCgstAmt: numeric('sbi_cgst_amt').notNull(),
+    sbiSgstPerc: numeric('sbi_sgst_perc').notNull(),
+    sbiSgstAmt: numeric('sbi_sgst_amt').notNull(),
+    sbiIgstPerc: numeric('sbi_igst_perc').notNull(),
+    sbiIgstAmt: numeric('sbi_igst_amt').notNull(),
+    /** Taxable + GST. */
+    sbiNetAmt: numeric('sbi_net_amt').notNull(),
+  },
+  (t) => [index('ix_sbi_bill').on(t.sbiBillId), index('ix_sbi_item').on(t.sbiItemId)],
+);
+
+/**
+ * A customer's open bills in one company, as VK Nex gave them at the last Sync (its
+ * /receipts/open-items: what is still pending on each bill, in its own order, due date first).
+ * Replaced per company on every Sync. Amounts in paise.
+ */
+export const openBills = sqliteTable(
+  'open_bills',
+  {
+    billId: text('bill_id').notNull(),
+    /** The year the bill was raised in ('2026-2027'): with billId it names the bill. */
+    billAccYear: text('bill_acc_year').notNull(),
+    companyId: text('company_id').notNull(),
+    /** The customer (VK Nex's party id = cus_id). */
+    partyId: text('party_id').notNull(),
+    /** Position in VK Nex's order: the order it fills bills in when it posts a receipt. */
+    seq: integer('seq').notNull(),
+    /** SALES | OPENING | INTEREST | JOURNAL | PURCHASE_RETURN. */
+    billType: text('bill_type'),
+    docRefno: text('doc_refno').notNull(),
+    /** YYYY-MM-DD */
+    docDate: text('doc_date').notNull(),
+    dueDate: text('due_date'),
+    billAmountPaise: integer('bill_amount_paise').notNull(),
+    pendingPaise: integer('pending_paise').notNull(),
+    /** When Sync read it (ISO time). */
+    syncedOn: text('synced_on').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.billId, t.billAccYear] }), index('ix_open_bills_party').on(t.partyId, t.companyId, t.seq)],
+);
+
+/**
+ * The ways a company takes money (VK Nex's accounts.acc_tender_master: Cash, UPI, the bank
+ * account for transfers, Cheques in hand …), as GET /mobile/receipts/options gave them at Sync.
+ */
+export const tenders = sqliteTable(
+  'tenders',
+  {
+    companyId: text('company_id').notNull(),
+    tndId: text('tnd_id').notNull(),
+    /** VK Nex's tender type: 1 cash, 2 card, 3 UPI, 4 wallet, 5 cheque, 6 bank transfer. */
+    tndTypeId: integer('tnd_type_id').notNull(),
+    tndTypeCode: text('tnd_type_code'),
+    tndName: text('tnd_name').notNull(),
+    /** A reference must be typed (UTR, card last 4 …). */
+    appNeedsRef: integer('app_needs_ref', { mode: 'boolean' }).notNull().default(false),
+    /** What to call that reference ('UTR No', 'Cheque No'). */
+    appRefLabel: text('app_ref_label'),
+    /** The office's default tender: a new receipt starts with it. */
+    appIsDefault: integer('app_is_default', { mode: 'boolean' }).notNull().default(false),
+    /** Surcharge the customer pays on top: % of the amount, plus a flat amount (exact text). */
+    tndSurchargePerc: numeric('tnd_surcharge_perc').notNull().default('0'),
+    tndSurchargeAmount: numeric('tnd_surcharge_amount').notNull().default('0'),
+    position: integer('position').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.tndId] })],
+);
+
+/**
+ * Receipts taken on the phone: a copy of VK Nex's accounts.acc_voucher_header, only the columns
+ * the phone fills. Sync sends each one to POST /mobile/receipts/create with avh_client_uuid, so a
+ * resend after a lost answer gets the receipt VK Nex already has. VK Nex posts it at once and
+ * fills the customer's open bills oldest first; what is left stays on account.
+ */
+export const receipts = sqliteTable(
+  'receipts',
+  {
+    avhClientUuid: text('avh_client_uuid').primaryKey(),
+    avhCompanyId: text('avh_company_id').notNull(),
+    avhPartyId: text('avh_party_id').notNull(),
+    appPartyName: text('app_party_name').notNull(),
+    /** YYYY-MM-DD */
+    avhVoucherDate: text('avh_voucher_date').notNull(),
+    /** The phone's own receipt number ('R3F9A/2627/00001'); VK Nex keeps it as its user ref. */
+    avhUsrRefno: text('avh_usr_refno').notNull(),
+    /** Serial in that series, per company and financial year. */
+    appSlno: integer('app_slno').notNull(),
+    appAccYear: text('app_acc_year').notNull(),
+    avhDeviceId: text('avh_device_id').notNull(),
+    avhDocAmount: numeric('avh_doc_amount').notNull(),
+    avhRemarks: text('avh_remarks'),
+    /** The phone's salesman (users.id). */
+    appUserId: text('app_user_id').notNull(),
+    avhCreatedOn: text('avh_created_on').notNull(),
+    /** Not yet on VK Nex. */
+    appPendingUpload: integer('app_pending_upload', { mode: 'boolean' }).notNull().default(true),
+    appSyncError: text('app_sync_error'),
+    /** VK Nex's voucher id, number and status from its answer. */
+    avhVoucherId: text('avh_voucher_id'),
+    avhVoucherRefno: text('avh_voucher_refno'),
+    avhVoucherStatus: text('avh_voucher_status'),
+    appSyncedOn: text('app_synced_on'),
+  },
+  (t) => [
+    index('ix_rct_party').on(t.avhPartyId, t.avhCompanyId),
+    index('ix_rct_pending').on(t.appPendingUpload),
+    index('ix_rct_series').on(t.avhCompanyId, t.avhDeviceId, t.appAccYear, t.appSlno),
+  ],
+);
+
+/** How a phone receipt was paid, one line per tender (VK Nex's accounts.acc_tender_detail, the columns the phone fills). */
+export const receiptTenders = sqliteTable(
+  'receipt_tenders',
+  {
+    tdId: text('td_id').primaryKey(),
+    /** The receipt (receipts.avh_client_uuid). */
+    tdSrcDocId: text('td_src_doc_id').notNull(),
+    tdRowNo: integer('td_row_no').notNull(),
+    tdTenderId: text('td_tender_id').notNull(),
+    tdTenderTypeId: integer('td_tender_type_id').notNull(),
+    appTenderName: text('app_tender_name').notNull(),
+    /** What the line pays, surcharge included (as VK Nex takes it). */
+    tdAmount: numeric('td_amount').notNull(),
+    /** The tender's surcharge inside tdAmount (0 for most). */
+    tdSurchargeAmt: numeric('td_surcharge_amt').notNull().default('0'),
+    /** UTR, cheque number, card last 4 … */
+    tdRefNo: text('td_ref_no'),
+    /** The customer's bank (cheques). */
+    tdBankName: text('td_bank_name'),
+    /** Cheque date (YYYY-MM-DD); after the receipt date it is post-dated. */
+    tdInstrumentDate: text('td_instrument_date'),
+  },
+  (t) => [index('ix_td_receipt').on(t.tdSrcDocId)],
+);
+
+/**
  * Shop visits without an order (Check in). Sync sends each one to POST /mobile/visits/create
  * (VK Nex's sales.customer_visit) with id as cvClientUuid, so a resend is never saved twice.
  */

@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 
 import { getMeta } from '@/db/meta';
-import { ensureCurrentCompany } from '@/features/company/company';
+import { companiesQuery, ensureCurrentCompany } from '@/features/company/company';
 import { todayISO } from '@/lib/money';
 
 import { getServerCredentials } from './credentials';
@@ -9,6 +9,7 @@ import { apiBaseUrl, type ServerAddress } from './server-address';
 import { downloadCustomers } from './download-customers';
 import { downloadItems } from './download-items';
 import { downloadLedgers } from './download-ledgers';
+import { downloadReceiptData } from './download-receipt-data';
 import {
   getDeviceUid,
   getServerAddress,
@@ -18,26 +19,31 @@ import {
   markCustomerUpdated,
   markOrderRefused,
   markOrderSynced,
+  markReceiptRefused,
+  markReceiptSynced,
   markVisitRefused,
   markVisitSynced,
   pendingCustomers,
   pendingEdits,
   pendingOrders,
+  pendingReceipts,
   pendingVisits,
   saveCustomerOptions,
   saveDownloadedCustomers,
   saveItemList,
   saveItemOptions,
   saveLedgers,
+  saveReceiptData,
   type SavedDownload,
 } from './sync-store';
 import { updateCustomers, type UpdateOutcome } from './update-customers';
 import { uploadCustomers, type UploadOutcome } from './upload-customers';
 import { uploadOrders, type OrderOutcome } from './upload-orders';
+import { uploadReceipts, type ReceiptOutcome } from './upload-receipts';
 import { uploadVisits, type VisitOutcome } from './upload-visits';
 import { createVkNexClient, type ApiError, type CustomerOptions } from './vk-nex-api';
 
-export type SyncStep = 'signIn' | 'masters' | 'upload' | 'update' | 'orders' | 'visits' | 'download' | 'items' | 'ledger';
+export type SyncStep = 'signIn' | 'masters' | 'upload' | 'update' | 'orders' | 'visits' | 'receipts' | 'download' | 'items' | 'receiptData' | 'ledger';
 
 export interface SyncReport {
   outcomes: UploadOutcome[];
@@ -46,6 +52,8 @@ export interface SyncReport {
   /** Orders and check-ins sent (absent when the run stopped before them). */
   orders?: OrderOutcome[];
   visits?: VisitOutcome[];
+  /** Receipts sent (absent when the run stopped before them). */
+  receipts?: ReceiptOutcome[];
   /**
    * VK Nex refused the phone itself for orders / check-ins (403: not registered on the Device List
    * screen, blocked, switched off). Those wait; the downloads still ran.
@@ -57,6 +65,10 @@ export interface SyncReport {
   items?: { companies: number; items: number };
   /** Why the items did not come; the phone keeps the ones it had. Reported apart from stoppedBy. */
   itemsStoppedBy?: unknown;
+  /** Tenders and open bills brought for receipts (companies read, bills). */
+  receiptData?: { companies: number; bills: number };
+  /** Why they did not come; the phone keeps what it had. */
+  receiptDataStoppedBy?: unknown;
   /** VK Nex's customers brought to the phone; absent when the run stopped before that step. */
   downloaded?: SavedDownload & { skipped: number };
   /** Ledgers brought (this and last financial year): customers read and skipped. */
@@ -94,9 +106,10 @@ let running: Promise<SyncReport> | null = null;
 /**
  * Sync, started by the salesman: sign in to VK Nex, bring its areas, customer groups and price
  * levels, send every customer added on the phone (POST /mobile/customers/create), every edit
- * (PUT /mobile/customers/update), every order (POST /mobile/orders/create) and every check-in
- * (POST /mobile/visits/create) — each marked synced as soon as VK Nex has it — then bring all of
- * VK Nex's customers to the phone, its companies and items with prices and stock, and last the
+ * (PUT /mobile/customers/update), every order (POST /mobile/orders/create), every check-in
+ * (POST /mobile/visits/create) and every receipt (POST /mobile/receipts/create) — each marked
+ * synced as soon as VK Nex has it — then bring all of VK Nex's customers to the phone, its
+ * companies and items with prices and stock, each company's tenders and open bills, and last the
  * ledgers for this and last financial year. Customers go before orders and check-ins, which then
  * name them by VK Nex's id. Only one run at a time; a second tap joins it.
  */
@@ -170,6 +183,20 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
       if (checkIns.stoppedBy) return { ...sent, stoppedBy: checkIns.stoppedBy, stoppedAt: 'visits' };
     }
 
+    // Receipts, posted by VK Nex as they arrive. Bills must go before them once the phone sends
+    // bills, so that today's bill is open when VK Nex fills the oldest bills.
+    if (!sent.sendRefusedBy) {
+      onStep('receipts', 0, 0);
+      const rcts = await uploadReceipts(pendingReceipts(), {
+        create: (p) => api.createReceipt(p),
+        markSynced: markReceiptSynced,
+        markRefused: markReceiptRefused,
+        onProgress: (done, total) => onStep('receipts', done, total),
+      });
+      sent = { ...sent, receipts: rcts.outcomes, sendRefusedBy: rcts.refusedBy };
+      if (rcts.stoppedBy) return { ...sent, stoppedBy: rcts.stoppedBy, stoppedAt: 'receipts' };
+    }
+
     let downloaded: SyncReport['downloaded'];
     try {
       const got = await downloadCustomers(
@@ -208,6 +235,27 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
       itemsStoppedBy = e;
     }
     sent = { ...sent, items, itemsStoppedBy };
+
+    // Tenders and open bills for the Receipt screens, after the receipts went (VK Nex's figures
+    // then include them). A failure keeps the phone's old ones and goes on to the ledgers.
+    try {
+      onStep('receiptData', 0, 0);
+      const got = await downloadReceiptData(
+        companiesQuery()
+          .all()
+          .map((c) => c.id),
+        {
+          options: (companyId) => api.receiptOptions(companyId),
+          openBillsPage: (companyId, page) => api.openBillsPage(companyId, page),
+          onProgress: (done, total) => onStep('receiptData', done, total),
+        },
+        new Date().toISOString(),
+      );
+      saveReceiptData(got);
+      sent = { ...sent, receiptData: { companies: got.companyIds.length, bills: got.bills.length } };
+    } catch (e) {
+      sent = { ...sent, receiptDataStoppedBy: e };
+    }
 
     try {
       const today = todayISO();

@@ -45,7 +45,7 @@ export const companyQuery = (id: string) => db.select({ id: companies.id, name: 
  * Every unit orderable in a company, one row each (as the Qt app listed them), by item name with
  * the default unit first. Units VK Nex has no price for are left out.
  */
-const orderItemColumns = {
+export const orderItemColumns = {
   iucId: itemUnits.iucId,
   itemId: itemMaster.itemId,
   itemCode: itemMaster.itemCode,
@@ -193,6 +193,11 @@ export function saveOrder(
 
 export type VisitReason = 'shopClosed' | 'noOrder' | 'shopBusy' | 'ownerAway' | 'paymentPending' | 'nextVisit';
 export const VISIT_REASONS: readonly VisitReason[] = ['shopClosed', 'noOrder', 'shopBusy', 'ownerAway', 'paymentPending', 'nextVisit'];
+/**
+ * Why nothing was collected (Receipt's "No collection" check-in), as VK Nex's visit reason codes:
+ * it has no collection reasons of its own, so "Will pay next visit" goes as paymentPending.
+ */
+export const COLLECTION_REASONS: readonly VisitReason[] = ['shopClosed', 'ownerAway', 'paymentPending'];
 
 export interface VisitFix {
   latitude: number;
@@ -202,11 +207,12 @@ export interface VisitFix {
 }
 
 /**
- * Save visit (Check in, no order): waits for the next Sync. The shop shows as "No order" on the
- * customer list, unless an order was already taken there on this trip.
+ * Save visit (Check in): waits for the next Sync. After a "no order" check-in the shop shows as
+ * "No order" on the customer list, unless an order was already taken there on this trip; a "no
+ * collection" check-in leaves the shop's status alone.
  */
 export function saveVisit(
-  v: { customerId: string; companyId: string | null; reason: VisitReason; remarks: string; fix: VisitFix | null },
+  v: { customerId: string; companyId: string | null; reason: VisitReason; remarks: string; fix: VisitFix | null; kind?: 'order' | 'collection' },
   userId: string,
 ): string {
   const id = uuidv7();
@@ -227,6 +233,7 @@ export function saveVisit(
         appPendingUpload: true,
       })
       .run();
+    if (v.kind === 'collection') return;
     tx.update(customers)
       .set({ appOrderStatus: 'no_order' })
       .where(and(eq(customers.cusId, v.customerId), or(isNull(customers.appOrderStatus), ne(customers.appOrderStatus, 'ordered'))))
