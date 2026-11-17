@@ -44,10 +44,13 @@ import type { CreatedOrder, CreatedReceipt, CreatedVisit, CustomerOptions, ItemO
 export function getServerAddress(): ServerAddress | null {
   const host = getMeta('serverHost');
   const port = getMeta('serverPort');
-  return host && port ? { host, port } : null;
+  // Saved before https was possible: no scheme means http.
+  const scheme = getMeta('serverScheme') === 'https' ? 'https' : 'http';
+  return host && port ? { scheme, host, port } : null;
 }
 
 export function saveServerAddress(a: ServerAddress): void {
+  setMeta('serverScheme', a.scheme);
   setMeta('serverHost', a.host);
   setMeta('serverPort', a.port);
 }

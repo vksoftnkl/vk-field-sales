@@ -38,6 +38,9 @@ const config: ExpoConfig = {
     // Sync talks to the VK Nex server PC over plain HTTP on the office LAN; Android 9+ blocks
     // that unless it is allowed here. Needs a new build (Expo Go already allows it).
     ['expo-build-properties', { android: { usesCleartextTraffic: true } }],
+    // Sync can also use https (VK Nex port 3011): trusts certificates installed on the phone, and
+    // keeps plain HTTP allowed. See the file for how to install the server's certificate.
+    './plugins/with-network-security.js',
   ],
   experiments: {
     typedRoutes: true,

@@ -174,3 +174,20 @@ test('download reads every page of every company', async () => {
   );
   assert.equal(got.tenders.length, 2);
 });
+
+test('an older VK Nex without the receipts route: every receipt waits, none is marked refused', async () => {
+  const refused: string[] = [];
+  const missing = new ApiError(404, 'Cannot POST /api/v1/mobile/receipts/create', [{ field: 'request', code: 'HTTP_404', message: 'Cannot POST /api/v1/mobile/receipts/create' }]);
+  const r = await uploadReceipts([receipt('a'), receipt('b')], {
+    create: async () => Promise.reject(missing),
+    markSynced: () => {},
+    markRefused: (id) => refused.push(id),
+  });
+  assert.ok(r.routeMissing);
+  assert.deepEqual(refused, []);
+  // A real refusal of one receipt (VK Nex's own code) is still per receipt.
+  const party = new ApiError(404, 'Party not found', [{ code: 'VCH_PARTY_NOT_FOUND', message: 'Party not found' }]);
+  const one = await uploadReceipts([receipt('c')], { create: async () => Promise.reject(party), markSynced: () => {}, markRefused: (id) => refused.push(id) });
+  assert.equal(one.routeMissing, undefined);
+  assert.deepEqual(refused, ['c']);
+});

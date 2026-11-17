@@ -10,6 +10,9 @@ const isApi = (e: unknown): e is ApiError => (e as { kind?: unknown } | null)?.k
 const isRecordRefusal = (e: unknown): e is ApiError => isApi(e) && [400, 404, 409, 422].includes(e.status);
 const isDeviceRefusal = (e: unknown): e is ApiError => isApi(e) && e.status === 403;
 const reasonText = (e: ApiError) => (e.code ? `${e.code}: ${e.message}` : e.message);
+/** As isRouteMissing in vk-nex-api.ts: VK Nex is older than the phone and has no receipts route. */
+const isRouteMissing = (e: unknown): e is ApiError =>
+  isApi(e) && e.status === 404 && (e.code === 'HTTP_404' || /^Cannot (GET|POST|PUT|DELETE) /.test(e.message));
 
 export type ReceiptHeader = typeof receipts.$inferSelect;
 export type ReceiptTenderLine = typeof receiptTenders.$inferSelect;
@@ -75,7 +78,14 @@ export interface ReceiptOutcome {
   /** VK Nex's number and status once it has the receipt. */
   voucherRefno?: string | null;
   voucherStatus?: string;
+  /** What VK Nex kept on account after filling the oldest bills (rupees, text). */
+  onAccount?: string | null;
   error?: string;
+}
+
+export interface ReceiptSendResult extends SendResult<ReceiptOutcome> {
+  /** VK Nex has no /mobile/receipts/create yet: every receipt waits, none is marked refused. */
+  routeMissing?: ApiError;
 }
 
 export interface ReceiptUploadDeps {
@@ -89,7 +99,7 @@ export interface ReceiptUploadDeps {
  * Sends every waiting receipt, oldest first, as orders are sent. A resend after a lost answer is
  * safe: VK Nex answers the receipt it saved before (duplicate), marked synced the same way.
  */
-export async function uploadReceipts(pending: readonly PendingReceipt[], deps: ReceiptUploadDeps): Promise<SendResult<ReceiptOutcome>> {
+export async function uploadReceipts(pending: readonly PendingReceipt[], deps: ReceiptUploadDeps): Promise<ReceiptSendResult> {
   const outcomes: ReceiptOutcome[] = [];
   for (const [i, r] of pending.entries()) {
     deps.onProgress?.(i, pending.length);
@@ -108,8 +118,10 @@ export async function uploadReceipts(pending: readonly PendingReceipt[], deps: R
         status: created.duplicate ? 'alreadySaved' : 'uploaded',
         voucherRefno: created.avhVoucherRefno,
         voucherStatus: created.avhVoucherStatus,
+        onAccount: created.onAccount ?? null,
       });
     } catch (e) {
+      if (isRouteMissing(e)) return { outcomes, routeMissing: e };
       if (isDeviceRefusal(e)) return { outcomes, refusedBy: e };
       if (!isRecordRefusal(e)) return { outcomes, stoppedBy: e };
       deps.markRefused(localId, reasonText(e));

@@ -134,10 +134,12 @@
     "back": "Back to customers",
     "serverTitle": "Server",
     "address": "Server address",
-    "addressInvalid": "Enter the server PC's address, e.g. 192.168.1.10 or 192.168.1.10:3012",
+    "addressPlaceholder": "192.168.1.10:3012 or https://192.168.1.10:3011",
+    "addressInvalid": "Enter the server PC's address, e.g. 192.168.1.10:3012, or https://192.168.1.10:3011 for HTTPS",
     "test": "Test connection",
     "connected": "VK Nex is answering at {{address}}.",
     "noAnswer": "No answer from VK Nex at {{address}}. Check that the phone is on the office Wi-Fi and the server PC is on.",
+    "noAnswerHttps": "No answer from VK Nex at {{address}}. Check that the phone is on the office Wi-Fi and the server PC is on. For https, the phone must also trust the server's certificate (install it once in the phone's settings), or use the plain address, e.g. 192.168.1.10:3012.",
     "server": "VK Nex says: {{message}}",
     "signInTitle": "VK Nex sign-in",
     "signsInAs": "Signs in to VK Nex as {{name}}, with your phone password.",
@@ -213,7 +215,11 @@
     "receiptAlreadySaved": "Already on VK Nex as {{refno}} ({{status}})",
     "receiptDataDone": "Payment types and {{bills}} open bills brought for {{companies}} companies",
     "receiptDataFailed": "Payment types and open bills were not brought; the phone keeps the ones it had: {{message}}",
-    "tagReceiptNo": "Receipt {{no}}"
+    "tagReceiptNo": "Receipt {{no}}",
+    "receiptsRefused": "VK Nex did not take receipts from this login; they wait on the phone. The VK Nex user needs the Post right on Receipt: {{message}}",
+    "receiptOnAccount": "{{amount}} kept on account",
+    "receiptsNotOnServer": "VK Nex at this address doesn't take receipts from phones yet (its server needs updating). Receipts wait on the phone.",
+    "receiptDataNotOnServer": "VK Nex at this address doesn't send payment types and open bills yet (its server needs updating). The phone keeps the ones it had."
   },
   "common": {
     "error": "Something went wrong",

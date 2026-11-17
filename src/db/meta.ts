@@ -8,12 +8,12 @@ import { deviceMeta } from './schema';
  *  - lastUserId: salesman picked last time, pre-selected on the login screen.
  *  - lastBeatIds: beats ticked last time on the customer list, comma-separated ('' = all beats).
  *  - companyId: company new bills and receipts are made for (Choose company).
- *  - serverHost, serverPort: where the VK Nex server PC is (Sync page).
+ *  - serverScheme, serverHost, serverPort: where the VK Nex server PC is (Sync page); scheme http or https (none saved = http).
  *  - ledgerSyncedAt: when Sync last saved the ledgers (ISO time); screens showing balances re-read on it.
  *  - deviceUid: this phone's VK Nex device uid ('VKSMAN-…'), made once; registered on VK Nex's Device List.
  *  - itemsSyncedAt: when Sync last saved the items (ISO time).
  */
-export type MetaKey = 'lastUserId' | 'lastBeatIds' | 'companyId' | 'serverHost' | 'serverPort' | 'ledgerSyncedAt' | 'deviceUid' | 'itemsSyncedAt';
+export type MetaKey = 'lastUserId' | 'lastBeatIds' | 'companyId' | 'serverScheme' | 'serverHost' | 'serverPort' | 'ledgerSyncedAt' | 'deviceUid' | 'itemsSyncedAt';
 
 export function getMeta(key: MetaKey): string | null {
   const row = db.select().from(deviceMeta).where(eq(deviceMeta.key, key)).get();

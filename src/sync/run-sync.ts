@@ -54,6 +54,10 @@ export interface SyncReport {
   visits?: VisitOutcome[];
   /** Receipts sent (absent when the run stopped before them). */
   receipts?: ReceiptOutcome[];
+  /** VK Nex refused receipts from this login (403, e.g. no Post right on Receipt, menu 99). They wait. */
+  receiptsRefusedBy?: ApiError;
+  /** VK Nex has no receipts route yet (older build on this port). They wait. */
+  receiptsRouteMissing?: boolean;
   /**
    * VK Nex refused the phone itself for orders / check-ins (403: not registered on the Device List
    * screen, blocked, switched off). Those wait; the downloads still ran.
@@ -193,7 +197,7 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
         markRefused: markReceiptRefused,
         onProgress: (done, total) => onStep('receipts', done, total),
       });
-      sent = { ...sent, receipts: rcts.outcomes, sendRefusedBy: rcts.refusedBy };
+      sent = { ...sent, receipts: rcts.outcomes, receiptsRefusedBy: rcts.refusedBy, receiptsRouteMissing: !!rcts.routeMissing };
       if (rcts.stoppedBy) return { ...sent, stoppedBy: rcts.stoppedBy, stoppedAt: 'receipts' };
     }
 

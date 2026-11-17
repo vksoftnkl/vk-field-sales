@@ -39,6 +39,14 @@ export class NetworkError extends Error {
 }
 
 export const isApiError = (e: unknown): e is ApiError => (e as { kind?: unknown } | null)?.kind === 'api';
+
+/**
+ * VK Nex has no such route: it is older than the phone (e.g. the phone port 3012 still runs the
+ * build from before /mobile/receipts). Nest answers 404 'Cannot POST …' (code HTTP_404), unlike a
+ * refusal of one record, which carries VK Nex's own code.
+ */
+export const isRouteMissing = (e: unknown): e is ApiError =>
+  isApiError(e) && e.status === 404 && (e.code === 'HTTP_404' || /^Cannot (GET|POST|PUT|DELETE) /.test(e.message));
 export const isNetworkError = (e: unknown): e is NetworkError => (e as { kind?: unknown } | null)?.kind === 'network';
 
 export interface ServerCredentials {

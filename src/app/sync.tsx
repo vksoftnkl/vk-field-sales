@@ -16,7 +16,7 @@ import { runSync, testConnection, type SyncReport, type SyncStep } from '@/sync/
 import { formatServerAddress, parseServerAddress } from '@/sync/server-address';
 import { isLedgerStepError } from '@/sync/download-ledgers';
 import { getDeviceUid, getServerAddress, saveServerAddress, waitingOrdersQuery, waitingToSendQuery, waitingVisitsQuery } from '@/sync/sync-store';
-import { isApiError, isNetworkError } from '@/sync/vk-nex-api';
+import { isApiError, isNetworkError, isRouteMissing } from '@/sync/vk-nex-api';
 import { colors, font, radius, spacing } from '@/theme';
 
 type Check = { ok: boolean; text: string } | null;
@@ -53,6 +53,9 @@ export default function SyncScreen() {
   const [deviceUid] = useState(getDeviceUid);
   const waitingCount = pending.length + waitingOrders.length + waitingVisits.length + waitingReceipts.length;
 
+  /** No answer from VK Nex; for https the cause may also be a certificate the phone doesn't trust. */
+  const noAnswer = (shown: string) => t(/^https:\/\//i.test(shown) ? 'sync.noAnswerHttps' : 'sync.noAnswer', { address: shown });
+
   /** Reads and saves the address box; null (with the error shown) when it is not usable. */
   const takeAddress = () => {
     const a = parseServerAddress(address);
@@ -75,7 +78,7 @@ export default function SyncScreen() {
       await testConnection(a);
       setCheck({ ok: true, text: t('sync.connected', { address: formatServerAddress(a) }) });
     } catch (e) {
-      setCheck({ ok: false, text: isNetworkError(e) ? t('sync.noAnswer', { address: formatServerAddress(a) }) : t('sync.server', { message: errorText(e) }) });
+      setCheck({ ok: false, text: isNetworkError(e) ? noAnswer(formatServerAddress(a)) : t('sync.server', { message: errorText(e) }) });
     } finally {
       setTesting(false);
     }
@@ -139,7 +142,7 @@ export default function SyncScreen() {
     const e = r.stoppedBy;
     if (!e) return null;
     if (e instanceof Error && e.message === 'NO_SIGN_IN') return t('sync.signInMissing');
-    if (isNetworkError(e)) return t('sync.noAnswer', { address });
+    if (isNetworkError(e)) return noAnswer(address);
     if (isApiError(e)) {
       if (r.stoppedAt === 'signIn' && e.status === 401) return t('sync.signInRefused', { name: getServerCredentials()?.loginName ?? '', message: e.message });
       if (e.status === 426) return t('sync.updateNeeded', { message: e.message });
@@ -154,7 +157,7 @@ export default function SyncScreen() {
     if (!e) return null;
     if (isLedgerStepError(e)) return e.code === 'NO_COMPANY' ? t('sync.ledgerNoCompany') : t('sync.ledgerNoYear');
     if (isApiError(e) && e.status === 403) return t('sync.ledgerNoRight');
-    if (isNetworkError(e)) return t('sync.noAnswer', { address });
+    if (isNetworkError(e)) return noAnswer(address);
     return t('sync.ledgerFailed', { message: errorText(e) });
   };
 
@@ -175,16 +178,23 @@ export default function SyncScreen() {
   const receiptData = report?.receiptData;
   const receiptDataStop = report?.receiptDataStoppedBy
     ? isNetworkError(report.receiptDataStoppedBy)
-      ? t('sync.noAnswer', { address })
-      : t('sync.receiptDataFailed', { message: errorText(report.receiptDataStoppedBy) })
+      ? noAnswer(address)
+      : isRouteMissing(report.receiptDataStoppedBy)
+        ? t('sync.receiptDataNotOnServer')
+        : t('sync.receiptDataFailed', { message: errorText(report.receiptDataStoppedBy) })
     : null;
   const items = report?.items;
   const itemsStop = report?.itemsStoppedBy
     ? isNetworkError(report.itemsStoppedBy)
-      ? t('sync.noAnswer', { address })
+      ? noAnswer(address)
       : t('sync.itemsFailed', { message: errorText(report.itemsStoppedBy) })
     : null;
   const deviceStop = report?.sendRefusedBy ? t('sync.deviceRefused', { message: errorText(report.sendRefusedBy) }) : null;
+  const receiptsStop = report?.receiptsRouteMissing
+    ? t('sync.receiptsNotOnServer')
+    : report?.receiptsRefusedBy
+      ? t('sync.receiptsRefused', { message: errorText(report.receiptsRefusedBy) })
+      : null;
   const hasResult =
     !!report &&
     (report.outcomes.length > 0 ||
@@ -200,7 +210,8 @@ export default function SyncScreen() {
       !!itemsStop ||
       !!receiptData ||
       !!receiptDataStop ||
-      !!deviceStop);
+      !!deviceStop ||
+      !!receiptsStop);
 
   return (
     <View style={st.root}>
@@ -226,7 +237,7 @@ export default function SyncScreen() {
                 setAddress(v);
                 setCheck(null);
               }}
-              placeholder="192.168.1.10:3012"
+              placeholder={t('sync.addressPlaceholder')}
               keyboardType="url"
               autoCapitalize="none"
               autoCorrect={false}
@@ -396,10 +407,12 @@ export default function SyncScreen() {
                         ? t(r.status === 'uploaded' ? 'sync.receiptUploaded' : 'sync.receiptAlreadySaved', { refno: r.voucherRefno ?? '', status: r.voucherStatus ?? '' })
                         : (r.error ?? '')
                     }
+                    note={ok && Number(r.onAccount) > 0 ? t('sync.receiptOnAccount', { amount: formatAmount(toPaise(r.onAccount) ?? 0) }) : undefined}
                   />
                 );
               })}
               {deviceStop ? <StatusLine ok={false} text={deviceStop} /> : null}
+              {receiptsStop ? <StatusLine ok={false} text={receiptsStop} /> : null}
               {got ? (
                 <View style={[st.item, report.outcomes.length === 0 && updates.length === 0 && orders.length === 0 && visits.length === 0 && st.itemFirst]}>
                   <Ionicons name="cloud-download-outline" size={20} color={colors.success} />
