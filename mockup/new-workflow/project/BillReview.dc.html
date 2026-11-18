@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bill review</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 1300px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 8px 10px; display: flex; align-items: center; gap: 2px">
+    <a href="Items.dc.html" aria-label="Back to items" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <h1 style="margin: 0; font-size: 19px; line-height: 24px; font-weight: 600">Bill review</h1>
+      <span style="font-size: 13px; line-height: 18px; color: #F3DADA">Sri Murugan Stores · Sales bill</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600">Bill details</h2>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+        <div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 13px; font-weight: 500; color: #44403C">Bill type</span><div style="height: 44px; display: flex; align-items: center; padding: 0 12px; border-radius: 10px; background: #F5F3F0; font-size: 15px; font-weight: 600">Credit</div></div>
+        <div style="display: flex; flex-direction: column; gap: 6px"><label for="gd" style="font-size: 13px; font-weight: 500; color: #44403C">Godown</label><select id="gd" style="height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 10px; font: inherit; font-size: 15px; color: #1C1917; background: #FFFFFF; min-width: 0"><option>Van godown</option><option>Main godown</option></select></div>
+      </div>
+      <span style="font-size: 13px; line-height: 18px; color: #57534E">Retail price · POS 33 Tamil Nadu, so CGST + SGST · Your ref 7D04/2627/00014. VK Nex gives the bill number at Sync.</span>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600">Schemes applied · 2</h2>
+      <div style="display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 20px"><span style="padding: 1px 8px; border-radius: 6px; background: #F8E8E8; color: #6B1515; font-size: 12px; font-weight: 600; white-space: nowrap">Free item</span><span><b>Buy 12 get 1</b> · Sunflower Oil 1 L → 1 pouch free</span></div>
+      <div style="display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 20px"><span style="padding: 1px 8px; border-radius: 6px; background: #F8E8E8; color: #6B1515; font-size: 12px; font-weight: 600; white-space: nowrap">5% off</span><span><b>Tea fest</b> · Tea Powder 250 g → ₹35.40 off</span></div>
+      <span style="font-size: 12px; line-height: 16px; color: #57534E">Auto-apply schemes from VK Nex, matched to this shop, item, date and bill type.</span>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; overflow: hidden">
+      <h2 style="margin: 0; padding: 12px 16px 6px; font-size: 15px; font-weight: 600">Items · 3 lines</h2>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid #F1EDE4"><span style="flex: 1; display: flex; flex-direction: column"><b style="font-size: 14px; font-weight: 600">Sunflower Oil 1 L</b><span style="font-size: 13px; color: #57534E">12 × 155.00 · GST 5%</span></span><b style="font-size: 14px; font-variant-numeric: tabular-nums">1,953.00</b></div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid #F1EDE4"><span style="flex: 1; display: flex; flex-direction: column"><b style="font-size: 14px; font-weight: 600">Sunflower Oil 1 L <span style="margin-left: 4px; padding: 1px 6px; border-radius: 6px; background: #DCFCE7; color: #166534; font-size: 11px; font-weight: 700">FREE · SCHEME</span></b><span style="font-size: 13px; color: #57534E">1 pouch</span></span><b style="font-size: 14px; font-variant-numeric: tabular-nums">0.00</b></div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid #F1EDE4"><span style="flex: 1; display: flex; flex-direction: column"><b style="font-size: 14px; font-weight: 600">Tea Powder 250 g</b><span style="font-size: 13px; color: #57534E">6 × 118.00 · Sch 5% · GST 5%</span></span><b style="font-size: 14px; font-variant-numeric: tabular-nums">706.23</b></div>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-variant-numeric: tabular-nums">
+      <div style="display: flex; justify-content: space-between"><span style="color: #44403C">Gross</span><span>2,568.00</span></div>
+      <div style="display: flex; justify-content: space-between"><span style="color: #44403C">Scheme disc</span><span>−35.40</span></div>
+      <div style="display: flex; justify-content: space-between"><span style="color: #44403C">Taxable</span><span>2,532.60</span></div>
+      <div style="display: flex; justify-content: space-between"><span style="color: #44403C">CGST</span><span>63.32</span></div>
+      <div style="display: flex; justify-content: space-between"><span style="color: #44403C">SGST</span><span>63.31</span></div>
+      <div style="display: flex; justify-content: space-between"><span style="color: #44403C">Round off</span><span>−0.23</span></div>
+      <div style="display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid #E7E5E4; padding-top: 8px; margin-top: 2px"><b>BILL TOTAL</b><b style="font-size: 20px; color: #8B1D1D">₹2,659.00</b></div>
+    </section>
+
+    <section role="alert" style="background: #FFFFFF; border: 1.5px solid #B91C1C; border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; align-items: baseline; justify-content: space-between"><h2 style="margin: 0; font-size: 15px; font-weight: 600; color: #991B1B">Credit check</h2><span style="font-size: 12px; color: #57534E">VK Nex mode: Refuse</span></div>
+      <div style="display: flex; gap: 8px; align-items: center; font-size: 14px"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg><span>Amount ₹41,109.00 of ₹50,000.00</span></div>
+      <div style="display: flex; gap: 8px; align-items: center; font-size: 14px"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg><span>Open bills 4 of 5</span></div>
+      <div style="display: flex; gap: 8px; align-items: center; font-size: 14px; color: #991B1B"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg><span><b>Oldest bill 46 days</b> · credit days 30</span></div>
+      <span style="font-size: 13px; line-height: 18px; color: #991B1B">VK Nex would refuse this credit bill. Collect the 02 Oct bill (₹12,350.00) first, or take a Sales order instead.</span>
+    </section>
+  </div>
+
+  <footer style="background: #FFFFFF; border-top: 1px solid #E7E5E4; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; gap: 10px">
+      <a href="Receipt.dc.html" style="flex: 1; height: 48px; border-radius: 12px; border: 1px solid #8B1D1D; background: #FFFFFF; color: #8B1D1D; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; text-decoration: none">Collect payment</a>
+      <button type="button" disabled style="flex: 1; height: 48px; border: 0; border-radius: 12px; background: #E7E5E4; color: #57534E; font: inherit; font-size: 16px; font-weight: 600">Save bill</button>
+    </div>
+    <span style="font-size: 12px; line-height: 16px; color: #57534E; text-align: center">Once a receipt clears the old bill, Save works. VK Nex posts the bill at Sync.</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1300}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

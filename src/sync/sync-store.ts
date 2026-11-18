@@ -4,6 +4,7 @@ import { db } from '@/db/client';
 import { getMeta, setMeta } from '@/db/meta';
 import {
   beats,
+  branches,
   companies,
   customerBills,
   customers,
@@ -27,6 +28,7 @@ import {
 } from '@/db/schema';
 
 import { makeDeviceUid } from './device-uid';
+import type { BranchRow } from './download-branches';
 import type { DownloadedCustomer } from './download-customers';
 import type { ItemDownload } from './download-items';
 import type { LedgerDownload } from './download-ledgers';
@@ -481,6 +483,17 @@ export function saveItemOptions(o: ItemOptions): void {
         .values(brands.slice(i, i + CHUNK).map((b, k) => ({ brandId: b.id, brandName: b.name, brandSort: i + k + 1 })))
         .run();
     }
+  });
+}
+
+/**
+ * Every company's branches, replaced in one transaction: all companies were read, or nothing is
+ * saved and the phone keeps its old branches.
+ */
+export function saveBranches(d: { companyIds: readonly string[]; rows: readonly BranchRow[] }): void {
+  db.transaction((tx) => {
+    tx.delete(branches).run();
+    for (let i = 0; i < d.rows.length; i += CHUNK) tx.insert(branches).values(d.rows.slice(i, i + CHUNK)).run();
   });
 }
 

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Today</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 8px 12px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; align-items: center; gap: 2px">
+      <a href="Menu.dc.html" aria-label="Open menu" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></a>
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+        <h1 style="margin: 0; font-size: 19px; line-height: 24px; font-weight: 600">Today</h1>
+        <span style="font-size: 13px; line-height: 18px; color: #F3DADA">Acme Foods · Tue 17 Nov</span>
+      </div>
+      <a href="Sync.dc.html" aria-label="Sync, 8 to send" style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF">
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>
+        <span aria-hidden="true" style="position: absolute; top: 4px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: #C9A227; color: #1C1917; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">8</span>
+      </a>
+    </div>
+    <div style="margin: 0 8px; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 10px; background: #FFFFFF; color: #57534E">
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>
+      <input id="q" aria-label="Search shops" placeholder="Search shop, mobile, GSTIN or bill no" style="flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 15px; color: #1C1917; background: transparent">
+    </div>
+  </header>
+
+  <div style="display: flex; gap: 8px; padding: 12px 16px 8px; overflow: hidden">
+    <a href="Filters.dc.html" style="height: 34px; padding: 0 12px; display: flex; align-items: center; gap: 6px; border-radius: 17px; border: 1px solid #8B1D1D; background: #F8E8E8; color: #8B1D1D; font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap">Beat: Rasipuram Road</a>
+    <a href="Filters.dc.html" style="height: 34px; padding: 0 12px; display: flex; align-items: center; gap: 6px; border-radius: 17px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font-size: 13px; text-decoration: none; white-space: nowrap">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filter</a>
+    <button type="button" style="height: 34px; padding: 0 12px; display: flex; align-items: center; border-radius: 17px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 13px; white-space: nowrap">Sort: Route</button>
+  </div>
+
+  <div style="margin: 0 16px 10px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+    <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column"><span style="font-size: 12px; color: #57534E">Visited</span><b style="font-size: 16px">4 of 12</b></div>
+    <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column"><span style="font-size: 12px; color: #57534E">Ordered</span><b style="font-size: 16px; font-variant-numeric: tabular-nums">₹6,210</b></div>
+    <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column"><span style="font-size: 12px; color: #57534E">Collected</span><b style="font-size: 16px; font-variant-numeric: tabular-nums">₹4,150</b></div>
+  </div>
+
+  <div style="flex: 1; overflow: hidden; border-top: 1px solid #E7E5E4; background: #FFFFFF">
+    <sc-for list="{{shops}}" as="c" hint-placeholder-count="7">
+      <a href="Customer.dc.html" style="display: flex; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F1EDE4; text-decoration: none; color: #1C1917">
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 15px; font-weight: 600">{{c.name}}</span>
+          <span style="font-size: 13px; color: #57534E">{{c.place}}</span>
+          <sc-if value="{{c.overdue}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; font-weight: 600; color: #B91C1C">{{c.overdue}}</span></sc-if>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px">
+          <span style="font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums">{{c.due}}</span>
+          <span style="padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: {{c.bg}}; color: {{c.fg}}">{{c.status}}</span>
+        </div>
+      </a>
+    </sc-for>
+  </div>
+
+  <a href="CustomerForm.dc.html" style="position: absolute; right: 16px; bottom: 20px; height: 52px; padding: 0 18px 0 14px; display: flex; align-items: center; gap: 8px; border-radius: 26px; background: #8B1D1D; color: #FFFFFF; font-size: 15px; font-weight: 600; text-decoration: none; box-shadow: 0 4px 12px rgba(28, 25, 23, 0.25)">
+    <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New customer</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const S = {
+      notVisited: { status: 'Not visited', bg: '#E7E5E4', fg: '#44403C' },
+      ordered: { status: 'Ordered', bg: '#DBEAFE', fg: '#1E40AF' },
+      billed: { status: 'Billed', bg: '#DCFCE7', fg: '#166534' },
+      collected: { status: 'Collected', bg: '#EDE9FE', fg: '#5B21B6' },
+      noOrder: { status: 'No order', bg: '#FEF3C7', fg: '#92400E' }
+    };
+    return {
+      shops: [
+        { name: 'Sri Murugan Stores', place: '12, Rasipuram Road', due: '₹38,450.00', overdue: 'Overdue 16 days · ₹12,350.00', ...S.notVisited },
+        { name: 'Lakshmi Traders', place: 'Main Bazaar', due: '₹12,800.00', overdue: '', ...S.ordered },
+        { name: 'Annai Super Market', place: 'Bus Stand Road', due: '₹0.00', overdue: '', ...S.billed },
+        { name: 'Sakthi Provisions', place: 'Mill Street', due: '₹2,300.00', overdue: '', ...S.collected },
+        { name: 'Kumaran Stores', place: 'Kottai Road', due: '₹22,600.00', overdue: 'Overdue 8 days · ₹5,400.00', ...S.noOrder },
+        { name: 'New Balaji Agencies', place: 'Salem Road', due: '₹9,900.00', overdue: '', ...S.notVisited },
+        { name: 'Selvam Mini Mart', place: 'Park Road', due: '₹1,250.00', overdue: '', ...S.notVisited }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

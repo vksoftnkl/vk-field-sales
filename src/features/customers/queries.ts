@@ -66,6 +66,27 @@ export function customerListQuery(beatIds: readonly string[], typeIds: readonly 
     .orderBy(asc(beats.position), asc(beats.name), asc(customers.cusSortOrder), asc(customers.cusName));
 }
 
+/** Live shops of the ticked beats and types, in visiting order, with their address: Choose customer. */
+export const pickCustomersQuery = (beatIds: readonly string[], typeIds: readonly string[]) =>
+  db
+    .select({
+      cusId: customers.cusId,
+      cusCode: customers.cusCode,
+      cusName: customers.cusName,
+      cusShort: customers.cusShort,
+      cusAddr1: customers.cusAddr1,
+      cusAddr2: customers.cusAddr2,
+      cusAddr3: customers.cusAddr3,
+      cusCity: customers.cusCity,
+      cusPin: customers.cusPin,
+      cusPhone1: customers.cusPhone1,
+      cusPhone2: customers.cusPhone2,
+    })
+    .from(customers)
+    .leftJoin(beats, eq(beats.id, customers.cusAreaId))
+    .where(and(live(), inBeats(beatIds), ofTypes(typeIds)))
+    .orderBy(asc(beats.position), asc(beats.name), asc(customers.cusSortOrder), asc(customers.cusName));
+
 /** Shops per beat, for the beat sheet (all types). */
 export const beatCountsQuery = () =>
   db

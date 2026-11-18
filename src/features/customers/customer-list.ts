@@ -58,10 +58,20 @@ function passesQuick(c: CustomerRow, quick: QuickFilter): boolean {
  * name, short name, city (area), phones or code ("murugan namak" finds Sri Murugan Stores in Namakkal).
  */
 export function filterCustomers<T extends CustomerRow>(rows: readonly T[], query: string, quick: QuickFilter): T[] {
+  return searchCustomers(
+    rows.filter((c) => passesQuick(c, quick)),
+    query,
+  );
+}
+
+/** What the search box looks in. */
+export type SearchableCustomer = Pick<CustomerRow, 'cusName' | 'cusShort' | 'cusCity' | 'cusPhone1' | 'cusPhone2' | 'cusCode'>;
+
+/** The search box alone (Choose customer on a sales return has no quick filter). */
+export function searchCustomers<T extends SearchableCustomer>(rows: readonly T[], query: string): T[] {
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [...rows];
   return rows.filter((c) => {
-    if (!passesQuick(c, quick)) return false;
-    if (words.length === 0) return true;
     const hay = [c.cusName, c.cusShort, c.cusCity, c.cusPhone1, c.cusPhone2, c.cusCode].filter(Boolean).join(' ').toLocaleLowerCase();
     return words.every((w) => hay.includes(w));
   });

@@ -40,6 +40,25 @@ export const companies = sqliteTable('companies', {
   position: integer('position').notNull().default(0),
 });
 
+/**
+ * Branches of each company (VK Nex's branch_master), from Sync: with the companies in GET
+ * /mobile/items/options, else GET /master-lookups/branches/by-company/:id (https only). Switch
+ * company picks one, and pulls them again when a company has none; new orders are saved for it.
+ */
+export const branches = sqliteTable(
+  'branches',
+  {
+    id: text('id').primaryKey(),
+    companyId: text('company_id').notNull(),
+    name: text('name').notNull(),
+    /** VK Nex's order for the company's list. */
+    position: integer('position').notNull().default(0),
+    /** The company's default branch (br_is_default); Switch company starts on it (migration 0017). */
+    isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+  },
+  (t) => [index('ix_branches_company').on(t.companyId)],
+);
+
 /** Beats (routes / areas) a salesman covers, like the Qt app's area_master. */
 export const beats = sqliteTable('beats', {
   id: text('id').primaryKey(),
@@ -369,6 +388,11 @@ export const saleOrder = sqliteTable(
   {
     soId: text('so_id').primaryKey(),
     soCompanyId: text('so_company_id').notNull(),
+    /**
+     * The branch picked in Switch company when the order was taken (migration 0016); VK Nex saves
+     * the order there. Null on older orders: VK Nex then uses the phone's Device List branch.
+     */
+    soBranchId: text('so_branch_id'),
     soPriceLevel: integer('so_price_level'),
     /** YYYY-MM-DD and ISO time. */
     soOrderDate: text('so_order_date').notNull(),
@@ -394,6 +418,31 @@ export const saleOrder = sqliteTable(
     /** 'DRAFT' when VK Nex saved it; a resend reads the status VK Nex has by then. */
     soStatus: text('so_status'),
     soAccYear: text('so_acc_year'),
+    // Since the 3b workflow (migration 0015). Null on orders saved before it; the upload then
+    // leaves the key out and VK Nex fills its default, as it did for those orders.
+    /** The phone's own reference ('3F9A-181126-03'), shown until VK Nex numbers the order. */
+    soUsrRefno: text('so_usr_refno'),
+    /** 'CREDIT', or 'CASH' when the customer may not buy on credit. */
+    soOrderType: text('so_order_type'),
+    /** YYYY-MM-DD, never before the order date. */
+    soDeliveryDate: text('so_delivery_date'),
+    /** 'NORMAL' | 'URGENT' (urgent needs a remark). */
+    soPriority: text('so_priority'),
+    /** The order date + 30 days. */
+    soValidUntil: text('so_valid_until'),
+    /** The customer's promotion flag when the order was taken. */
+    soHasPromo: integer('so_has_promo', { mode: 'boolean' }),
+    soTaxableAmt: numeric('so_taxable_amt'),
+    soCgstAmt: numeric('so_cgst_amt'),
+    soSgstAmt: numeric('so_sgst_amt'),
+    soIgstAmt: numeric('so_igst_amt'),
+    soTaxAmt: numeric('so_tax_amt'),
+    soRoundOff: numeric('so_round_off'),
+    /** Phone only: the visit check-in (time and GPS) the order was taken at. Not sent yet. */
+    appCheckinAt: text('app_checkin_at'),
+    appCheckinLat: real('app_checkin_lat'),
+    appCheckinLng: real('app_checkin_lng'),
+    appCheckinAccuracyM: real('app_checkin_accuracy_m'),
     /** Phone only: VK Nex's order has no vehicle column (the Qt app put it in the remarks). */
     appVehicleNo: text('app_vehicle_no'),
     /** Not yet on VK Nex. */
@@ -431,8 +480,32 @@ export const saleOrderItem = sqliteTable(
     soiFreightAmt: numeric('soi_freight_amt').notNull(),
     soiLoadQty: numeric('soi_load_qty').notNull(),
     soiLoadAmt: numeric('soi_load_amt').notNull(),
-    /** Gross − discount (freight and cooly are on the order). */
+    /**
+     * The whole line: taxable + GST + its freight and cooly (VK Nex's meaning). Orders saved before
+     * migration 0015 hold gross − discount here.
+     */
     soiNetAmt: numeric('soi_net_amt').notNull(),
+    // Since the 3b workflow (migration 0015); null on older lines, which are then sent as before.
+    soiToBaseFactor: numeric('soi_to_base_factor'),
+    soiHsnCode: text('soi_hsn_code'),
+    soiTaxId: text('soi_tax_id'),
+    soiIsTaxIncl: integer('soi_is_tax_incl', { mode: 'boolean' }),
+    soiMinPrice: numeric('soi_min_price'),
+    soiTaxableAmt: numeric('soi_taxable_amt'),
+    soiTaxPerc: numeric('soi_tax_perc'),
+    soiTaxAmt: numeric('soi_tax_amt'),
+    soiCgstPerc: numeric('soi_cgst_perc'),
+    soiCgstAmt: numeric('soi_cgst_amt'),
+    soiSgstPerc: numeric('soi_sgst_perc'),
+    soiSgstAmt: numeric('soi_sgst_amt'),
+    soiIgstPerc: numeric('soi_igst_perc'),
+    soiIgstAmt: numeric('soi_igst_amt'),
+    /** Phone only: names as ordered, so My orders reads the same after a Sync changes the items. */
+    appItemName: text('app_item_name'),
+    appItemNameTa: text('app_item_name_ta'),
+    appUnitName: text('app_unit_name'),
+    /** Phone only: how the discount was typed: 'perc' | 'perUnit' | 'total'. */
+    appDiscMode: text('app_disc_mode'),
   },
   (t) => [index('ix_soi_order').on(t.soiOrderId), index('ix_soi_unit').on(t.soiItemUnitId)],
 );
@@ -550,6 +623,111 @@ export const saleBillItem = sqliteTable(
     sbiNetAmt: numeric('sbi_net_amt').notNull(),
   },
   (t) => [index('ix_sbi_bill').on(t.sbiBillId), index('ix_sbi_item').on(t.sbiItemId)],
+);
+
+/**
+ * Sales returns made on the phone (credit notes): a copy of VK Nex's sales.sale_return, only the
+ * columns the phone fills, same names. A phone return is a FREE return (sr_is_against_bill false:
+ * not tied to a bill line), priced at today's price, settled ADJUST (VK Nex sets it against the
+ * shop's open bills). The number is the phone's own series, 'R' + the bill series code.
+ *
+ * VK Nex has no route for phone returns yet (its lines also need a godown the phone doesn't
+ * have), so Sync does not send these: they stay on the phone with app_pending_upload set.
+ */
+export const saleReturn = sqliteTable(
+  'sale_return',
+  {
+    srId: text('sr_id').primaryKey(),
+    srCompanyId: text('sr_company_id').notNull(),
+    /** '2026-2027'. */
+    srAccYear: text('sr_acc_year').notNull(),
+    /** 'MOBILE' and the phone's device uid ('VKSMAN-…'). */
+    srDeviceType: text('sr_device_type').notNull(),
+    srDeviceId: text('sr_device_id').notNull(),
+    srDocType: text('sr_doc_type').notNull().default('CREDIT_NOTE'),
+    /** Serial in the phone's return series for this company and year, and the printed number. */
+    srReturnSlno: integer('sr_return_slno').notNull(),
+    srReturnRefno: text('sr_return_refno').notNull(),
+    /** YYYY-MM-DD and ISO time. */
+    srReturnDate: text('sr_return_date').notNull(),
+    srReturnDatetime: text('sr_return_datetime').notNull(),
+    srIsAgainstBill: integer('sr_is_against_bill', { mode: 'boolean' }).notNull().default(false),
+    srCustId: text('sr_cust_id').notNull(),
+    srCustName: text('sr_cust_name').notNull(),
+    srCustGstin: text('sr_cust_gstin'),
+    srCustStcd: text('sr_cust_stcd'),
+    srPriceLevel: integer('sr_price_level'),
+    /** The phone's salesman (users.id). */
+    srUserId: text('sr_user_id').notNull(),
+    srTotItems: integer('sr_tot_items').notNull(),
+    srTotBags: numeric('sr_tot_bags').notNull(),
+    srGrossAmt: numeric('sr_gross_amt').notNull(),
+    srTaxableAmt: numeric('sr_taxable_amt').notNull(),
+    srCgstAmt: numeric('sr_cgst_amt').notNull(),
+    srSgstAmt: numeric('sr_sgst_amt').notNull(),
+    srIgstAmt: numeric('sr_igst_amt').notNull(),
+    srTaxAmt: numeric('sr_tax_amt').notNull(),
+    srRoundOff: numeric('sr_round_off').notNull(),
+    srReturnAmt: numeric('sr_return_amt').notNull(),
+    /** VK Nex: CASH | ADJUST | ADVANCE. */
+    srSettleMode: text('sr_settle_mode').notNull().default('ADJUST'),
+    srCreatedOn: text('sr_created_on').notNull(),
+    /** Not yet on VK Nex. */
+    appPendingUpload: integer('app_pending_upload', { mode: 'boolean' }).notNull().default(true),
+    appSyncError: text('app_sync_error'),
+  },
+  (t) => [
+    index('ix_sr_cust').on(t.srCustId),
+    index('ix_sr_pending').on(t.appPendingUpload),
+    index('ix_sr_series').on(t.srCompanyId, t.srDeviceId, t.srAccYear, t.srReturnSlno),
+  ],
+);
+
+/** Lines of a phone return (VK Nex's sales.sale_return_item, the columns the phone fills). */
+export const saleReturnItem = sqliteTable(
+  'sale_return_item',
+  {
+    sriId: text('sri_id').primaryKey(),
+    sriReturnId: text('sri_return_id').notNull(),
+    sriLineNo: integer('sri_line_no').notNull(),
+    sriItemId: text('sri_item_id').notNull(),
+    sriItemUnitId: text('sri_item_unit_id').notNull(),
+    sriToBaseFactor: numeric('sri_to_base_factor').notNull(),
+    sriHsnCode: text('sri_hsn_code'),
+    sriTaxId: text('sri_tax_id'),
+    sriBatchNo: text('sri_batch_no'),
+    /** YYYY-MM-DD. */
+    sriBatchDate: text('sri_batch_date'),
+    sriExpiryDate: text('sri_expiry_date'),
+    /** DAMAGED | EXPIRED (VK Nex also has RESTOCK | SCRAP). */
+    sriCondition: text('sri_condition').notNull(),
+    /** The stock bucket it goes back to: the same word as the condition, so never saleable stock. */
+    sriBucket: text('sri_bucket').notNull(),
+    sriReturnQty: numeric('sri_return_qty').notNull(),
+    sriNetQty: numeric('sri_net_qty').notNull(),
+    sriRate: numeric('sri_rate').notNull(),
+    sriRatePreTax: numeric('sri_rate_pre_tax').notNull(),
+    sriMaxPrice: numeric('sri_max_price'),
+    sriPriceLevel: integer('sri_price_level').notNull(),
+    sriIsTaxIncl: integer('sri_is_tax_incl', { mode: 'boolean' }).notNull().default(false),
+    /** TODAY_PRICE: not against a bill, so the price is today's (VK Nex: BILL | LAST_SALE | TODAY_PRICE). */
+    sriRateSource: text('sri_rate_source').notNull().default('TODAY_PRICE'),
+    sriGrossAmt: numeric('sri_gross_amt').notNull(),
+    sriTaxableAmt: numeric('sri_taxable_amt').notNull(),
+    sriTaxPerc: numeric('sri_tax_perc').notNull(),
+    sriTaxAmt: numeric('sri_tax_amt').notNull(),
+    sriCgstPerc: numeric('sri_cgst_perc').notNull(),
+    sriCgstAmt: numeric('sri_cgst_amt').notNull(),
+    sriSgstPerc: numeric('sri_sgst_perc').notNull(),
+    sriSgstAmt: numeric('sri_sgst_amt').notNull(),
+    sriIgstPerc: numeric('sri_igst_perc').notNull(),
+    sriIgstAmt: numeric('sri_igst_amt').notNull(),
+    /** Taxable + GST. */
+    sriNetAmt: numeric('sri_net_amt').notNull(),
+    /** The salesman's notes on the line (VK Nex: 250 long). */
+    sriRemarks: text('sri_remarks'),
+  },
+  (t) => [index('ix_sri_return').on(t.sriReturnId)],
 );
 
 /**

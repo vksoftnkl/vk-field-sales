@@ -42,14 +42,11 @@ export default function CustomerDetailScreen() {
   const call = (n: string | null | undefined) => {
     if (n) void Linking.openURL(`tel:${n}`);
   };
-  const notYet = (item: string) => Alert.alert(t('common.notYetTitle'), t('customerDetail.notYet', { item }));
-  /** Order: straight to Order entry with one company, through Choose company with several. */
-  const startOrder = () => {
-    const list = companiesQuery().all();
-    if (list.length === 0) return Alert.alert(t('order.noCompaniesTitle'), t('order.noCompaniesText'));
-    if (list.length === 1) return router.push({ pathname: '/order/[customerId]', params: { customerId: id, companyId: list[0]!.id } });
-    router.push({ pathname: '/order/company/[customerId]', params: { customerId: id } });
-  };
+  /**
+   * Order and Check in both open the Visit (canvas 3b): it checks the salesman in, then offers
+   * Take order or No order, with the company choice there when there are several.
+   */
+  const startVisit = () => router.push({ pathname: '/order/visit/[customerId]', params: { customerId: id } });
   /** Receipt: VK Nex takes a receipt for one company, so with several the salesman picks one first. */
   const startReceipt = () => {
     const list = companiesQuery().all();
@@ -63,6 +60,13 @@ export default function CustomerDetailScreen() {
     const companyId = getMeta('companyId');
     if (!companyId) return Alert.alert(t('order.noCompaniesTitle'), t('order.noCompaniesText'));
     router.push({ pathname: '/sales/[customerId]', params: { customerId: id, companyId } });
+  };
+  /** Return: a credit note for the company picked on the phone, as bills are. */
+  const startReturn = () => {
+    ensureCurrentCompany();
+    const companyId = getMeta('companyId');
+    if (!companyId) return Alert.alert(t('order.noCompaniesTitle'), t('order.noCompaniesText'));
+    router.push({ pathname: '/sales-return/[customerId]', params: { customerId: id, companyId } });
   };
 
   const header = (
@@ -115,16 +119,11 @@ export default function CustomerDetailScreen() {
   ];
 
   const actions: { key: string; label: string; icon: IconName; primary?: boolean; onPress: () => void }[] = [
-    { key: 'order', label: t('customerDetail.order'), icon: 'clipboard-outline', onPress: startOrder },
+    { key: 'order', label: t('customerDetail.order'), icon: 'clipboard-outline', onPress: startVisit },
     { key: 'sales', label: t('customerDetail.sales'), icon: 'cart-outline', primary: true, onPress: startSale },
-    {
-      key: 'checkIn',
-      label: t('customerDetail.checkIn'),
-      icon: 'location-outline',
-      onPress: () => router.push({ pathname: '/checkin/[customerId]', params: { customerId: id } }),
-    },
+    { key: 'checkIn', label: t('customerDetail.checkIn'), icon: 'location-outline', onPress: startVisit },
     { key: 'receipt', label: t('customerDetail.receipt'), icon: 'receipt-outline', onPress: startReceipt },
-    { key: 'return', label: t('customerDetail.return'), icon: 'return-up-back-outline', onPress: () => notYet(t('customerDetail.return')) },
+    { key: 'return', label: t('customerDetail.return'), icon: 'return-up-back-outline', onPress: startReturn },
     {
       key: 'ledger',
       label: t('customerDetail.ledger'),

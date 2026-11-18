@@ -54,6 +54,14 @@ export interface ServerCredentials {
   password: string;
 }
 
+/** The VK Nex user a sign-in was for (POST /auth/login answers usrId and user_name). */
+export interface SignedInUser {
+  /** user_master.usr_id; null if VK Nex sent neither usrId nor a token with a sub. */
+  usrId: string | null;
+  /** usr_login_name, spelled as VK Nex keeps it. */
+  loginName: string;
+}
+
 export interface CustomerOptions {
   areas: { id: string; name: string; cityName: string | null }[];
   groups: { id: string; name: string }[];
@@ -78,6 +86,14 @@ export interface CustomerSearchRow {
 }
 
 /** A financial year of the company (GET /master-lookups/fiscal-years/by-company/:id). */
+/** A branch of a company (GET /master-lookups/branches/by-company/:id), in VK Nex's order. */
+export interface BranchOption {
+  id: string;
+  name: string;
+  /** Only /mobile/items/options says which branch is the company's default. */
+  isDefault?: boolean;
+}
+
 export interface FiscalYearOption {
   id: string;
   /** '2026-2027': the accYear of VK Nex's reports. */
@@ -134,6 +150,11 @@ export interface LedgerQuery {
 export interface ItemOptions {
   /** Active companies: the phone's Choose company list. */
   companies: { id: string; name: string; place: string | null }[];
+  /**
+   * The active branches of those companies, in VK Nex's order (since 2026-11-18; absent on an
+   * older VK Nex, which the phone then asks per company over https).
+   */
+  branches?: { id: string; name: string; companyId: string; isDefault: boolean }[];
   /** position = VK Nex's sort order; null = unsorted (after the sorted ones). */
   itemGroups: { id: string; name: string; position: number | null }[];
   brands: { id: string; name: string; position: number | null }[];
@@ -406,14 +427,18 @@ export function createVkNexClient(opts: VkNexClientOptions) {
     return data as T;
   }
 
-  async function login(): Promise<void> {
+  async function login(): Promise<SignedInUser> {
     const c = opts.credentials();
     if (!c) throw new ApiError(401, 'No VK Nex user to sign in with');
     const body: Record<string, string> = { usrLoginName: c.loginName, usrPassword: c.password, app_version: opts.appVersion, device_type: 'Mobile' };
     if (opts.deviceUid) body.device_id = opts.deviceUid;
-    const r = await call<{ access_token: string; device_id?: string | null }>('POST', '/auth/login', body, false);
+    const r = await call<{ access_token: string; device_id?: string | null; usrId?: unknown; user_name?: unknown }>('POST', '/auth/login', body, false);
     token = r.access_token;
     deviceId = typeof r.device_id === 'string' && r.device_id ? r.device_id : null;
+    // Without usrId in the answer, the token's sub is the same id.
+    const sub = readTokenClaims(r.access_token).sub;
+    const usrId = typeof r.usrId === 'string' && r.usrId ? r.usrId : typeof sub === 'string' && sub ? sub : null;
+    return { usrId, loginName: typeof r.user_name === 'string' && r.user_name ? r.user_name : c.loginName };
   }
 
   /** Signs in when needed, and once more if the token has run out mid-sync. */
@@ -456,6 +481,9 @@ export function createVkNexClient(opts: VkNexClientOptions) {
       const c = token ? readTokenClaims(token).company_id : null;
       return typeof c === 'string' && c ? c : null;
     },
+    /** The company's branches, for Switch company (the lookup the VK Nex desktop's Select Branch uses). */
+    branchesByCompany: (companyId: string) =>
+      authed<Envelope<BranchOption[]>>('GET', `/master-lookups/branches/by-company/${encodeURIComponent(companyId)}`).then((r) => r.data),
     fiscalYears: (companyId: string) =>
       authed<Envelope<FiscalYearOption[]>>('GET', `/master-lookups/fiscal-years/by-company/${encodeURIComponent(companyId)}`).then((r) => r.data),
     /** One page of a ledger's vouchers for a period inside one financial year (≤ 1000 a page). */

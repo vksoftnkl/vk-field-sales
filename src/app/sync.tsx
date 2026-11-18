@@ -6,9 +6,11 @@ import { useTranslation } from 'react-i18next';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { forgetRefusedLoginPassword } from '@/auth/auth-service';
 import { Button, PasswordField, TextField } from '@/components/ui';
 import { toPaise } from '@/features/orders/order-math';
 import { waitingReceiptsQuery } from '@/features/receipts/queries';
+import { waitingReturnsQuery } from '@/features/returns/queries';
 import { waitingBillsQuery } from '@/features/sales/queries';
 import { formatAmount } from '@/lib/money';
 import { getServerCredentials, setServerCredentials } from '@/sync/credentials';
@@ -49,6 +51,7 @@ export default function SyncScreen() {
   const { data: waitingOrders } = useLiveQuery(waitingOrdersQuery());
   const { data: waitingVisits } = useLiveQuery(waitingVisitsQuery());
   const { data: bills } = useLiveQuery(waitingBillsQuery());
+  const { data: returns } = useLiveQuery(waitingReturnsQuery());
   const { data: waitingReceipts } = useLiveQuery(waitingReceiptsQuery());
   const [deviceUid] = useState(getDeviceUid);
   const waitingCount = pending.length + waitingOrders.length + waitingVisits.length + waitingReceipts.length;
@@ -105,6 +108,8 @@ export default function SyncScreen() {
         return total ? t('sync.stepReceiptData', { n, total }) : t('sync.stepReceiptDataNone');
       case 'items':
         return total ? t('sync.stepItems', { n, total }) : t('sync.stepItemsNone');
+      case 'branches':
+        return t('sync.stepBranches');
       case 'download':
         return total ? t('sync.stepDownload', { n, total }) : t('sync.stepDownloadList');
       case 'ledger':
@@ -128,6 +133,8 @@ export default function SyncScreen() {
       setReport(r);
       // VK Nex refused the sign-in: let the salesman type the VK Nex user and password.
       if (r.stoppedAt === 'signIn' && isApiError(r.stoppedBy) && r.stoppedBy.status === 401) {
+        // If it was the login's own password, the phone stops accepting it too.
+        forgetRefusedLoginPassword();
         setShowSignIn(true);
         setPassword('');
       } else if (!r.stoppedBy) {
@@ -189,6 +196,12 @@ export default function SyncScreen() {
       ? noAnswer(address)
       : t('sync.itemsFailed', { message: errorText(report.itemsStoppedBy) })
     : null;
+  const branchesGot = report?.branches;
+  const branchesStop = report?.branchesStoppedBy
+    ? isNetworkError(report.branchesStoppedBy)
+      ? noAnswer(address)
+      : t('sync.branchesFailed', { message: errorText(report.branchesStoppedBy) })
+    : null;
   const deviceStop = report?.sendRefusedBy ? t('sync.deviceRefused', { message: errorText(report.sendRefusedBy) }) : null;
   const receiptsStop = report?.receiptsRouteMissing
     ? t('sync.receiptsNotOnServer')
@@ -208,6 +221,8 @@ export default function SyncScreen() {
       !!ledgerStop ||
       !!items ||
       !!itemsStop ||
+      !!branchesGot ||
+      !!branchesStop ||
       !!receiptData ||
       !!receiptDataStop ||
       !!deviceStop ||
@@ -311,6 +326,15 @@ export default function SyncScreen() {
               <Text style={st.note}>{t('sync.billsNote')}</Text>
               {bills.map((b) => (
                 <WaitingRow key={`b-${b.id}`} name={b.customerName} tag={`${b.refNo} · ${formatAmount(toPaise(b.amount) ?? 0)}`} error={null} />
+              ))}
+            </Card>
+          ) : null}
+
+          {returns.length > 0 ? (
+            <Card title={t('sync.returnsTitle', { n: returns.length })}>
+              <Text style={st.note}>{t('sync.returnsNote')}</Text>
+              {returns.map((r) => (
+                <WaitingRow key={`sr-${r.id}`} name={r.customerName} tag={`${r.refNo} · ${formatAmount(toPaise(r.amount) ?? 0)}`} error={null} />
               ))}
             </Card>
           ) : null}
@@ -432,6 +456,15 @@ export default function SyncScreen() {
                 </View>
               ) : null}
               {itemsStop ? <StatusLine ok={false} text={itemsStop} /> : null}
+              {branchesGot ? (
+                <View style={st.item}>
+                  <Ionicons name="git-branch-outline" size={20} color={colors.success} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemOk}>{t('sync.branchesReceived', { branches: branchesGot.branches, companies: branchesGot.companies })}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {branchesStop ? <StatusLine ok={false} text={branchesStop} /> : null}
               {receiptData ? (
                 <View style={st.item}>
                   <Ionicons name="receipt-outline" size={20} color={colors.success} />

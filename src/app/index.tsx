@@ -1,30 +1,26 @@
-import { asc, eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Keyboard, KeyboardAvoidingView, ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Pressable, ScrollView, Share, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { login } from '@/auth/auth-service';
-import { Button, PasswordField, SelectField, s, type SelectOption } from '@/components/ui';
-import { db } from '@/db/client';
-import { getMeta } from '@/db/meta';
-import { users } from '@/db/schema';
+import { lastLoginName, login, savedUsersQuery, type LoginResult } from '@/auth/auth-service';
+import { Button, PasswordField, SelectField, TextField, type SelectOption } from '@/components/ui';
+import { formatServerAddress, parseServerAddress } from '@/sync/server-address';
+import { getDeviceUid, getServerAddress, saveServerAddress } from '@/sync/sync-store';
 import { colors, font, radius, spacing } from '@/theme';
 
 /**
- * Login page — the app's start page. Like the old Qt app: pick your name, optionally a
- * second salesman (multi-user mode), and type your password. Checked on the phone.
+ * Login page — the app's start page. The salesman types their VK Nex login name and password.
+ * The first login on this phone is checked with VK Nex (POST /auth/login), so it needs the office
+ * Wi-Fi and the server address shown below the card; later logins are checked on the phone.
+ * As in the old Qt app, a second salesman can be added (multi-user mode).
+ * The phone's VK Nex device ID is shown here too, so the office can register it on VK Nex's
+ * Device List before the salesman ever logs in.
  */
 export default function LoginScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-
-  const { data: people } = useLiveQuery(
-    db.select({ id: users.id, name: users.displayName }).from(users).where(eq(users.isActive, true)).orderBy(asc(users.displayName)),
-  );
-  const options: SelectOption[] = useMemo(() => people.map((u) => ({ value: u.id, label: u.name })), [people]);
-  const hasUsers = options.length > 0;
 
   // Keep the card (password + Log in button) in view while the keyboard is open on small phones.
   // Scrolls when the ScrollView shrinks for the keyboard, i.e. after the padding below is applied.
@@ -44,24 +40,40 @@ export default function LoginScreen() {
     };
   }, []);
 
-  const [lastUserId] = useState(() => getMeta('lastUserId'));
-  const [picked, setPicked] = useState<string | null>(null);
-  const userId = picked ?? (lastUserId && options.some((o) => o.value === lastUserId) ? lastUserId : '');
+  const [deviceUid] = useState(getDeviceUid);
+  const shareDeviceUid = () => void Share.share({ message: deviceUid }).catch(() => undefined);
+
+  const [loginName, setLoginName] = useState(lastLoginName);
   const [secondId, setSecondId] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const secondOptions = useMemo(
-    () => [{ value: '', label: t('login.none') }, ...options.filter((o) => o.value !== userId)],
-    [options, userId, t],
+  // VK Nex server: needed only when VK Nex has to check the login (first login on this phone).
+  const [address, setAddress] = useState(getServerAddress);
+  const [editingAddress, setEditingAddress] = useState(() => getServerAddress() === null);
+  const [addressText, setAddressText] = useState(() => {
+    const a = getServerAddress();
+    return a ? formatServerAddress(a) : '';
+  });
+  const [addressError, setAddressError] = useState<string>();
+
+  // Second salesman: anyone else who has logged in on this phone before.
+  const { data: savedUsers } = useLiveQuery(savedUsersQuery());
+  const typed = loginName.trim().toLowerCase();
+  const secondOptions: SelectOption[] = useMemo(
+    () => [
+      { value: '', label: t('login.none') },
+      ...savedUsers.filter((u) => u.loginName.toLowerCase() !== typed).map((u) => ({ value: u.id, label: u.loginName })),
+    ],
+    [savedUsers, typed, t],
   );
+  // The picked second salesman is dropped if the name typed above becomes theirs.
+  const second = secondOptions.some((o) => o.value === secondId) ? secondId : '';
 
   // Any edit clears the last error, so it never describes a value that has since changed.
-  const pickSalesman = (id: string) => {
-    setPicked(id);
-    if (id === secondId) setSecondId('');
-    setPassword('');
+  const typeLoginName = (text: string) => {
+    setLoginName(text);
     setError(null);
   };
   const pickSecond = (id: string) => {
@@ -72,17 +84,55 @@ export default function LoginScreen() {
     setPassword(text);
     setError(null);
   };
+  const typeAddress = (text: string) => {
+    setAddressText(text);
+    setAddressError(undefined);
+    setError(null);
+  };
+
+  /** Saves a newly typed server address; false (with the error shown) when it is not usable. */
+  const takeAddress = (): boolean => {
+    if (!editingAddress || !addressText.trim()) return true;
+    const a = parseServerAddress(addressText);
+    if (!a) {
+      setAddressError(t('sync.addressInvalid'));
+      return false;
+    }
+    saveServerAddress(a);
+    setAddress(a);
+    setAddressText(formatServerAddress(a));
+    setEditingAddress(false);
+    return true;
+  };
+
+  const failText = (r: Exclude<LoginResult, { ok: true }>): string => {
+    switch (r.reason) {
+      case 'refused':
+        return t('login.refused');
+      case 'noServer':
+        return t('login.noServer');
+      case 'offline':
+        return t(r.known ? 'login.offlinePassword' : 'login.offlineFirst', { address: formatServerAddress(r.address) });
+      case 'server':
+        return r.status === 426 ? t('sync.updateNeeded', { message: r.message }) : t('sync.server', { message: r.message });
+    }
+  };
 
   const submit = async () => {
     if (busy) return; // the keyboard's Go key can fire while a check is running
     // Messages as in the old Qt app, so salesmen recognise them.
-    if (!userId) return setError(t('login.nameRequired'));
+    if (!loginName.trim()) return setError(t('login.nameRequired'));
     if (!password) return setError(t('login.passwordRequired'));
+    if (!takeAddress()) return;
     setBusy(true);
     setError(null);
     try {
       // On success Stack.Protected switches to the customer list by itself.
-      if (!(await login(userId, password, secondId || null))) setError(t('login.badPassword'));
+      const r = await login(loginName, password, second || null);
+      if (!r.ok) {
+        setError(failText(r));
+        if (r.reason === 'noServer') setEditingAddress(true);
+      }
     } catch {
       setError(t('common.error'));
     } finally {
@@ -112,35 +162,76 @@ export default function LoginScreen() {
 
         {/* White card overlapping the band */}
         <View style={st.card}>
-          {hasUsers ? (
-            <>
-              <SelectField
-                label={t('login.salesman')}
-                value={userId}
-                options={options}
-                onChange={pickSalesman}
-                placeholder={t('login.chooseSalesman')}
-                searchable
-              />
-              <SelectField label={t('login.secondSalesman')} value={secondId} options={secondOptions} onChange={pickSecond} searchable />
-              <PasswordField
-                label={t('login.password')}
-                value={password}
-                onChangeText={typePassword}
-                textContentType="password"
-                returnKeyType="go"
-                onSubmitEditing={() => void submit()}
-              />
-              {error ? (
-                <Text style={st.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
-                  {error}
-                </Text>
-              ) : null}
-              <Button title={t('login.submit')} onPress={() => void submit()} loading={busy} style={{ marginTop: spacing.sm }} />
-            </>
+          <TextField
+            label={t('login.loginName')}
+            value={loginName}
+            onChangeText={typeLoginName}
+            placeholder={t('login.loginNamePlaceholder')}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="username"
+            textContentType="username"
+          />
+          {secondOptions.length > 1 ? (
+            <SelectField label={t('login.secondSalesman')} value={second} options={secondOptions} onChange={pickSecond} searchable />
+          ) : null}
+          <PasswordField
+            label={t('login.password')}
+            value={password}
+            onChangeText={typePassword}
+            textContentType="password"
+            returnKeyType="go"
+            onSubmitEditing={() => void submit()}
+          />
+          {error ? (
+            <Text style={st.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+              {error}
+            </Text>
+          ) : null}
+          <Button title={t('login.submit')} onPress={() => void submit()} loading={busy} style={{ marginTop: spacing.sm }} />
+        </View>
+
+        {/* Where VK Nex is: the first login on this phone is checked there */}
+        <View style={st.device}>
+          {editingAddress ? (
+            <TextField
+              label={t('login.serverLabel')}
+              value={addressText}
+              onChangeText={typeAddress}
+              placeholder={t('sync.addressPlaceholder')}
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              error={addressError}
+            />
           ) : (
-            <Text style={s.body}>{t('login.noUsers')}</Text>
+            <>
+              <Text style={st.deviceLabel}>{t('login.serverLabel')}</Text>
+              <View style={st.deviceRow}>
+                <Text style={st.serverText} selectable>
+                  {address ? formatServerAddress(address) : ''}
+                </Text>
+                <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setEditingAddress(true)}>
+                  <Text style={st.link}>{t('login.changeServer')}</Text>
+                </Pressable>
+              </View>
+            </>
           )}
+          <Text style={st.deviceNote}>{t('login.serverNote')}</Text>
+        </View>
+
+        {/* This phone's ID, for the office to add on VK Nex's Device List */}
+        <View style={st.device}>
+          <Text style={st.deviceLabel}>{t('login.deviceLabel')}</Text>
+          <View style={st.deviceRow}>
+            <Text style={st.deviceUid} selectable accessibilityLabel={deviceUid.split('').join(' ')}>
+              {deviceUid}
+            </Text>
+            <Pressable accessibilityRole="button" hitSlop={8} onPress={shareDeviceUid}>
+              <Text style={st.link}>{t('login.shareDevice')}</Text>
+            </Pressable>
+          </View>
+          <Text style={st.deviceNote}>{t('login.deviceNote')}</Text>
         </View>
 
         <View style={{ flex: 1 }} />
@@ -187,6 +278,13 @@ const st = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
+  device: { marginTop: spacing.xl, marginHorizontal: spacing.lg + 4, paddingHorizontal: spacing.xs },
+  deviceLabel: { fontSize: font.sm, color: colors.textMuted },
+  deviceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, marginTop: spacing.xs },
+  deviceUid: { flexShrink: 1, fontSize: font.lg, fontWeight: '700', letterSpacing: 1, color: colors.text, fontVariant: ['tabular-nums'] },
+  deviceNote: { marginTop: spacing.xs, fontSize: font.sm, color: colors.textMuted },
+  serverText: { flexShrink: 1, fontSize: font.md, fontWeight: '600', color: colors.text },
+  link: { fontSize: font.sm, fontWeight: '700', color: colors.primary },
   error: { color: colors.danger, fontSize: font.sm, marginTop: -spacing.xs, marginBottom: spacing.xs },
   footer: { textAlign: 'center', fontSize: 12, color: colors.textMuted, paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
 });

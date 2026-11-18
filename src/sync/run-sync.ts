@@ -6,6 +6,7 @@ import { todayISO } from '@/lib/money';
 
 import { getServerCredentials } from './credentials';
 import { apiBaseUrl, type ServerAddress } from './server-address';
+import { branchesFromOptions, downloadBranches } from './download-branches';
 import { downloadCustomers } from './download-customers';
 import { downloadItems } from './download-items';
 import { downloadLedgers } from './download-ledgers';
@@ -28,6 +29,7 @@ import {
   pendingOrders,
   pendingReceipts,
   pendingVisits,
+  saveBranches,
   saveCustomerOptions,
   saveDownloadedCustomers,
   saveItemList,
@@ -41,9 +43,9 @@ import { uploadCustomers, type UploadOutcome } from './upload-customers';
 import { uploadOrders, type OrderOutcome } from './upload-orders';
 import { uploadReceipts, type ReceiptOutcome } from './upload-receipts';
 import { uploadVisits, type VisitOutcome } from './upload-visits';
-import { createVkNexClient, type ApiError, type CustomerOptions } from './vk-nex-api';
+import { createVkNexClient, type ApiError, type CustomerOptions, type ServerCredentials, type SignedInUser } from './vk-nex-api';
 
-export type SyncStep = 'signIn' | 'masters' | 'upload' | 'update' | 'orders' | 'visits' | 'receipts' | 'download' | 'items' | 'receiptData' | 'ledger';
+export type SyncStep = 'signIn' | 'masters' | 'upload' | 'update' | 'orders' | 'visits' | 'receipts' | 'download' | 'items' | 'branches' | 'receiptData' | 'ledger';
 
 export interface SyncReport {
   outcomes: UploadOutcome[];
@@ -69,6 +71,10 @@ export interface SyncReport {
   items?: { companies: number; items: number };
   /** Why the items did not come; the phone keeps the ones it had. Reported apart from stoppedBy. */
   itemsStoppedBy?: unknown;
+  /** Branches brought for Switch company (companies read, branches). */
+  branches?: { companies: number; branches: number };
+  /** Why they did not come; the phone keeps the ones it had. */
+  branchesStoppedBy?: unknown;
   /** Tenders and open bills brought for receipts (companies read, bills). */
   receiptData?: { companies: number; bills: number };
   /** Why they did not come; the phone keeps what it had. */
@@ -95,10 +101,28 @@ const clientFor = (address: ServerAddress) =>
 
 /**
  * VK Nex's employee_master id of a phone salesman, which a check-in must name (cvSalesmanId).
- * Not known yet: the phone's salesmen are test ones, and VK Nex sends no salesman list. Until it
- * does, check-ins wait on the phone with NO_SALESMAN (see docs/SYNC-API.md, Visits).
+ * Not known yet: the phone knows its users only by VK Nex's usr_id (from /auth/login), and VK Nex
+ * sends no user → employee link. Until it does, check-ins wait on the phone with NO_SALESMAN
+ * (see docs/SYNC-API.md, Visits).
  */
 const salesmanOf = (_userId: string): string | null => null;
+
+/** Short: the login page waits on this, and a phone outside the office gets no answer at all. */
+const LOGIN_TIMEOUT_MS = 10_000;
+
+/**
+ * Asks VK Nex whether a login name and password are right (POST /auth/login), for a login the
+ * phone can't check by itself. Throws NetworkError / ApiError (401 = not accepted).
+ */
+export function checkLogin(address: ServerAddress, credentials: ServerCredentials): Promise<SignedInUser> {
+  return createVkNexClient({
+    baseUrl: apiBaseUrl(address),
+    appVersion: appVersion(),
+    credentials: () => credentials,
+    deviceUid: getDeviceUid(),
+    timeoutMs: LOGIN_TIMEOUT_MS,
+  }).login();
+}
 
 /** "Test connection": is VK Nex answering at this address? Throws NetworkError / ApiError if not. */
 export function testConnection(address: ServerAddress): Promise<void> {
@@ -106,6 +130,92 @@ export function testConnection(address: ServerAddress): Promise<void> {
 }
 
 let running: Promise<SyncReport> | null = null;
+
+type BranchesBrought = NonNullable<SyncReport['branches']>;
+
+/**
+ * VK Nex's companies with their branches (when this VK Nex sends them with the options), groups
+ * and brands. `branches` is null when it does not: the caller then asks per company.
+ */
+async function bringOptions(api: ReturnType<typeof clientFor>): Promise<{ companyIds: string[]; branches: BranchesBrought | null }> {
+  const itemOptions = await api.itemOptions();
+  saveItemOptions(itemOptions);
+  const withOptions = branchesFromOptions(itemOptions);
+  if (withOptions) saveBranches(withOptions);
+  ensureCurrentCompany();
+  return {
+    companyIds: itemOptions.companies.map((c) => c.id),
+    branches: withOptions ? { companies: withOptions.companyIds.length, branches: withOptions.rows.length } : null,
+  };
+}
+
+/** Every company's branches, one GET each (older VK Nex; this route answers over https only). */
+async function bringBranchesPerCompany(api: ReturnType<typeof clientFor>, companyIds: string[]): Promise<BranchesBrought> {
+  const got = await downloadBranches(companyIds, (companyId) => api.branchesByCompany(companyId));
+  saveBranches(got);
+  ensureCurrentCompany();
+  return { companies: got.companyIds.length, branches: got.rows.length };
+}
+
+/** VK Nex's companies (with branches), groups, brands and every company's items with prices and stock. */
+async function bringItems(
+  api: ReturnType<typeof clientFor>,
+  onStep: (step: SyncStep, done?: number, total?: number) => void,
+): Promise<NonNullable<SyncReport['items']> & { branches: BranchesBrought | null }> {
+  onStep('items', 0, 0);
+  const options = await bringOptions(api);
+  const got = await downloadItems(
+    options.companyIds,
+    {
+      listPage: (companyId, page) => api.itemListPage(companyId, page),
+      onProgress: (done, total) => onStep('items', done, total),
+    },
+  );
+  saveItemList(got);
+  return { companies: got.companyIds.length, items: got.items.length, branches: options.branches };
+}
+
+let pullingBranches: Promise<number> | null = null;
+
+/**
+ * Switch company found no branches for a company on the phone: sign in and bring every company's
+ * branches again (with the companies, as Sync does). Resolves to how many branches the phone has
+ * now. Throws as Sync's steps do (NO_SERVER_ADDRESS, NetworkError, ApiError); the phone keeps
+ * its old ones then.
+ */
+export function refreshBranches(): Promise<number> {
+  pullingBranches ??= (async () => {
+    const address = getServerAddress();
+    if (!address) throw new Error('NO_SERVER_ADDRESS');
+    const api = clientFor(address);
+    await api.login();
+    const options = await bringOptions(api);
+    return (options.branches ?? (await bringBranchesPerCompany(api, options.companyIds))).branches;
+  })().finally(() => {
+    pullingBranches = null;
+  });
+  return pullingBranches;
+}
+
+let refreshing: Promise<NonNullable<SyncReport['items']>> | null = null;
+
+/**
+ * Refresh stock and prices (Add items): signs in and brings the items again, nothing else. Throws
+ * as Sync's steps do (NO_SERVER_ADDRESS, NetworkError, ApiError); the phone keeps its old list then.
+ */
+export function refreshItems(onStep: (step: SyncStep, done?: number, total?: number) => void = () => {}): Promise<NonNullable<SyncReport['items']>> {
+  refreshing ??= (async () => {
+    const address = getServerAddress();
+    if (!address) throw new Error('NO_SERVER_ADDRESS');
+    const api = clientFor(address);
+    onStep('signIn');
+    await api.login();
+    return bringItems(api, onStep);
+  })().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
 
 /**
  * Sync, started by the salesman: sign in to VK Nex, bring its areas, customer groups and price
@@ -117,7 +227,8 @@ let running: Promise<SyncReport> | null = null;
  * ledgers for this and last financial year. Customers go before orders and check-ins, which then
  * name them by VK Nex's id. Only one run at a time; a second tap joins it.
  */
-export function runSync(onStep: (step: SyncStep, done?: number, total?: number) => void): Promise<SyncReport> {
+export function runSync(onStep: (step: SyncStep, done?: number, total?: number) => void, opts: { sendOnly?: boolean } = {}): Promise<SyncReport> {
+  // A tap while a run is going joins it (a full run sends everything a send-only run would).
   running ??= (async (): Promise<SyncReport> => {
     const address = getServerAddress();
     if (!address) return { outcomes: [], updates: [], stoppedBy: new Error('NO_SERVER_ADDRESS'), stoppedAt: 'signIn' };
@@ -201,6 +312,9 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
       if (rcts.stoppedBy) return { ...sent, stoppedBy: rcts.stoppedBy, stoppedAt: 'receipts' };
     }
 
+    // Send now (My orders, a saved order): everything waiting has gone; nothing is brought.
+    if (opts.sendOnly) return sent;
+
     let downloaded: SyncReport['downloaded'];
     try {
       const got = await downloadCustomers(
@@ -221,24 +335,32 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
     // are read. A failure keeps the phone's old price list and goes on to the ledgers.
     let items: SyncReport['items'];
     let itemsStoppedBy: unknown;
+    let branches: BranchesBrought | null = null;
     try {
-      onStep('items', 0, 0);
-      const itemOptions = await api.itemOptions();
-      saveItemOptions(itemOptions);
-      ensureCurrentCompany();
-      const got = await downloadItems(
-        itemOptions.companies.map((c) => c.id),
-        {
-          listPage: (companyId, page) => api.itemListPage(companyId, page),
-          onProgress: (done, total) => onStep('items', done, total),
-        },
-      );
-      saveItemList(got);
-      items = { companies: got.companyIds.length, items: got.items.length };
+      const got = await bringItems(api, onStep);
+      items = { companies: got.companies, items: got.items };
+      branches = got.branches;
     } catch (e) {
       itemsStoppedBy = e;
     }
     sent = { ...sent, items, itemsStoppedBy };
+
+    // Every company's branches for Switch company: they came with the companies above, or (older
+    // VK Nex) one GET per company. A failure keeps the phone's old branches and goes on; a picked
+    // branch that is gone is cleared. When the items step failed, its line already says why.
+    if (branches) {
+      sent = { ...sent, branches };
+    } else if (!itemsStoppedBy) {
+      try {
+        onStep('branches', 0, 0);
+        const ids = companiesQuery()
+          .all()
+          .map((c) => c.id);
+        sent = { ...sent, branches: await bringBranchesPerCompany(api, ids) };
+      } catch (e) {
+        sent = { ...sent, branchesStoppedBy: e };
+      }
+    }
 
     // Tenders and open bills for the Receipt screens, after the receipts went (VK Nex's figures
     // then include them). A failure keeps the phone's old ones and goes on to the ledgers.

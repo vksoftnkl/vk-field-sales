@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sales return</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 1000px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 8px 10px; display: flex; align-items: center; gap: 2px">
+    <a href="Customer.dc.html" aria-label="Back to customer" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <h1 style="margin: 0; font-size: 19px; line-height: 24px; font-weight: 600">Sales return</h1>
+      <span style="font-size: 13px; line-height: 18px; color: #F3DADA">Sri Murugan Stores</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid #D6D3D1; border-radius: 10px; overflow: hidden">
+        <button type="button" aria-pressed="true" style="height: 42px; border: 0; background: #8B1D1D; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600">Against a bill</button>
+        <button type="button" aria-pressed="false" style="height: 42px; border: 0; border-left: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 15px">No bill</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px"><label for="bill" style="font-size: 13px; font-weight: 500; color: #44403C">Bill</label><select id="bill" style="height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 10px; font: inherit; font-size: 15px; color: #1C1917; background: #FFFFFF"><option>bil01300 · 07 Nov · ₹9,100.00</option></select></div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+        <div style="display: flex; flex-direction: column; gap: 6px"><label for="rsn" style="font-size: 13px; font-weight: 500; color: #44403C">Reason</label><select id="rsn" style="height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 10px; font: inherit; font-size: 15px; color: #1C1917; background: #FFFFFF; min-width: 0"><option>Damaged</option><option>Expired</option><option>Wrong item</option><option>Quality</option><option>Excess</option></select></div>
+        <div style="display: flex; flex-direction: column; gap: 6px"><label for="gdn" style="font-size: 13px; font-weight: 500; color: #44403C">Godown</label><select id="gdn" style="height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 10px; font: inherit; font-size: 15px; color: #1C1917; background: #FFFFFF; min-width: 0"><option>Van godown</option></select></div>
+      </div>
+      <span style="font-size: 13px; line-height: 18px; color: #57534E">One reason for the whole return, from the VK Nex reason list. Damaged goods are kept as Damaged stock.</span>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; overflow: hidden">
+      <h2 style="margin: 0; padding: 12px 16px 6px; font-size: 15px; font-weight: 600">Items on bil01300</h2>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid #F1EDE4">
+        <span style="flex: 1; display: flex; flex-direction: column"><b style="font-size: 14px; font-weight: 600">Sunflower Oil 1 L</b><span style="font-size: 13px; color: #57534E">Billed 12 × 155.00</span></span>
+        <div style="display: flex; align-items: center; height: 40px; border: 1.5px solid #8B1D1D; border-radius: 10px"><button type="button" aria-label="Return one less" style="width: 36px; height: 38px; border: 0; background: transparent; color: #8B1D1D; font: inherit; font-size: 20px">−</button><b style="width: 28px; text-align: center; font-size: 15px">2</b><button type="button" aria-label="Return one more" style="width: 36px; height: 38px; border: 0; background: transparent; color: #8B1D1D; font: inherit; font-size: 20px">+</button></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid #F1EDE4">
+        <span style="flex: 1; display: flex; flex-direction: column"><b style="font-size: 14px; font-weight: 600">Toor Dal 1 kg</b><span style="font-size: 13px; color: #57534E">Billed 10 × 142.00</span></span>
+        <div style="display: flex; align-items: center; height: 40px; border: 1px solid #D6D3D1; border-radius: 10px"><button type="button" aria-label="Return one less" style="width: 36px; height: 38px; border: 0; background: transparent; color: #8B1D1D; font: inherit; font-size: 20px">−</button><b style="width: 28px; text-align: center; font-size: 15px; color: #57534E">0</b><button type="button" aria-label="Return one more" style="width: 36px; height: 38px; border: 0; background: transparent; color: #8B1D1D; font: inherit; font-size: 20px">+</button></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid #F1EDE4">
+        <span style="flex: 1; display: flex; flex-direction: column"><b style="font-size: 14px; font-weight: 600">Tea Powder 250 g</b><span style="font-size: 13px; color: #57534E">Billed 6 × 118.00</span></span>
+        <div style="display: flex; align-items: center; height: 40px; border: 1px solid #D6D3D1; border-radius: 10px"><button type="button" aria-label="Return one less" style="width: 36px; height: 38px; border: 0; background: transparent; color: #8B1D1D; font: inherit; font-size: 20px">−</button><b style="width: 28px; text-align: center; font-size: 15px; color: #57534E">0</b><button type="button" aria-label="Return one more" style="width: 36px; height: 38px; border: 0; background: transparent; color: #8B1D1D; font: inherit; font-size: 20px">+</button></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 10px 16px 12px; border-top: 1px solid #E7E5E4; font-variant-numeric: tabular-nums"><span style="font-size: 14px; color: #44403C">About · 2 × 155.00 + GST 5%</span><b style="font-size: 17px">₹325.50</b></div>
+    </section>
+
+    <div style="display: flex; flex-direction: column; gap: 6px"><label for="rrm" style="font-size: 13px; font-weight: 500; color: #44403C">Remarks (optional)</label><input id="rrm" value="2 pouches leaking" style="height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 15px; color: #1C1917; background: #FFFFFF"></div>
+
+    <div role="note" style="display: flex; gap: 10px; background: #FEF3C7; color: #92400E; border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 18px">
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.01"/></svg>
+      <span>VK Nex works out the final credit-note amount. Until VK Nex has a return route for phones, returns wait on this phone.</span>
+    </div>
+  </div>
+
+  <footer style="background: #FFFFFF; border-top: 1px solid #E7E5E4; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px">
+    <a href="Customer.dc.html" style="height: 48px; border-radius: 12px; background: #8B1D1D; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; text-decoration: none">Save return</a>
+    <span style="font-size: 12px; line-height: 16px; color: #57534E; text-align: center">Goes to VK Nex as a Draft. The office checks and posts it.</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

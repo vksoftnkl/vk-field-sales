@@ -22,7 +22,7 @@ function initials(name: string): string {
 
 /**
  * Side menu from the ☰ button, like the Qt app's DrawerMenu: who is logged in and for which
- * company, then Home, Switch company, Reports, Sync data, Settings and Log out.
+ * company, then Home, Switch company, My orders, Reports, Sync data, Settings and Log out.
  * Reports and Settings are not built yet and say so.
  */
 export function AppMenu({
@@ -30,11 +30,13 @@ export function AppMenu({
   onClose,
   onSwitchCompany,
   onSync,
+  onMyOrders,
 }: {
   visible: boolean;
   onClose: () => void;
   onSwitchCompany: () => void;
   onSync: () => void;
+  onMyOrders: () => void;
 }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -62,6 +64,7 @@ export function AppMenu({
           <View style={st.items}>
             <MenuItem icon="home-outline" label={t('menu.home')} active onPress={onClose} />
             <MenuItem icon="business-outline" label={t('menu.switchCompany')} onPress={onSwitchCompany} />
+            <MenuItem icon="clipboard-outline" label={t('menu.myOrders')} onPress={onMyOrders} />
             <MenuItem icon="bar-chart-outline" label={t('menu.reports')} onPress={() => notYet(t('menu.reports'))} />
             <MenuItem icon="sync-outline" label={t('menu.sync')} onPress={onSync} />
             <MenuItem icon="settings-outline" label={t('menu.settings')} onPress={() => notYet(t('menu.settings'))} />

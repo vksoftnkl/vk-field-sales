@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dues</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 8px 12px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; align-items: center; gap: 2px">
+      <a href="Menu.dc.html" aria-label="Open menu" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></a>
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+        <h1 style="margin: 0; font-size: 19px; line-height: 24px; font-weight: 600">Dues</h1>
+        <span style="font-size: 13px; line-height: 18px; color: #F3DADA">Acme Foods · as at Sync 08:42</span>
+      </div>
+    </div>
+    <div style="margin: 0 8px; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 10px; background: #FFFFFF; color: #57534E">
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>
+      <input aria-label="Search shop or bill number" placeholder="Search shop or bill no (bil…)" style="flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 15px; color: #1C1917; background: transparent">
+    </div>
+  </header>
+
+  <div style="display: flex; gap: 10px; padding: 12px 16px; overflow: hidden">
+    <button type="button" aria-pressed="true" style="flex-shrink: 0; width: 196px; padding: 10px 12px; border-radius: 14px; border: 1.5px solid #8B1D1D; background: #F8E8E8; font: inherit; text-align: left; display: flex; flex-direction: column; gap: 2px; color: #1C1917">
+      <span style="font-size: 13px; font-weight: 600; color: #8B1D1D">Rasipuram Road · 12 shops</span>
+      <b style="font-size: 17px; font-variant-numeric: tabular-nums">₹1,24,600.00</b>
+      <span style="font-size: 12px; color: #991B1B; font-weight: 600">Overdue ₹17,750.00</span>
+    </button>
+    <button type="button" aria-pressed="false" style="flex-shrink: 0; width: 196px; padding: 10px 12px; border-radius: 14px; border: 1px solid #E7E5E4; background: #FFFFFF; font: inherit; text-align: left; display: flex; flex-direction: column; gap: 2px; color: #1C1917">
+      <span style="font-size: 13px; font-weight: 600; color: #44403C">Salem Road · 9 shops</span>
+      <b style="font-size: 17px; font-variant-numeric: tabular-nums">₹86,300.00</b>
+      <span style="font-size: 12px; color: #991B1B; font-weight: 600">Overdue ₹12,400.00</span>
+    </button>
+  </div>
+
+  <div style="display: flex; justify-content: space-between; padding: 0 16px 8px; font-size: 13px; color: #57534E"><span>Oldest bill first</span><span>Collected today ₹4,150.00</span></div>
+
+  <div style="flex: 1; overflow: hidden; background: #FFFFFF; border-top: 1px solid #E7E5E4">
+    <sc-for list="{{shops}}" as="s" hint-placeholder-count="6">
+      <a href="Receipt.dc.html" style="display: flex; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F1EDE4; text-decoration: none; color: #1C1917">
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 15px; font-weight: 600">{{s.name}}</span>
+          <span style="font-size: 13px; color: #57534E">{{s.bills}}</span>
+          <sc-if value="{{s.collected}}" hint-placeholder-val="{{false}}"><span style="align-self: flex-start; padding: 1px 8px; border-radius: 999px; background: #EDE9FE; color: #5B21B6; font-size: 12px; font-weight: 600">{{s.collected}}</span></sc-if>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px">
+          <span style="font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums">{{s.due}}</span>
+          <span style="padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: {{s.bg}}; color: {{s.fg}}">{{s.age}}</span>
+        </div>
+      </a>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const over = { bg: '#FEE2E2', fg: '#991B1B' };
+    const soon = { bg: '#FEF3C7', fg: '#92400E' };
+    const ok = { bg: '#E7E5E4', fg: '#44403C' };
+    return {
+      shops: [
+        { name: 'Sri Murugan Stores', bills: '4 open bills · oldest 02 Oct', due: '₹38,450.00', age: 'Overdue 16 days', collected: '', ...over },
+        { name: 'Kumaran Stores', bills: '3 open bills · oldest 10 Oct', due: '₹22,600.00', age: 'Overdue 8 days', collected: '', ...over },
+        { name: 'Lakshmi Traders', bills: '2 open bills · oldest 21 Oct', due: '₹12,800.00', age: 'Due in 3 days', collected: '', ...soon },
+        { name: 'New Balaji Agencies', bills: '2 open bills · oldest 29 Oct', due: '₹9,900.00', age: '19 days', collected: '', ...ok },
+        { name: 'Sakthi Provisions', bills: '1 open bill · 05 Nov', due: '₹2,300.00', age: '12 days', collected: 'Collected today ₹4,150.00', ...ok },
+        { name: 'Selvam Mini Mart', bills: '1 open bill · 11 Nov', due: '₹1,250.00', age: '6 days', collected: '', ...ok }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

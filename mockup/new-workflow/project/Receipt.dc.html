@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Receipt</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 1080px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 8px 10px; display: flex; align-items: center; gap: 2px">
+    <a href="Customer.dc.html" aria-label="Back to customer" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <h1 style="margin: 0; font-size: 19px; line-height: 24px; font-weight: 600">Receipt</h1>
+      <span style="font-size: 13px; line-height: 18px; color: #F3DADA">Sri Murugan Stores</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #57534E">Outstanding</span><b style="font-size: 17px; font-variant-numeric: tabular-nums">₹38,450.00</b></div>
+      <div style="background: #FEE2E2; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #991B1B">Overdue</span><b style="font-size: 17px; color: #991B1B; font-variant-numeric: tabular-nums">₹12,350.00</b></div>
+    </div>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600">Payment</h2>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="cash" style="font-size: 13px; font-weight: 500; color: #44403C">Cash</label>
+        <div style="display: flex; gap: 8px">
+          <input id="cash" value="10,000.00" inputmode="decimal" style="flex: 1; min-width: 0; height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; color: #1C1917; text-align: right; font-variant-numeric: tabular-nums">
+          <button type="button" aria-label="Remove cash" style="width: 44px; height: 44px; border: 1px solid #E7E5E4; border-radius: 10px; background: #FFFFFF; color: #57534E; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13"/></svg></button>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #F1EDE4; padding-top: 12px">
+        <label for="upi" style="font-size: 13px; font-weight: 500; color: #44403C">UPI</label>
+        <div style="display: flex; gap: 8px">
+          <input id="upi" value="5,000.00" inputmode="decimal" style="flex: 1; min-width: 0; height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; color: #1C1917; text-align: right; font-variant-numeric: tabular-nums">
+          <button type="button" aria-label="Remove UPI" style="width: 44px; height: 44px; border: 1px solid #E7E5E4; border-radius: 10px; background: #FFFFFF; color: #57534E; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13"/></svg></button>
+        </div>
+        <label for="utr" style="font-size: 13px; font-weight: 500; color: #44403C">UTR no (VK Nex needs it for UPI)</label>
+        <input id="utr" value="[UTR no]" style="height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 15px; color: #1C1917">
+      </div>
+      <button type="button" style="height: 44px; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px dashed #A8A29E; border-radius: 10px; background: #FFFFFF; color: #8B1D1D; font: inherit; font-size: 15px; font-weight: 600"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add payment type</button>
+      <div style="display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid #E7E5E4; padding-top: 10px"><b>Received</b><b style="font-size: 20px; color: #8B1D1D; font-variant-numeric: tabular-nums">₹15,000.00</b></div>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; overflow: hidden">
+      <h2 style="margin: 0; padding: 12px 16px 2px; font-size: 15px; font-weight: 600">How VK Nex will use it</h2>
+      <span style="display: block; padding: 0 16px 8px; font-size: 13px; color: #57534E">Oldest bills first</span>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 84px 84px; gap: 8px; padding: 8px 16px; background: #F5F3F0; font-size: 12px; font-weight: 600; color: #57534E"><span>Bill</span><span style="text-align: right">Pending</span><span style="text-align: right">Paid now</span></div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 84px 84px; gap: 8px; align-items: center; padding: 10px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; font-variant-numeric: tabular-nums"><span style="display: flex; flex-direction: column"><b style="font-weight: 600">bil01214</b><span style="font-size: 12px; color: #991B1B">02 Oct · 16 days overdue</span></span><span style="text-align: right">12,350.00</span><b style="text-align: right; color: #15803D">12,350.00</b></div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 84px 84px; gap: 8px; align-items: center; padding: 10px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; font-variant-numeric: tabular-nums"><span style="display: flex; flex-direction: column"><b style="font-weight: 600">bil01262</b><span style="font-size: 12px; color: #57534E">24 Oct · 4,910.00 stays open</span></span><span style="text-align: right">7,560.00</span><b style="text-align: right">2,650.00</b></div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 84px 84px; gap: 8px; align-items: center; padding: 10px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; font-variant-numeric: tabular-nums; color: #57534E"><span style="display: flex; flex-direction: column"><span style="font-weight: 600; color: #1C1917">bil01288</span><span style="font-size: 12px">01 Nov</span></span><span style="text-align: right">9,440.00</span><span style="text-align: right">—</span></div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 84px 84px; gap: 8px; align-items: center; padding: 10px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; font-variant-numeric: tabular-nums; color: #57534E"><span style="display: flex; flex-direction: column"><span style="font-weight: 600; color: #1C1917">bil01300</span><span style="font-size: 12px">07 Nov</span></span><span style="text-align: right">9,100.00</span><span style="text-align: right">—</span></div>
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 16px 12px; border-top: 1px solid #E7E5E4; font-size: 14px; font-variant-numeric: tabular-nums">
+        <div style="display: flex; justify-content: space-between"><span style="color: #44403C">On account</span><span>0.00</span></div>
+        <div style="display: flex; justify-content: space-between"><b>Outstanding after</b><b>₹23,450.00</b></div>
+      </div>
+    </section>
+  </div>
+
+  <footer style="background: #FFFFFF; border-top: 1px solid #E7E5E4; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px">
+    <a href="Customer.dc.html" style="height: 48px; border-radius: 12px; background: #8B1D1D; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; text-decoration: none">Save receipt</a>
+    <span style="font-size: 12px; line-height: 16px; color: #57534E; text-align: center">A preview. VK Nex posts the receipt and fills the bills at Sync.</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

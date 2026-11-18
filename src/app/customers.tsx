@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppMenu } from '@/components/app-menu';
 import { MultiPickSheet, type PickOption } from '@/components/sheet';
 import { Chip } from '@/components/ui';
-import { getMeta, metaQuery, setMeta } from '@/db/meta';
+import { metaQuery, setMeta } from '@/db/meta';
 import { CompanySheet } from '@/features/company/company-sheet';
 import { countByQuickFilter, filterCustomers, visitStatus, type CustomerRow, type QuickFilter } from '@/features/customers/customer-list';
 import {
@@ -18,7 +18,6 @@ import {
   beatsQuery,
   customerListQuery,
   customerTypesQuery,
-  existingBeatIds,
   pendingUploadQuery,
   typeCountsQuery,
 } from '@/features/customers/queries';
@@ -26,7 +25,7 @@ import { QuickFilterSheet } from '@/features/customers/quick-filter-sheet';
 import { pendingOrdersCountQuery, pendingVisitsCountQuery } from '@/features/orders/queries';
 import { pendingReceiptsCountQuery } from '@/features/receipts/queries';
 import { daysBetween, formatRupees, todayISO } from '@/lib/money';
-import { parseIdList, serializeIdList } from '@/lib/selection';
+import { serializeIdList } from '@/lib/selection';
 import { colors, font, radius, spacing, statusColors } from '@/theme';
 
 /** Which overlay is open; one at a time, so the menu closes as Choose company opens. */
@@ -47,8 +46,9 @@ export default function CustomersScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
-  // The salesman works one beat a day, so the beats ticked last time are kept on the phone.
-  const [beatIds, setBeatIds] = useState<string[]>(() => existingBeatIds(parseIdList(getMeta('lastBeatIds'))));
+  // Opens with no beat or type ticked (all shops); the salesman picks the beat and taps Apply.
+  // Each login clears the saved beat, so nothing carries over from the last trip.
+  const [beatIds, setBeatIds] = useState<string[]>([]);
   const [typeIds, setTypeIds] = useState<string[]>([]);
   const [quick, setQuick] = useState<QuickFilter>('all');
   const [query, setQuery] = useState('');
@@ -94,6 +94,7 @@ export default function CustomersScreen() {
   const typeChoice = choiceLabel(typeIds, typeRows, t('customers.all'), (n) => t('customers.nTypes', { n }));
   const beatTitle = beatIds.length === 0 ? t('customers.allBeats') : beatChoice;
 
+  // Saved so New customer and the sales return's customer list start in today's beat.
   const applyBeats = (ids: string[]) => {
     setBeatIds(ids);
     setMeta('lastBeatIds', serializeIdList(ids));
@@ -194,7 +195,6 @@ export default function CustomersScreen() {
         visible={overlay === 'beat'}
         title={t('customers.chooseBeat')}
         options={beatOptions}
-        selected={beatIds}
         onApply={applyBeats}
         onClose={close}
       />
@@ -202,7 +202,6 @@ export default function CustomersScreen() {
         visible={overlay === 'type'}
         title={t('customers.chooseType')}
         options={typeOptions}
-        selected={typeIds}
         onApply={setTypeIds}
         onClose={close}
       />
@@ -213,6 +212,10 @@ export default function CustomersScreen() {
         onSync={() => {
           close();
           router.push('/sync');
+        }}
+        onMyOrders={() => {
+          close();
+          router.push('/orders');
         }}
       />
       <CompanySheet visible={overlay === 'company'} onClose={close} />

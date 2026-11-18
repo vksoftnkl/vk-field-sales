@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sign in</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <div style="background: #8B1D1D; color: #FFFFFF; padding: 72px 24px 56px; display: flex; flex-direction: column; align-items: center; gap: 12px">
+    <div aria-hidden="true" style="width: 72px; height: 72px; border-radius: 18px; background: #FFFFFF; color: #8B1D1D; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; letter-spacing: -0.02em">VK</div>
+    <h1 style="margin: 0; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: 0.02em">VKSMAN</h1>
+    <span style="font-size: 14px; color: #F3DADA">Field sales for VK Nex</span>
+  </div>
+
+  <form style="margin: -28px 16px 0; background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 16px; padding: 20px 16px; display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="login" style="font-size: 13px; font-weight: 500; color: #44403C">VK Nex login name</label>
+      <input id="login" value="karthik" autocomplete="username" style="height: 48px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; color: #1C1917; background: #FFFFFF">
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="pw" style="font-size: 13px; font-weight: 500; color: #44403C">Password</label>
+      <div style="display: flex; align-items: center; height: 48px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding-left: 12px">
+        <input id="pw" type="password" value="sample-pass" autocomplete="current-password" style="flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 16px; color: #1C1917; background: transparent">
+        <button type="button" aria-label="Show password" style="width: 44px; height: 44px; border: 0; background: transparent; color: #57534E; display: flex; align-items: center; justify-content: center">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+    </div>
+    <a href="Today.dc.html" style="height: 48px; border-radius: 12px; background: #8B1D1D; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; text-decoration: none">Sign in</a>
+    <p style="margin: 0; font-size: 13px; line-height: 18px; color: #57534E">The first sign-in needs the office network and runs a Sync. After that you can sign in without a network.</p>
+  </form>
+
+  <div style="margin: 16px 16px 0; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; align-items: center; gap: 10px; background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 12px; padding: 12px 14px">
+      <span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 5px; background: #15803D; flex-shrink: 0"></span>
+      <span style="flex: 1; font-size: 13px; line-height: 18px; color: #44403C"><b style="color: #1C1917">This phone is registered</b><br>VKSMAN-3F9A2C1B7D04 · VK Nex Device List</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 12px; padding: 12px 14px">
+      <span style="flex: 1; font-size: 13px; line-height: 18px; color: #44403C"><b style="color: #1C1917">Server</b><br>https://erp.[your-domain]:3011</span>
+      <a href="Settings.dc.html" style="font-size: 14px; font-weight: 600; color: #8B1D1D; padding: 12px 4px">Change</a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What changed from the old Salesman app</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 1280px; height: 4100px; box-sizing: border-box; padding: 64px; display: flex; flex-direction: column; gap: 40px; background: #FAFAF9; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+
+  <header style="display: flex; flex-direction: column; gap: 8px">
+    <h1 style="margin: 0; font-size: 34px; line-height: 42px; font-weight: 700">What changed from the old Salesman app, and why</h1>
+    <p style="margin: 0; font-size: 16px; line-height: 24px; color: #44403C; max-width: 960px">The All Screens Review shows 57 screens of the old Qt/QML app on 10 pages. The new phone app has 20, plus one set of messages. Each one uses VK Nex's own names, fields and rules, so an order, bill, receipt or return made on the phone looks the same in VK Nex desktop and web as one keyed in the office.</p>
+  </header>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 22px; line-height: 28px; font-weight: 600">Kept, and changed to match VK Nex</h2>
+    <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; overflow: hidden">
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 10px 16px; background: #F5F3F0; font-size: 13px; font-weight: 600; color: #44403C"><span>Old screen</span><span>New</span><span>Why (VK Nex rule)</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Login</b><br><span style="font-size: 13px; color: #57534E">LoginPage.qml</span></span><span>Sign in with the salesman's own VK Nex login. Offline after the first sign-in.</span><span style="color: #44403C">Every VK Nex document stores the login user and the salesman. The old picker let a blank user with a blank password in.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Sync data + Settings</b><br><span style="font-size: 13px; color: #57534E">SyncDevice.qml, Settings.qml</span></span><span>One Sync now button: it sends first, then receives. The server address and the device are on the same page.</span><span style="color: #44403C">VK Nex has one resend-safe create route per document. Bills go before receipts, so today's bill is already open when the receipt is allocated.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Home: customer list</b><br><span style="font-size: 13px; color: #57534E">CustomerPage.qml</span></span><span>Today: the shops of today's beat, with dues and visit status.</span><span style="color: #44403C">Beat = VK Nex area (cusAreaId). Outstanding is the VK Nex balance. Overdue comes from the open bills' days overdue.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Customer detail</b><br><span style="font-size: 13px; color: #57534E">Option.qml</span></span><span>Customer visit, with a credit panel and six actions.</span><span style="color: #44403C">The same figures and labels as the web Sales Order credit panel: Outstanding, Overdue, Credit limit, Available, plus bill count and credit days.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Order entry → item → summary</b><br><span style="font-size: 13px; color: #57534E">OrderEntry, OrderItemDetail, OrderCheckout</span></span><span>Sales order: Items → Item line → Order review.</span><span style="color: #44403C">VK Nex order fields: Term, Delivery date, Priority, Delivery mode, Case/Bill Qty, Disc %. The order is saved as a Draft and the office confirms it, as on the desktop.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Sales → bill → confirm</b><br><span style="font-size: 13px; color: #57534E">SalesEntry, SaleItemDetail, SalesCheckout</span></span><span>Sales bill: the same Items screen, then Bill review.</span><span style="color: #44403C">A credit bill with a godown on every line and auto-apply schemes, as /mobile/bills posts it. VK Nex gives the bill number.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Receipt</b><br><span style="font-size: 13px; color: #57534E">Receipt.qml, ReceiptConfirm.qml</span></span><span>Receipt on one screen.</span><span style="color: #44403C">Payment types come from VK Nex tenders. VK Nex fills the oldest bills first (accounts.receipt_bill_sort).</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Sales return</b><br><span style="font-size: 13px; color: #57534E">ReturnEntry and 3 more</span></span><span>Sales return against a bill, on one screen.</span><span style="color: #44403C">In VK Nex a return is against a bill by default, has one reason per return and a godown per line, and the server works out the money.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Ledger statement</b><br><span style="font-size: 13px; color: #57534E">CustomerLedgerStatement.qml</span></span><span>Ledger downloaded at Sync.</span><span style="color: #44403C">Works offline. Covers this FY and last FY (April to March), from VK Nex's ledger-statement report.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Add / Update customer</b><br><span style="font-size: 13px; color: #57534E">AddCustomer, CustomerUpdate</span></span><span>One customer form, saved on the phone.</span><span style="color: #44403C">VK Nex customer fields and refusal rules (GSTIN prefix = state code, required area, group and price level), so the upload is not refused.</span></div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 22px; line-height: 28px; font-weight: 600">Also folded in: review pages 7–10</h2>
+    <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; overflow: hidden">
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 10px 16px; background: #F5F3F0; font-size: 13px; font-weight: 600; color: #44403C"><span>Old screens</span><span>New</span><span>Why</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Collection mode</b><br><span style="font-size: 13px; color: #57534E">Area-wise, Party-wise outstanding, Bill search</span></span><span>Dues: beat totals, shops by oldest bill, search by shop or bill no. Tap a shop to open Receipt.</span><span style="color: #44403C">The same VK Nex open bills and days overdue as Today. The old bill search pasted typed text into SQL; the phone now searches its own synced list.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Sync data</b><br><span style="font-size: 13px; color: #57534E">Quick, Complete, Upload receipts and close day, Remove old data</span></span><span>Sync now (always sends, then receives), with a progress screen that shows each step (page F). Settings has Download all again and Clear this phone (only when nothing is waiting).</span><span style="color: #44403C">VK Nex routes are resend-safe, so one button is enough. Closing the day moved to Day close.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Sync receipts + Note count</b><br><span style="font-size: 13px; color: #57534E">Total receipts, expense, net cash, denominations</span></span><span>Day close, then Cash handover (expenses, net cash) and Note count, then Sync (page F).</span><span style="color: #44403C">VK Nex posts each receipt at Sync, so there is no separate receipt upload. The handover and expenses need a new VK Nex route (decision 4). No ₹2000 notes.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Messages</b><br><span style="font-size: 13px; color: #57534E">Server error, Info, Notification, message bar</span></span><span>One message style: confirm dialog, network vs refusal banners, field errors, a saved notice (page F).</span><span style="color: #44403C">The old app said “check your internet” for refusals too, and stacked notices.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Settings: server, display, login, sync</b><br><span style="font-size: 13px; color: #57534E">Host, port, device, font size, Tamil UI, multi-user, quick sync</span></span><span>Settings: server and device, language, text size (or the phone's own), Tamil item names, start screen.</span><span style="color: #44403C">Multi-user login and the 2-minute background sync are dropped: one VK Nex login per salesman, and Sync only when tapped.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Settings: sales and receipt</b><br><span style="font-size: 13px; color: #57534E">Negative stock, discount affects tax, receipt discount, salesman-based collection</span></span><span>Shown read-only on Settings, as VK Nex sets them (new mobile/settings route). Collection salesmen start on Dues.</span><span style="color: #44403C">The phone must follow the office's rules, not its own switches.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Settings: search, godown, company</b><br><span style="font-size: 13px; color: #57534E">Customers by area/city, items by group/brand, only the customer's type</span></span><span>Settings: only items for the customer's group (decision 6). Beat = VK Nex area; godown is picked on each bill; company comes from the login.</span><span style="color: #44403C">VK Nex items carry item_cust_group and item_retail_item; filtering by them is decision 6.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Settings: printing</b><br><span style="font-size: 13px; color: #57534E">Print type, per-document print, Bluetooth printer</span></span><span>Settings: Off / Bluetooth / Share PDF, waiting for decision 3.</span><span style="color: #44403C">VK Nex numbers a bill only at Sync, so a printout on the spot can't carry the real number.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Reports: lists and details</b><br><span style="font-size: 13px; color: #57534E">Sales list, Bill detail, Order list, Order detail, Receipt list, Return list</span></span><span>Reports › lists open My documents: Orders, Bills, Receipts, Returns. Edit or delete only before Sync; after that, the VK Nex status.</span><span style="color: #44403C">A posted bill is cancelled in VK Nex by the office, not deleted on the phone. The old Bill detail delete put stock back on bill 1.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Reports: summaries</b><br><span style="font-size: 13px; color: #57534E">Sales summary, Group/brand breakdown, Tender summary, Order summary</span></span><span>Reports › Sales and Payment summary open Day close: Today / This week / This month, by payment type and by item group.</span><span style="color: #44403C">One date strip for every total; before, only two reports had dates.</span></div>
+      <div style="display: grid; grid-template-columns: 220px 400px minmax(0, 1fr); gap: 24px; padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><span><b>Reports: stock and billed shops</b><br><span style="font-size: 13px; color: #57534E">Stock summary, Billed customers</span></span><span>Reports › Stock opens the Items list without a customer. Billed shops = Today's status chips.</span><span style="color: #44403C">The same synced data, so no extra screens.</span></div>
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-size: 22px; line-height: 28px; font-weight: 600">Merged</h2>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; overflow: hidden">
+        <div style="padding: 12px 16px; font-size: 14px; line-height: 20px"><b>3 filter popups → one Filter sheet</b><br><span style="color: #44403C">Status, beat and type each had their own heading and style. Now: one sheet with Select all / Clear.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Order entry + Sales select items → Items</b><br><span style="color: #44403C">They did the same job with different controls. Order and bill now share one screen.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Order item + Sale item detail → Item line</b><br><span style="color: #44403C">The price-level and discount-lock rules differed between the two. One VK Nex line now.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Order check-in + Collection check-in → No order</b><br><span style="color: #44403C">VK Nex has one customer-visit record with six reason codes.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Area-wise outstanding home → Today's Dues filter</b><br><span style="color: #44403C">One home instead of two. Sort by overdue to plan collections.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Advance receipt → Receipt</b><br><span style="color: #44403C">VK Nex keeps money beyond the open bills on account. No more dummy bill "123".</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Payment types + Add payment type → Receipt</b><br><span style="color: #44403C">Payment rows sit inside the receipt, with each VK Nex tender's reference rule.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Date range + Custom dates + Calendar → chips</b><br><span style="color: #44403C">Range chips and the phone's own date picker. One tap instead of three screens.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>8 reports + receipt approval → Reports list</b><br><span style="color: #44403C">One Reports list with one date strip; each report opens Day close, My documents, Dues, Ledger or Stock. Full reports stay in VK Nex desktop and web.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Settings → a smaller Settings screen</b><br><span style="color: #44403C">Only phone things stay; VK Nex rules show read-only. Beat mode and item mode are gone: beat = area, and items filter by group and brand.</span></div>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-size: 22px; line-height: 28px; font-weight: 600">Removed</h2>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; overflow: hidden">
+        <div style="padding: 12px 16px; font-size: 14px; line-height: 20px"><b>Choose company / receipt by company or group</b><br><span style="color: #44403C">The company comes from the VK Nex login. A VK Nex receipt belongs to one company, and VK Nex has no receipt-type setting.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Second salesman picker</b><br><span style="color: #44403C">VK Nex keeps one salesman per document in practice (the first id in so_salesman_id).</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Bill save confirmation popup</b><br><span style="color: #44403C">The review screen is the confirmation, for both the order and the bill.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Rate history (needed internet)</b><br><span style="color: #44403C">No VK Nex route exists for it. Past bills are in the synced ledger.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Stock refresh button</b><br><span style="color: #44403C">Stock arrives with Sync, and the phone stays offline.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Freight and cooly on phone documents</b><br><span style="color: #44403C">The mobile order and bill routes refuse charges. The office adds them.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Printing on the phone</b><br><span style="color: #44403C">VK Nex numbers the bill only at Sync. This is open: see decision 3.</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Phone bill numbers that restarted daily</b><br><span style="color: #44403C">VK Nex gives the number (bil…). The phone's own number is kept as the user ref no (sbUsrRefno).</span></div>
+        <div style="padding: 12px 16px; border-top: 1px solid #F1EDE4; font-size: 14px; line-height: 20px"><b>Route map, wireless printer setup</b><br><span style="color: #44403C">RouteMap.qml was empty, and printing is out (above).</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 22px; line-height: 28px; font-weight: 600">New</h2>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; font-size: 14px; line-height: 20px"><b style="font-size: 16px">Credit check before saving</b><br><span style="color: #44403C">Order: warn, then confirm (desktop and web). Bill: VK Nex's credit-limit mode, with the same three tests VK Nex runs at posting.</span></div>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; font-size: 14px; line-height: 20px"><b style="font-size: 16px">Schemes on bills</b><br><span style="color: #44403C">Auto-apply schemes as on the desktop bill. Free goods are their own lines, marked Scheme.</span></div>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; font-size: 14px; line-height: 20px"><b style="font-size: 16px">My orders</b><br><span style="color: #44403C">Order status comes back from VK Nex: Draft, Confirmed, Partly billed, Completed, Cancelled.</span></div>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; font-size: 14px; line-height: 20px"><b style="font-size: 16px">Day close</b><br><span style="color: #44403C">One summary of the day and the cash to hand over, then Sync.</span></div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 22px; line-height: 28px; font-weight: 600">VK Nex rules the phone follows</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px"><b style="font-size: 16px; color: #8B1D1D">Price</b><span style="color: #44403C">Start from the customer's price level (WS, Retail …). Take off the customer rate (csrDiscQty), then use the qty slab if it is lower. A typed rate needs the Edit price right. A rate below Min is refused; one above MRP is refused unless skip-MRP is on.</span></div>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px"><b style="font-size: 16px; color: #8B1D1D">Schemes</b><span style="color: #44403C">Only APPROVED, auto-apply schemes with no coupon. They are matched by customer, group, area or city, by item, brand or group, and by branch, date, weekday and bill type. Sales bills only: the VK Nex Sales Order runs no scheme engine.</span></div>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px"><b style="font-size: 16px; color: #8B1D1D">GST</b><span style="color: #44403C">CGST + SGST when the POS state equals the company state, otherwise IGST. GST is rounded to paise per line, then split. The total is rounded by sales.round_off_step, and VK Nex refuses a bill whose total is off by more than ₹0.01.</span></div>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px"><b style="font-size: 16px; color: #8B1D1D">Credit</b><span style="color: #44403C">Three tests: amount over the limit, open bills at the bill limit, and oldest bill older than the credit days. On an order, the salesman is asked "Order on credit anyway?". On a bill, REFUSE blocks and WARN needs the override right. With Credit allowed = No, there is no Credit term.</span></div>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px"><b style="font-size: 16px; color: #8B1D1D">Numbers and status</b><span style="color: #44403C">VK Nex numbers everything at Sync (sor…, bil…). Orders arrive as Draft, and the office confirms them (Post right on Sales Order). Bills and receipts are posted at once. Returns arrive as Draft.</span></div>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px"><b style="font-size: 16px; color: #8B1D1D">Salesman</b><span style="color: #44403C">The salesman is the login's employee (employee_master). That id goes on orders, bills, receipts and visits: so_salesman_id, sb_salesman_id, avh_employee_id and cv_salesman_id.</span></div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 22px; line-height: 28px; font-weight: 600">One style on every screen</h2>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 20px">
+        <div style="height: 48px; border-radius: 10px; background: #8B1D1D; color: #FFFFFF; display: flex; align-items: center; padding: 0 14px; font-weight: 600">Header band</div>
+        <span style="color: #44403C">Maroon #8B1D1D. Back arrow, title 19px, with the customer name under it.</span>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 20px">
+        <div style="height: 48px; border-radius: 12px; background: #8B1D1D; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-weight: 600">Save order</div>
+        <span style="color: #44403C">One main button per screen, at the bottom, 48px tall. A secondary button is white with maroon text.</span>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 20px">
+        <div style="display: flex; flex-wrap: wrap; gap: 6px">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #E7E5E4; color: #44403C; font-size: 12px; font-weight: 600">Not visited</span>
+          <span style="padding: 3px 10px; border-radius: 999px; background: #DBEAFE; color: #1E40AF; font-size: 12px; font-weight: 600">Ordered</span>
+          <span style="padding: 3px 10px; border-radius: 999px; background: #DCFCE7; color: #166534; font-size: 12px; font-weight: 600">Billed</span>
+          <span style="padding: 3px 10px; border-radius: 999px; background: #EDE9FE; color: #5B21B6; font-size: 12px; font-weight: 600">Collected</span>
+          <span style="padding: 3px 10px; border-radius: 999px; background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600">No order</span>
+        </div>
+        <span style="color: #44403C">Status chips use the app's existing colours. Filter chips turn maroon-tinted when picked.</span>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 20px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; height: 48px; padding: 0 12px; border-radius: 10px; background: #F5F3F0"><span style="color: #57534E; align-self: center">Overdue</span><span style="font-weight: 700; color: #B91C1C; font-variant-numeric: tabular-nums; align-self: center">₹12,350.00</span></div>
+        <span style="color: #44403C">Amounts in ₹ with paise, right-aligned. Red only for overdue or refused. IBM Plex Sans; touch targets of 44px or more.</span>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":4100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

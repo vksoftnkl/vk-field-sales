@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<!-- Source of sales_return_mobile_ui_mockup.png. Render (from /home/vk/Dev/vk-field-sales/mockup):
+     chromium --headless=new --hide-scrollbars --force-device-scale-factor=2 --window-size=1884,1580 \
+       --screenshot=sales_return_mobile_ui_mockup.png sales_return_mobile_ui_mockup.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VKSMAN · Sales return mockup</title>
+<style>
+  @font-face { font-family: Inter; font-weight: 400; src: url('file:///home/vk/Dev/erp/NexERP/src/shared/fonts/inter/Inter-Regular.ttf'); }
+  @font-face { font-family: Inter; font-weight: 500; src: url('file:///home/vk/Dev/erp/NexERP/src/shared/fonts/inter/Inter-Medium.ttf'); }
+  @font-face { font-family: Inter; font-weight: 600; src: url('file:///home/vk/Dev/erp/NexERP/src/shared/fonts/inter/Inter-SemiBold.ttf'); }
+  @font-face { font-family: Inter; font-weight: 700; src: url('file:///home/vk/Dev/erp/NexERP/src/shared/fonts/inter/Inter-Bold.ttf'); }
+  @font-face { font-family: Ionicons; src: url('file:///home/vk/Dev/vk-field-sales/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'); }
+
+  :root {
+    --primary: #8B1D1D; --primarySoft: #F8E8E8; --onPrimary: #fff; --onPrimaryMuted: #F3DADA;
+    --bg: #F5F3F0; --surface: #fff; --text: #1C1917; --label: #44403C; --muted: #57534E;
+    --border: #E7E5E4; --inputBorder: #D6D3D1; --danger: #B91C1C; --success: #15803D;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1884px; height: 1580px; background: #E9EBEF; font-family: Inter, 'Noto Sans', sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
+  .ic { font-family: Ionicons; font-style: normal; font-weight: normal; line-height: 1; display: inline-block; }
+
+  /* ---------- sheet ---------- */
+  .sheet { padding: 40px 60px 0; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; }
+  h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.4px; }
+  .lede { margin-top: 8px; font-size: 16px; color: #44403C; }
+  .stamp { text-align: right; font-size: 13.5px; color: #57534E; line-height: 1.5; margin-top: 10px; }
+  .stamp b { color: var(--primary); }
+  .cols { display: grid; grid-template-columns: repeat(4, 414px); gap: 36px; margin-top: 26px; }
+  .step { display: flex; align-items: center; gap: 10px; height: 34px; margin-bottom: 12px; }
+  .step .n { width: 30px; height: 30px; border-radius: 15px; background: var(--primary); color: #fff; font-weight: 700; font-size: 15px; display: grid; place-items: center; }
+  .step .t { font-size: 19px; font-weight: 700; }
+  .step .h { font-size: 14px; color: #78716C; }
+
+  /* ---------- phone ---------- */
+  .phone { width: 414px; height: 868px; border-radius: 50px; background: #1C1917; padding: 12px; box-shadow: 0 18px 40px rgba(28,25,23,.18); }
+  .screen { position: relative; width: 390px; height: 844px; border-radius: 38px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; }
+  .status { height: 34px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 6px 26px 0 30px; font-size: 14px; font-weight: 600; position: relative; }
+  .status .cam { position: absolute; left: 50%; top: 9px; width: 16px; height: 16px; margin-left: -8px; border-radius: 8px; background: #0c0a09; }
+  .status .sig { display: flex; gap: 6px; font-size: 15px; }
+  .hdr { background: var(--primary); color: #fff; display: flex; align-items: center; padding: 6px 12px 14px 4px; }
+  .hdr .back { width: 44px; height: 44px; display: grid; place-items: center; font-size: 24px; }
+  .hdr .tt { font-size: 19px; font-weight: 600; }
+  .hdr .st { margin-top: 2px; font-size: 13px; color: var(--onPrimaryMuted); }
+  .hdr .grow { flex: 1; }
+  .body { flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .homebar { position: absolute; bottom: 7px; left: 50%; width: 120px; margin-left: -60px; height: 4px; border-radius: 2px; background: #1C1917; opacity: .55; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+  .name { font-size: 15px; font-weight: 700; }
+  .muted { font-size: 13px; color: var(--muted); }
+  .row { display: flex; align-items: center; }
+  .sp { flex: 1; }
+  .link { color: var(--primary); font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 4px; }
+  .label { font-size: 13px; color: var(--label); font-weight: 500; margin-bottom: 6px; }
+  .chip2 { height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid var(--inputBorder); background: #fff; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--label); }
+  .chip2.on { background: var(--primarySoft); border-color: var(--primary); color: var(--primary); }
+  .sect { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; }
+  .sect .cap { font-size: 13px; font-weight: 700; letter-spacing: .6px; color: var(--primary); }
+  .btnO { height: 38px; padding: 0 14px; border-radius: 10px; border: 1.5px solid var(--primary); color: var(--primary); font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 4px; background: #fff; }
+
+  .line { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 12px 10px 12px 14px; display: flex; align-items: center; gap: 10px; }
+  .line .main { flex: 1; min-width: 0; }
+  .line .nm { font-size: 15px; font-weight: 700; }
+  .line .mt { margin-top: 3px; font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+  .line .amt { margin-top: 4px; font-size: 15px; font-weight: 700; }
+  .qty { width: 62px; height: 46px; border: 1.5px solid var(--inputBorder); border-radius: 10px; display: grid; place-items: center; font-size: 17px; font-weight: 600; background: #fff; }
+  .del { width: 30px; display: grid; place-items: center; font-size: 20px; color: var(--muted); }
+
+  .totals { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
+  .tr { display: flex; justify-content: space-between; font-size: 14px; }
+  .tr .l { color: var(--label); }
+  .tr .v { font-weight: 600; }
+  .grand { border-top: 1px solid var(--border); padding-top: 9px; margin-top: 2px; display: flex; justify-content: space-between; align-items: baseline; }
+  .grand .l { font-size: 16px; font-weight: 700; }
+  .grand .v { font-size: 22px; font-weight: 700; }
+
+  .footer { background: #fff; border-top: 1px solid var(--border); padding: 12px 16px 26px; display: flex; gap: 12px; }
+  .btn { flex: 1; height: 52px; border-radius: 10px; display: grid; place-items: center; font-weight: 700; font-size: 16px; }
+  .btn.p { background: var(--primary); color: #fff; }
+  .btn.o { border: 1.5px solid var(--primary); color: var(--primary); background: #fff; }
+
+  /* search + list */
+  .searchRow { display: flex; gap: 8px; }
+  .search { flex: 1; height: 48px; border: 1px solid var(--inputBorder); background: #fff; border-radius: 10px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 15px; color: var(--muted); }
+  .search .ic { font-size: 20px; }
+  .filt { width: 48px; height: 48px; border: 1px solid var(--inputBorder); background: #fff; border-radius: 10px; display: grid; place-items: center; color: var(--primary); font-size: 22px; }
+  .filt.on { border-color: var(--primary); background: var(--primarySoft); }
+  .chips { display: flex; gap: 8px; }
+  .cust { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; display: flex; gap: 10px; }
+  .cust.cur { border: 2px solid var(--primary); padding: 11px 13px; }
+  .cust .l { flex: 1; min-width: 0; }
+  .cust .r { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 6px; }
+  .cust .am { font-size: 16px; font-weight: 700; }
+  .stc { border-radius: 8px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
+  .cur-tag { margin-top: 6px; display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 700; color: var(--primary); }
+
+  .item { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 10px 10px 10px 14px; display: flex; align-items: center; gap: 10px; }
+  .item.on { background: var(--primarySoft); border-color: var(--primary); }
+  .item .main { flex: 1; }
+  .item .nm { font-size: 15px; font-weight: 700; }
+  .item .rl { margin-top: 4px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .mrp { background: #F5F5F4; border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font-size: 12px; font-weight: 600; color: var(--label); }
+  .item .qty { height: 44px; }
+  .item .qty.empty { color: #A8A29E; font-weight: 500; }
+  .asof { font-size: 12.5px; color: var(--muted); margin-top: -4px; }
+  .proceed { margin: 0 16px; height: 54px; border-radius: 12px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+  .proceed .a { font-size: 14px; color: var(--onPrimaryMuted); }
+  .proceed .b { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
+  .footer2 { background: var(--bg); padding: 10px 0 28px; }
+
+  /* form */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .fld .box { height: 50px; border: 1.5px solid var(--inputBorder); border-radius: 10px; background: #fff; display: flex; align-items: center; padding: 0 12px; font-size: 16px; gap: 8px; }
+  .fld .box.ro { background: #F5F5F4; color: var(--muted); }
+  .fld .box.focus { border-color: var(--primary); }
+  .fld .box .ic { font-size: 19px; color: var(--muted); margin-left: auto; }
+  .fld .box.ro .ic { font-size: 16px; }
+  .fld .box.tall { height: 64px; align-items: flex-start; padding-top: 12px; }
+  .ftot { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .remove { text-align: center; color: var(--danger); font-weight: 700; font-size: 15px; padding: 4px 0; }
+  .note { font-size: 12.5px; color: var(--muted); }
+
+  /* explanation boxes */
+  .how { margin-top: 22px; background: #fff; border-radius: 14px; padding: 16px 20px 18px; min-height: 236px; }
+  .how h3 { font-size: 16px; color: var(--primary); margin-bottom: 8px; }
+  .how ul { padding-left: 20px; }
+  .how li { font-size: 14.5px; line-height: 1.45; margin-bottom: 5px; color: #292524; }
+  .how .fix { color: var(--success); font-weight: 600; }
+  .qs { margin-top: 22px; background: #FFFBEB; border: 1px solid #FCD34D; border-radius: 14px; padding: 16px 22px; }
+  .qs h3 { font-size: 16px; color: #92400E; margin-bottom: 8px; }
+  .qs ol { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 40px; padding-left: 22px; }
+  .qs li { font-size: 14.5px; line-height: 1.45; color: #292524; }
+  .foot { margin-top: 14px; font-size: 13px; color: #57534E; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="top">
+    <div>
+      <h1>VKSMAN · Sales return</h1>
+      <div class="lede">Canvas page “6 · Returns”, redrawn for the new phone app. It works like the Sales screens already built: pick items, check the lines, save. The return waits on the phone until Sync.</div>
+    </div>
+    <div class="stamp">Mockup with <b>sample data</b><br>not a screenshot of a running app</div>
+  </div>
+
+  <div class="cols">
+    <!-- ======================= 1 · Sales return ======================= -->
+    <div>
+      <div class="step"><div class="n">1</div><div class="t">Sales return</div><div class="h">tap Change → 2 · Add product → 3</div></div>
+      <div class="phone"><div class="screen">
+        <div class="status"><span>11:42</span><span class="cam"></span><span class="sig"><i class="ic">&#xf208;</i><i class="ic">&#xf631;</i><i class="ic">&#xf187;</i></span></div>
+        <div class="hdr"><div class="back"><i class="ic">&#xf229;</i></div><div class="grow"><div class="tt">Sales return</div><div class="st">New return · Tue 17 Nov</div></div></div>
+        <div class="body" style="gap:10px">
+          <div class="card">
+            <div class="row">
+              <div class="sp">
+                <div class="name" style="font-size:16px">Sri Murugan Stores</div>
+                <div class="muted" style="margin-top:3px">12 Bazaar Street · Mohanur</div>
+              </div>
+              <div class="link"><i class="ic" style="font-size:18px">&#xf5b0;</i>Change</div>
+            </div>
+            <div style="border-top:1px solid var(--border); margin:12px 0 10px"></div>
+            <div class="label">Reason (for the whole return)</div>
+            <div class="row" style="gap:8px">
+              <span class="chip2 on"><i class="ic" style="font-size:16px">&#xf21d;</i>Damage stock</span>
+              <span class="chip2">Expiry stock</span>
+            </div>
+          </div>
+          <div class="sect"><span class="cap">3 PRODUCTS · 32 QTY</span><span class="btnO"><i class="ic" style="font-size:18px">&#xf103;</i>Add product</span></div>
+          <div class="line">
+            <div class="main"><div class="nm">Glucose Biscuit 75 g</div><div class="mt">₹9.00 / PCS · Batch GB1023</div><div class="amt">₹216.00</div></div>
+            <div class="qty">24</div><div class="del"><i class="ic">&#xf5f6;</i></div>
+          </div>
+          <div class="line">
+            <div class="main"><div class="nm">Sambar Powder 100 g</div><div class="mt">₹38.00 / PKT · Exp 30/10/2026</div><div class="amt">₹228.00</div></div>
+            <div class="qty">6</div><div class="del"><i class="ic">&#xf5f6;</i></div>
+          </div>
+          <div class="line">
+            <div class="main"><div class="nm">Sunflower Oil 1 L</div><div class="mt">₹142.00 / PCS · Batch SO2408</div><div class="amt">₹284.00</div></div>
+            <div class="qty">2</div><div class="del"><i class="ic">&#xf5f6;</i></div>
+          </div>
+          <div class="totals">
+            <div class="tr"><span class="l">Taxable value</span><span class="v">₹728.00</span></div>
+            <div class="tr"><span class="l">GST (CGST ₹32.24 + SGST ₹32.24)</span><span class="v">₹64.48</span></div>
+            <div class="tr"><span class="l">Round off</span><span class="v">−₹0.48</span></div>
+            <div class="grand"><span class="l">Total amount</span><span class="v">₹792.00</span></div>
+          </div>
+        </div>
+        <div class="footer"><div class="btn o">Back</div><div class="btn p">Save return</div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="how">
+        <h3>How it works</h3>
+        <ul>
+          <li>Opened from Customer detail → <b>Return</b>, or a return waiting on the phone. Called “Sales return” in the menu, here and in the report.</li>
+          <li>The reason is picked once, from VK Nex’s reason list (VK Nex keeps one reason per return).</li>
+          <li>Type the qty on the line, tap it for batch and dates, or tap the bin to <span class="fix">remove it</span> (the old app couldn’t).</li>
+          <li>Save keeps it as <b>Pending</b>; Sync sends it, the same as bills.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ======================= 2 · Choose customer ======================= -->
+    <div>
+      <div class="step"><div class="n">2</div><div class="t">Choose customer</div><div class="h">tap a shop → back to 1</div></div>
+      <div class="phone"><div class="screen">
+        <div class="status"><span>11:42</span><span class="cam"></span><span class="sig"><i class="ic">&#xf208;</i><i class="ic">&#xf631;</i><i class="ic">&#xf187;</i></span></div>
+        <div class="hdr"><div class="back"><i class="ic">&#xf229;</i></div><div class="grow"><div class="tt">Choose customer</div><div class="st">For this return · 7 of 46 shops</div></div></div>
+        <div class="body" style="gap:10px">
+          <div class="searchRow"><div class="search"><i class="ic">&#xf55f;</i>Search name, area or phone</div><div class="filt on"><i class="ic">&#xf48b;</i></div></div>
+          <div class="chips">
+            <span class="chip2 on">Beat: Mohanur Road<i class="ic" style="font-size:14px">&#xf232;</i></span>
+            <span class="chip2">Type: All<i class="ic" style="font-size:14px">&#xf232;</i></span>
+          </div>
+          <div class="cust cur">
+            <div class="l"><div class="name">Sri Murugan Stores</div><div class="muted" style="margin-top:4px">12 Bazaar Street · Mohanur</div>
+              <div class="cur-tag"><i class="ic" style="font-size:15px">&#xf21e;</i>On this return</div></div>
+            <div class="r"><div class="am">₹12,450.00</div><span class="stc" style="background:#DCFCE7;color:#166534">Billed</span></div>
+          </div>
+          <div class="cust">
+            <div class="l"><div class="name">Annai Super Market</div><div class="muted" style="margin-top:4px">Bus Stand Road · Mohanur</div></div>
+            <div class="r"><div class="am">₹8,200.00</div><span class="stc" style="background:#E7E5E4;color:#44403C">Not visited</span></div>
+          </div>
+          <div class="cust">
+            <div class="l"><div class="name">Balaji Traders</div><div class="muted" style="margin-top:4px">Main Road · Mohanur</div></div>
+            <div class="r"><div class="am">₹3,975.00</div><span class="stc" style="background:#FEF3C7;color:#92400E">No order</span></div>
+          </div>
+          <div class="cust">
+            <div class="l"><div class="name">Kaveri Stores</div><div class="muted" style="margin-top:4px">Kamaraj Street · Mohanur</div></div>
+            <div class="r"><div class="am">₹21,060.00</div><span class="stc" style="background:#DBEAFE;color:#1E40AF">Ordered</span></div>
+          </div>
+          <div class="cust">
+            <div class="l"><div class="name">Lakshmi Agencies</div><div class="muted" style="margin-top:4px">Market Road · Mohanur</div></div>
+            <div class="r"><div class="am">₹5,340.00</div><span class="stc" style="background:#EDE9FE;color:#5B21B6">Received</span></div>
+          </div>
+          <div class="cust">
+            <div class="l"><div class="name">Mani Provision Stores</div><div class="muted" style="margin-top:4px">Temple Street · Mohanur</div></div>
+            <div class="r"><div class="am">₹1,120.00</div><span class="stc" style="background:#E7E5E4;color:#44403C">Not visited</span></div>
+          </div>
+          <div class="cust">
+            <div class="l"><div class="name">Ganapathy Stores</div><div class="muted" style="margin-top:4px">Salem Road · Mohanur</div></div>
+            <div class="r"><div class="am">₹9,880.00</div><span class="stc" style="background:#E7E5E4;color:#44403C">Not visited</span></div>
+          </div>
+        </div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="how">
+        <h3>How it works</h3>
+        <ul>
+          <li>The same list as Customers: search, cards with balance and visit status.</li>
+          <li>Beat and Type filters <span class="fix">work here too</span>, from the same chips as Customers.</li>
+          <li>Names and areas come from the same customer table as Customers, so <span class="fix">none are blank</span>, and Tamil names follow the language setting.</li>
+          <li>Tap a shop: back to the return with that customer; the lines stay.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ======================= 3 · Select return items ======================= -->
+    <div>
+      <div class="step"><div class="n">3</div><div class="t">Select return items</div><div class="h">tap a name → 4</div></div>
+      <div class="phone"><div class="screen">
+        <div class="status"><span>11:43</span><span class="cam"></span><span class="sig"><i class="ic">&#xf208;</i><i class="ic">&#xf631;</i><i class="ic">&#xf187;</i></span></div>
+        <div class="hdr"><div class="back"><i class="ic">&#xf229;</i></div><div class="grow"><div class="tt">Select return items</div><div class="st">Sri Murugan Stores</div></div></div>
+        <div class="body" style="gap:10px">
+          <div class="searchRow"><div class="search"><i class="ic">&#xf55f;</i>Search code, name or Tamil name</div><div class="filt"><i class="ic">&#xf48b;</i></div></div>
+          <div class="asof">Prices as of the last Sync, Tue 17 Nov</div>
+          <div class="item"><div class="main"><div class="nm">Cream Biscuit 100 g</div><div class="rl">₹18.00 / PCS <span class="mrp">MRP ₹20.00</span></div></div><div class="qty empty">0</div></div>
+          <div class="item on"><div class="main"><div class="nm">Glucose Biscuit 75 g</div><div class="rl">₹9.00 / PCS <span class="mrp">MRP ₹10.00</span></div></div><div class="qty">24</div></div>
+          <div class="item"><div class="main"><div class="nm">Chilli Powder 200 g</div><div class="rl">₹62.00 / PKT <span class="mrp">MRP ₹70.00</span></div></div><div class="qty empty">0</div></div>
+          <div class="item on"><div class="main"><div class="nm">Sambar Powder 100 g</div><div class="rl">₹38.00 / PKT <span class="mrp">MRP ₹45.00</span></div></div><div class="qty">6</div></div>
+          <div class="item on"><div class="main"><div class="nm">Sunflower Oil 1 L</div><div class="rl">₹142.00 / PCS <span class="mrp">MRP ₹165.00</span></div></div><div class="qty">2</div></div>
+          <div class="item"><div class="main"><div class="nm">Tea Powder 250 g</div><div class="rl">₹118.00 / PKT <span class="mrp">MRP ₹130.00</span></div></div><div class="qty empty">0</div></div>
+          <div class="item"><div class="main"><div class="nm">Toor Dal 1 kg</div><div class="rl">₹148.00 / KG</div></div><div class="qty empty">0</div></div>
+          <div class="item"><div class="main"><div class="nm">Curd Cup 200 g</div><div class="rl">₹18.00 / PCS <span class="mrp">MRP ₹20.00</span></div></div><div class="qty empty">0</div></div>
+        </div>
+        <div class="footer2"><div class="proceed"><span class="a">3 items · 32 qty</span><span class="b">Back to return<i class="ic" style="font-size:18px">&#xf23b;</i></span></div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="how">
+        <h3>How it works</h3>
+        <ul>
+          <li>The same list as Sales “Select items”: search by code, name or Tamil name, filter by group or brand (<span class="fix">no longer breaks the list</span>).</li>
+          <li>Type a qty on the row, or tap the name for batch, dates and notes.</li>
+          <li>Items already on the return are highlighted.</li>
+          <li>Title spelled right, white on maroon like every other screen.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ======================= 4 · Return item ======================= -->
+    <div>
+      <div class="step"><div class="n">4</div><div class="t">Return item</div><div class="h">Save → back to 1</div></div>
+      <div class="phone"><div class="screen">
+        <div class="status"><span>11:44</span><span class="cam"></span><span class="sig"><i class="ic">&#xf208;</i><i class="ic">&#xf631;</i><i class="ic">&#xf187;</i></span></div>
+        <div class="hdr"><div class="back"><i class="ic">&#xf229;</i></div><div class="grow"><div class="tt">Return item</div><div class="st">Sunflower Oil 1 L · PCS</div></div></div>
+        <div class="body" style="gap:14px">
+          <div class="grid2">
+            <div class="fld"><div class="label">Return qty</div><div class="box focus">2</div></div>
+            <div class="fld"><div class="label">MRP</div><div class="box ro">165.00<i class="ic">&#xf3c8;</i></div></div>
+            <div class="fld"><div class="label">Return price</div><div class="box">142.00</div></div>
+            <div class="fld"><div class="label">GST</div><div class="box ro">5%</div></div>
+          </div>
+          <div class="fld"><div class="label">Batch no</div><div class="box">SO2408</div></div>
+          <div class="grid2">
+            <div class="fld"><div class="label">Batch date</div><div class="box">12/08/2026<i class="ic">&#xf1d6;</i></div></div>
+            <div class="fld"><div class="label">Expiry date</div><div class="box">11/02/2027<i class="ic">&#xf1d6;</i></div></div>
+          </div>
+          <div class="fld"><div class="label">Notes</div><div class="box tall">Pouch leaking</div></div>
+          <div class="ftot">
+            <div class="tr"><span class="l">Taxable ₹284.00 · GST 5%</span><span class="v">₹14.20</span></div>
+            <div class="grand" style="margin-top:0"><span class="l">Total incl. tax</span><span class="v">₹298.20</span></div>
+          </div>
+          <div class="remove">Remove from return</div>
+        </div>
+        <div class="footer"><div class="btn p">Save</div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="how">
+        <h3>How it works</h3>
+        <ul>
+          <li>MRP and GST are locked; qty and price can be changed.</li>
+          <li>Batch date and Expiry date open the <span class="fix">calendar</span> (the same one as Ledger dates), not free text.</li>
+          <li>Every field has a label above it; one text size throughout.</li>
+          <li>Save goes <span class="fix">back to the return</span>; “Remove from return” takes the line off.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="qs">
+    <h3>To decide before building</h3>
+    <ol>
+      <li><b>Reason:</b> one per return, as VK Nex keeps it (shown here), or one per line, as the old app had it?</li>
+      <li><b>Against a bill:</b> VK Nex can link a return to the bill it came from. Pick the bill on the phone, or send returns without a bill?</li>
+      <li><b>Godown:</b> VK Nex needs a godown on every return line. The same godown pick as bills, or one fixed godown (e.g. damaged stock)?</li>
+      <li><b>Sending:</b> VK Nex has no phone route for returns yet. Saved as a draft for the office to check, or posted at once like bills and receipts?</li>
+    </ol>
+  </div>
+  <div class="foot">Sample figures add up: GST on top of the rate (18% biscuits, 5% the rest), CGST + SGST, rounded to the rupee · screens and fixes from canvas page “6 · Returns” · fields from VK Nex sale_return / sale_return_item · created 17/11/2026</div>
+</div>
+</body>
+</html>

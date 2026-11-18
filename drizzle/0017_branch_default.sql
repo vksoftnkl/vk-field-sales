@@ -1,0 +1,1 @@
+ALTER TABLE `branches` ADD `is_default` integer DEFAULT false NOT NULL;

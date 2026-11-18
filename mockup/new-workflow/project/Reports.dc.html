@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reports</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 900px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 8px 10px; display: flex; align-items: center; gap: 2px">
+    <a href="Menu.dc.html" aria-label="Back to menu" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <h1 style="margin: 0; font-size: 19px; line-height: 24px; font-weight: 600">Reports</h1>
+      <span style="font-size: 13px; line-height: 18px; color: #F3DADA">From this phone's records</span>
+    </div>
+  </header>
+
+  <div style="display: flex; gap: 8px; padding: 12px 16px 4px">
+    <button type="button" aria-pressed="true" style="height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid #8B1D1D; background: #F8E8E8; color: #8B1D1D; font: inherit; font-size: 13px; font-weight: 600">Today</button>
+    <button type="button" aria-pressed="false" style="height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 13px">This week</button>
+    <button type="button" aria-pressed="false" style="height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 13px">This month</button>
+    <button type="button" aria-pressed="false" style="height: 34px; padding: 0 10px; display: flex; align-items: center; border-radius: 17px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 13px" aria-label="Pick dates"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></button>
+  </div>
+
+  <div style="flex: 1; overflow: hidden; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px">
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+      <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; overflow: hidden">
+        <h2 style="margin: 0; padding: 10px 16px 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: #8B1D1D">{{g.title}}</h2>
+        <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+          <a href="{{r.href}}" style="display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 8px 12px 8px 16px; border-top: 1px solid #F1EDE4; text-decoration: none; color: #1C1917">
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><b style="font-size: 15px; font-weight: 600">{{r.name}}</b><span style="font-size: 12px; color: #57534E">{{r.was}}</span></span>
+            <span style="font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right">{{r.value}}</span>
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#57534E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </a>
+        </sc-for>
+      </section>
+    </sc-for>
+    <span style="font-size: 12px; line-height: 16px; color: #57534E; text-align: center">GST, registers and stock valuation stay in VK Nex desktop and web.</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      groups: [
+        { title: 'SUMMARIES', rows: [
+          { name: 'Sales summary', was: 'was Sales, Order and Group/brand summary', value: '₹24,560.00', href: 'DayClose.dc.html' },
+          { name: 'Payment summary', was: 'was Tender summary', value: '₹35,400.00', href: 'DayClose.dc.html' }
+        ] },
+        { title: 'LISTS', rows: [
+          { name: 'Sales orders', was: 'was Order list, Order detail', value: '5 · ₹18,240.00', href: 'MyOrders.dc.html' },
+          { name: 'Sales bills', was: 'was Sales list, Bill detail', value: '2 · ₹6,320.00', href: 'MyOrders.dc.html' },
+          { name: 'Receipts', was: 'was Receipt list', value: '7 · ₹35,400.00', href: 'MyOrders.dc.html' },
+          { name: 'Sales returns', was: 'was Return list', value: '1 · ₹325.50', href: 'MyOrders.dc.html' }
+        ] },
+        { title: 'CUSTOMERS AND STOCK', rows: [
+          { name: 'Dues by beat', was: 'was Area-wise, Party-wise outstanding', value: '₹3,13,650.00', href: 'Dues.dc.html' },
+          { name: 'Customer ledger', was: 'pick a customer', value: '', href: 'Ledger.dc.html' },
+          { name: 'Stock', was: 'was Stock summary', value: '1,286 items', href: 'Items.dc.html' }
+        ] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

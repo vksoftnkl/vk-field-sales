@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 1360px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 8px 10px; display: flex; align-items: center; gap: 2px">
+    <a href="Menu.dc.html" aria-label="Back to menu" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <h1 style="margin: 0; font-size: 19px; line-height: 24px; font-weight: 600">Settings</h1>
+      <span style="font-size: 13px; line-height: 18px; color: #F3DADA">Changes apply straight away</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 6px 16px 14px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 10px 0 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: #8B1D1D">SERVER AND PHONE</h2>
+      <div style="display: flex; flex-direction: column; gap: 6px"><label for="srv" style="font-size: 13px; font-weight: 500; color: #44403C">VK Nex server</label><input id="srv" value="https://erp.[your-domain]:3011" style="height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 15px; color: #1C1917"></div>
+      <div style="display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px">
+        <span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 5px; background: #15803D; flex-shrink: 0"></span>
+        <span style="flex: 1"><b>Registered</b> on VK Nex Device List<br><span style="font-size: 12px; color: #57534E">VKSMAN-3F9A2C1B7D04</span></span>
+      </div>
+      <div style="display: flex; gap: 8px; border-top: 1px solid #F1EDE4; padding-top: 12px">
+        <button type="button" style="flex: 1; height: 44px; border: 1px solid #D6D3D1; border-radius: 10px; background: #FFFFFF; color: #8B1D1D; font: inherit; font-size: 14px; font-weight: 600">Download all again</button>
+        <button type="button" style="flex: 1; height: 44px; border: 1px solid #D6D3D1; border-radius: 10px; background: #FFFFFF; color: #B91C1C; font: inherit; font-size: 14px; font-weight: 600">Clear this phone…</button>
+      </div>
+      <span style="font-size: 12px; line-height: 16px; color: #57534E">Clear works only when nothing is waiting to be sent, and asks first.</span>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 6px 16px 14px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 10px 0 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: #8B1D1D">DISPLAY</h2>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 500; color: #44403C">Language</span>
+        <div role="group" aria-label="Language" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid #D6D3D1; border-radius: 10px; overflow: hidden">
+          <button type="button" aria-pressed="true" style="height: 42px; border: 0; background: #8B1D1D; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600">English</button>
+          <button type="button" aria-pressed="false" style="height: 42px; border: 0; border-left: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 15px">தமிழ்</button>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px"><label for="ts" style="font-size: 13px; font-weight: 500; color: #44403C">Text size</label><select id="ts" style="height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 10px; font: inherit; font-size: 15px; color: #1C1917; background: #FFFFFF"><option>Same as the phone</option><option>Small</option><option>Normal</option><option>Large</option></select></div>
+      <label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; font-size: 15px"><span>Show Tamil item names</span><input type="checkbox" role="switch" checked style="width: 22px; height: 22px; margin: 0; accent-color: #8B1D1D"></label>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 6px 16px 14px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 10px 0 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: #8B1D1D">MY WORK</h2>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 500; color: #44403C">Open the app on</span>
+        <div role="group" aria-label="Start screen" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid #D6D3D1; border-radius: 10px; overflow: hidden">
+          <button type="button" aria-pressed="true" style="height: 42px; border: 0; background: #8B1D1D; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600">Today</button>
+          <button type="button" aria-pressed="false" style="height: 42px; border: 0; border-left: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 15px">Dues</button>
+        </div>
+        <span style="font-size: 12px; line-height: 16px; color: #57534E">Collection salesmen can start on Dues (was "Salesman-based collection").</span>
+      </div>
+      <label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; border-top: 1px solid #F1EDE4; padding-top: 6px; font-size: 15px"><span style="display: flex; flex-direction: column; gap: 2px">Only items for the customer's group<span style="font-size: 12px; color: #57534E">Uses VK Nex item group links · decision 6</span></span><input type="checkbox" role="switch" checked style="width: 22px; height: 22px; margin: 0; accent-color: #8B1D1D; flex-shrink: 0"></label>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 6px 16px 14px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 10px 0 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: #8B1D1D">PRINT OR SHARE</h2>
+      <div role="group" aria-label="Print or share" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid #D6D3D1; border-radius: 10px; overflow: hidden">
+        <button type="button" aria-pressed="true" style="height: 42px; border: 0; background: #8B1D1D; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600">Off</button>
+        <button type="button" aria-pressed="false" style="height: 42px; border: 0; border-left: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 14px">Bluetooth</button>
+        <button type="button" aria-pressed="false" style="height: 42px; border: 0; border-left: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 14px">Share PDF</button>
+      </div>
+      <span style="font-size: 12px; line-height: 16px; color: #57534E">Decision 3. A copy made before Sync shows the phone's ref no, not the VK Nex bill no. The printer picker appears when Bluetooth is chosen.</span>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 6px 16px 14px; display: flex; flex-direction: column; gap: 4px">
+      <h2 style="margin: 10px 0 2px; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: #8B1D1D">SET BY THE OFFICE IN VK NEX</h2>
+      <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1EDE4; font-size: 14px"><span style="color: #44403C">Credit limit check</span><b>Refuse</b></div>
+      <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1EDE4; font-size: 14px"><span style="color: #44403C">Edit price (your login)</span><b>No</b></div>
+      <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1EDE4; font-size: 14px"><span style="color: #44403C">Rate above MRP</span><b>Refused</b></div>
+      <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1EDE4; font-size: 14px"><span style="color: #44403C">Qty prices</span><b>On</b></div>
+      <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1EDE4; font-size: 14px"><span style="color: #44403C">Round off bills to</span><b>₹1</b></div>
+      <div style="display: flex; justify-content: space-between; padding: 8px 0; font-size: 14px"><span style="color: #44403C">Salesman on receipts</span><b>Not required</b></div>
+      <span style="font-size: 12px; line-height: 16px; color: #57534E">Read-only, as at Sync 08:42. These replace the old phone switches (negative stock, discount on tax, receipt discount).</span>
+    </section>
+
+    <span style="font-size: 12px; line-height: 16px; color: #57534E; text-align: center">VKSMAN · signed in as karthik · Acme Foods</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1360}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

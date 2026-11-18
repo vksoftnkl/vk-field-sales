@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Messages and dialogs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 1346px; height: 980px; box-sizing: border-box; padding: 48px; display: flex; flex-direction: column; gap: 28px; background: #FAFAF9; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="display: flex; flex-direction: column; gap: 6px">
+    <h1 style="margin: 0; font-size: 28px; line-height: 34px; font-weight: 700">Messages and dialogs: one style everywhere</h1>
+    <p style="margin: 0; font-size: 15px; line-height: 22px; color: #44403C">Replaces the old Server error, Info, Notification and "Warning !!!" popups. Each message says what happened and what to do next.</p>
+  </header>
+
+  <div style="display: grid; grid-template-columns: repeat(3, 390px); gap: 40px">
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 4px; min-height: 64px"><b style="font-size: 17px">1 · Ask before a risky save</b><span style="font-size: 14px; line-height: 20px; color: #44403C">A dialog only when the salesman must decide. The wording matches VK Nex desktop.</span></div>
+      <div style="height: 700px; border-radius: 28px; border: 1px solid #D6D3D1; overflow: hidden; display: flex; flex-direction: column; background: #57534E">
+        <div style="height: 62px; background: #6B4A4A"></div>
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px">
+          <section role="dialog" aria-labelledby="dlg-t" style="width: 100%; background: #FFFFFF; border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+            <h2 id="dlg-t" style="margin: 0; font-size: 19px; line-height: 26px; font-weight: 600">Order on credit anyway?</h2>
+            <p style="margin: 0; font-size: 15px; line-height: 22px; color: #44403C">Sri Murugan Stores' oldest bill is 46 days old. Their credit days are 30.</p>
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <button type="button" style="height: 48px; border: 0; border-radius: 12px; background: #8B1D1D; color: #FFFFFF; font: inherit; font-size: 16px; font-weight: 600">Order on credit</button>
+              <button type="button" style="height: 48px; border: 1px solid #8B1D1D; border-radius: 12px; background: #FFFFFF; color: #8B1D1D; font: inherit; font-size: 16px; font-weight: 600">Change to Cash</button>
+              <button type="button" style="height: 44px; border: 0; background: transparent; color: #44403C; font: inherit; font-size: 15px">Go back</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 4px; min-height: 64px"><b style="font-size: 17px">2 · Sync problems: network or refusal</b><span style="font-size: 14px; line-height: 20px; color: #44403C">Never "check your internet" for a refusal. A refused record stays on the phone with VK Nex's reason.</span></div>
+      <div style="height: 700px; border-radius: 28px; border: 1px solid #D6D3D1; overflow: hidden; display: flex; flex-direction: column; background: #F5F3F0">
+        <div style="background: #8B1D1D; color: #FFFFFF; padding: 16px 20px 14px; display: flex; flex-direction: column"><b style="font-size: 19px">Sync</b><span style="font-size: 13px; color: #F3DADA">Last sync today 08:42</span></div>
+        <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+          <div role="status" style="display: flex; gap: 10px; background: #FFFFFF; border: 1.5px solid #A8A29E; border-radius: 12px; padding: 12px; font-size: 14px; line-height: 20px">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#44403C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M3 3l18 18"/><path d="M8.5 16.5a5 5 0 0 1 7 0M5 12.5a10 10 0 0 1 4-2.3M19 12.5a10 10 0 0 0-3-1.9M2 8.8a15 15 0 0 1 4.2-2.5M22 8.8A15 15 0 0 0 11 5.1"/><path d="M12 20v.01"/></svg>
+            <span><b>Can't reach VK Nex</b><br>Nothing was sent or lost. Join the office Wi-Fi and tap Sync now again.</span>
+          </div>
+          <div role="alert" style="display: flex; gap: 10px; background: #FEE2E2; color: #991B1B; border-radius: 12px; padding: 12px; font-size: 14px; line-height: 20px">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+            <span><b>VK Nex refused 1 receipt</b><br>Kumaran Stores, ₹2,000.00: your login can't post receipts. It stays here and goes at the next Sync.</span>
+          </div>
+          <div role="alert" style="display: flex; gap: 10px; background: #FEF3C7; color: #92400E; border-radius: 12px; padding: 12px; font-size: 14px; line-height: 20px">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 17h2"/></svg>
+            <span><b>This phone isn't registered yet</b><br>Ask the office to add VKSMAN-3F9A2C1B7D04 on VK Nex's Device List. Orders wait until then.</span>
+          </div>
+          <span style="font-size: 13px; line-height: 18px; color: #57534E">The old "Mac Address Error / Failed to Authenticate" becomes the third message.</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 4px; min-height: 64px"><b style="font-size: 17px">3 · Field errors and saved notices</b><span style="font-size: 14px; line-height: 20px; color: #44403C">An error sits under its field. A saved notice goes away by itself. A stale-data notice is a banner, not a popup.</span></div>
+      <div style="position: relative; height: 700px; border-radius: 28px; border: 1px solid #D6D3D1; overflow: hidden; display: flex; flex-direction: column; background: #FFFFFF">
+        <div style="background: #8B1D1D; color: #FFFFFF; padding: 16px 20px 14px; display: flex; flex-direction: column"><b style="font-size: 19px">Toor Dal 1 kg</b><span style="font-size: 13px; color: #F3DADA">Item line</span></div>
+        <div style="padding: 16px; display: flex; flex-direction: column; gap: 14px">
+          <div role="status" style="display: flex; gap: 10px; background: #F8E8E8; color: #6B1515; border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 18px">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+            <span>Prices are from yesterday's Sync. Sync today for new prices and schemes.</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <label for="m-rate" style="font-size: 13px; font-weight: 500; color: #44403C">Rate</label>
+            <input id="m-rate" value="130.00" aria-invalid="true" aria-describedby="m-rate-err" style="height: 44px; box-sizing: border-box; border: 2px solid #B91C1C; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; color: #1C1917">
+            <span id="m-rate-err" style="font-size: 13px; line-height: 18px; color: #B91C1C; font-weight: 600">Below the Min price ₹135.00. VK Nex refuses it.</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <label for="m-disc" style="font-size: 13px; font-weight: 500; color: #44403C">Disc %</label>
+            <input id="m-disc" value="2" style="height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 16px; color: #1C1917">
+          </div>
+        </div>
+        <div role="status" style="position: absolute; left: 16px; right: 16px; bottom: 24px; display: flex; align-items: center; gap: 10px; background: #1C1917; color: #FFFFFF; border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 20px">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M5 12l5 5 9-10"/></svg>
+          <span>Order saved on this phone. It goes at the next Sync.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1346,"height":980}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

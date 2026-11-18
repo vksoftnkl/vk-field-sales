@@ -92,6 +92,41 @@
       "when": 1794895484340,
       "tag": "0012_tender_surcharge",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794918292777,
+      "tag": "0013_sale_returns",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1794920934231,
+      "tag": "0014_remove_test_salesmen",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1794980080243,
+      "tag": "0015_sale_order_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1795005125321,
+      "tag": "0016_branches",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795006441256,
+      "tag": "0017_branch_default",
+      "breakpoints": true
     }
   ]
 }

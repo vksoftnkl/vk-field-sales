@@ -42,6 +42,23 @@ const header = (id: string, over: Partial<OrderHeader> = {}): OrderHeader => ({
   appSyncError: null,
   appServerSoId: null,
   appSyncedOn: null,
+  soBranchId: null,
+  soUsrRefno: null,
+  soOrderType: null,
+  soDeliveryDate: null,
+  soPriority: null,
+  soValidUntil: null,
+  soHasPromo: null,
+  soTaxableAmt: null,
+  soCgstAmt: null,
+  soSgstAmt: null,
+  soIgstAmt: null,
+  soTaxAmt: null,
+  soRoundOff: null,
+  appCheckinAt: null,
+  appCheckinLat: null,
+  appCheckinLng: null,
+  appCheckinAccuracyM: null,
   ...over,
 });
 
@@ -66,6 +83,24 @@ const line = (orderId: string, lineNo: number, over: Partial<OrderLine> = {}): O
   soiLoadQty: '0',
   soiLoadAmt: '0.00',
   soiNetAmt: '336.00',
+  soiToBaseFactor: null,
+  soiHsnCode: null,
+  soiTaxId: null,
+  soiIsTaxIncl: null,
+  soiMinPrice: null,
+  soiTaxableAmt: null,
+  soiTaxPerc: null,
+  soiTaxAmt: null,
+  soiCgstPerc: null,
+  soiCgstAmt: null,
+  soiSgstPerc: null,
+  soiSgstAmt: null,
+  soiIgstPerc: null,
+  soiIgstAmt: null,
+  appItemName: null,
+  appItemNameTa: null,
+  appUnitName: null,
+  appDiscMode: null,
   ...over,
 });
 
@@ -106,7 +141,8 @@ test('the payload is the desktop order without server-filled keys; the phone id 
   assert.equal(p.soHasFreight, true);
   assert.equal(p.soHasLoad, false);
   assert.equal(p.soOrderAmt, '346.00');
-  for (const k of ['soId', 'soBranchId', 'soAccYear', 'soDeviceId', 'soStatus', 'soOrderRefno', 'soUserId', 'soCreatedOn', 'soRemarks']) {
+  // soBranchId goes only when the order has one (see the branch test below).
+  for (const k of ['soId', 'soAccYear', 'soDeviceId', 'soStatus', 'soOrderRefno', 'soUserId', 'soCreatedOn', 'soRemarks']) {
     assert.equal(k in p, false, `${k} must not be sent`);
   }
   const items = p.items as Record<string, unknown>[];
@@ -198,4 +234,81 @@ test('no answer stops the run; the rest stay waiting', async () => {
   const r = await uploadOrders([order('a'), order('b')], f.deps);
   assert.ok(r.stoppedBy instanceof NetworkError);
   assert.equal(f.synced.length + f.refused.length, 0);
+});
+
+test('3b orders send delivery, priority, phone ref and the GST split; phone-only columns stay', () => {
+  const o: PendingOrder = {
+    header: header('so-3b', {
+      soUsrRefno: '3F9A-181126-03',
+      soOrderType: 'CREDIT',
+      soDeliveryDate: '2026-11-19',
+      soPriority: 'URGENT',
+      soValidUntil: '2026-12-18',
+      soHasPromo: false,
+      soTaxableAmt: '320.00',
+      soCgstAmt: '8.00',
+      soSgstAmt: '8.00',
+      soIgstAmt: '0.00',
+      soTaxAmt: '16.00',
+      soRoundOff: '0.00',
+      appCheckinAt: '2026-11-18T05:12:00.000Z',
+      appCheckinLat: 11.2,
+    }),
+    lines: [
+      line('so-3b', 1, {
+        soiTaxPerc: '5',
+        soiTaxableAmt: '320.00',
+        soiCgstPerc: '2.5',
+        soiCgstAmt: '8.00',
+        soiIsTaxIncl: false,
+        soiToBaseFactor: '1',
+        appItemName: 'Sunflower Oil',
+        appDiscMode: 'perc',
+      }),
+    ],
+    customerPending: false,
+    customerPriceLevelId: 1,
+  };
+  const p = toOrderPayload(o);
+  assert.equal(p.soUsrRefno, '3F9A-181126-03');
+  assert.equal(p.soPriority, 'URGENT');
+  assert.equal(p.soDeliveryDate, '2026-11-19');
+  assert.equal(p.soOrderType, 'CREDIT');
+  assert.equal(p.soHasPromo, false);
+  assert.equal(p.soTaxAmt, '16.00');
+  assert.equal('appCheckinAt' in p, false);
+  const l = (p.items as Record<string, unknown>[])[0]!;
+  assert.equal(l.soiTaxPerc, '5');
+  assert.equal(l.soiCgstAmt, '8.00');
+  assert.equal(l.soiIsTaxIncl, false);
+  assert.equal('appItemName' in l, false);
+  assert.equal('appDiscMode' in l, false);
+  // Older orders: the new keys stay out, except priority (no flag = NORMAL) and the term (CREDIT).
+  const old = toOrderPayload({ ...o, header: header('so-old'), lines: [line('so-old', 1)] });
+  assert.equal(old.soPriority, 'NORMAL');
+  assert.equal(old.soOrderType, 'CREDIT');
+  assert.equal('soDeliveryDate' in old, false);
+  assert.equal('soiTaxPerc' in (old.items as Record<string, unknown>[])[0]!, false);
+});
+
+test('priority: each dropdown value goes as it is; the old urgent flag is URGENT', () => {
+  for (const p of ['LOW', 'NORMAL', 'HIGH', 'URGENT']) {
+    const body = toOrderPayload({ header: header(`so-${p}`, { soPriority: p }), lines: [line(`so-${p}`, 1)], customerPending: false, customerPriceLevelId: 1 });
+    assert.equal(body.soPriority, p);
+  }
+  // Saved before the dropdown: the Urgent delivery switch wrote 'URGENT', off wrote 'NORMAL'.
+  const urgent = toOrderPayload({ header: header('so-u', { soPriority: 'URGENT' }), lines: [line('so-u', 1)], customerPending: false, customerPriceLevelId: 1 });
+  assert.equal(urgent.soPriority, 'URGENT');
+});
+
+test('the branch saved with the order is sent; older orders leave it out', () => {
+  const withBranch = toOrderPayload({ header: header('so-br', { soBranchId: 'br-7' }), lines: [line('so-br', 1)], customerPending: false, customerPriceLevelId: 1 });
+  assert.equal(withBranch.soBranchId, 'br-7');
+  const old = toOrderPayload({ header: header('so-nobr'), lines: [line('so-nobr', 1)], customerPending: false, customerPriceLevelId: 1 });
+  assert.equal('soBranchId' in old, false);
+});
+
+test('a term saved on the order is sent as it is', () => {
+  const cash = toOrderPayload({ header: header('so-cash', { soOrderType: 'CASH' }), lines: [line('so-cash', 1)], customerPending: false, customerPriceLevelId: 1 });
+  assert.equal(cash.soOrderType, 'CASH');
 });

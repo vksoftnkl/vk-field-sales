@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>My documents</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 8px 10px; display: flex; align-items: center; gap: 2px">
+    <a href="Today.dc.html" aria-label="Back to Today" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <h1 style="margin: 0; font-size: 19px; line-height: 24px; font-weight: 600">My documents</h1>
+      <span style="font-size: 13px; line-height: 18px; color: #F3DADA">Status from VK Nex at Sync 08:42</span>
+    </div>
+  </header>
+
+  <div role="tablist" aria-label="Document type" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: #FFFFFF; border-bottom: 1px solid #E7E5E4">
+    <button type="button" role="tab" aria-selected="true" style="height: 46px; border: 0; border-bottom: 3px solid #8B1D1D; background: transparent; color: #8B1D1D; font: inherit; font-size: 14px; font-weight: 600">Orders</button>
+    <button type="button" role="tab" aria-selected="false" style="height: 46px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: #44403C; font: inherit; font-size: 14px">Bills</button>
+    <button type="button" role="tab" aria-selected="false" style="height: 46px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: #44403C; font: inherit; font-size: 14px">Receipts</button>
+    <button type="button" role="tab" aria-selected="false" style="height: 46px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: #44403C; font: inherit; font-size: 14px">Returns</button>
+  </div>
+
+  <div style="display: flex; gap: 8px; padding: 12px 16px 10px; overflow: hidden">
+    <button type="button" aria-pressed="true" style="height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid #8B1D1D; background: #F8E8E8; color: #8B1D1D; font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap">All · 7</button>
+    <button type="button" aria-pressed="false" style="height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 13px; white-space: nowrap">Open · 4</button>
+    <button type="button" aria-pressed="false" style="height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 13px; white-space: nowrap">Completed</button>
+    <button type="button" aria-pressed="false" style="height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 13px; white-space: nowrap">Cancelled</button>
+  </div>
+
+  <div style="flex: 1; overflow: hidden; background: #FFFFFF; border-top: 1px solid #E7E5E4">
+    <sc-for list="{{orders}}" as="o" hint-placeholder-count="7">
+      <div style="display: flex; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F1EDE4">
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 15px; font-weight: 600">{{o.cust}}</span>
+          <span style="font-size: 13px; color: #57534E">{{o.ref}} · {{o.date}}</span>
+          <sc-if value="{{o.note}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; color: #44403C">{{o.note}}</span></sc-if>
+          <sc-if value="{{o.editable}}" hint-placeholder-val="{{false}}">
+            <div style="display: flex; gap: 8px; margin-top: 6px">
+              <a href="OrderReview.dc.html" style="height: 34px; padding: 0 14px; display: flex; align-items: center; border-radius: 9px; border: 1px solid #8B1D1D; color: #8B1D1D; font-size: 13px; font-weight: 600; text-decoration: none">Edit</a>
+              <button type="button" style="height: 34px; padding: 0 14px; border-radius: 9px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #B91C1C; font: inherit; font-size: 13px; font-weight: 600">Delete</button>
+            </div>
+          </sc-if>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px">
+          <span style="font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums">{{o.amt}}</span>
+          <span style="padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: {{o.bg}}; color: {{o.fg}}; border: 1px {{o.line}} {{o.bd}}">{{o.status}}</span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const S = {
+      phone: { status: 'On phone', bg: '#FFFFFF', fg: '#44403C', bd: '#A8A29E', line: 'dashed' },
+      draft: { status: 'Draft', bg: '#E7E5E4', fg: '#44403C', bd: '#E7E5E4', line: 'solid' },
+      confirmed: { status: 'Confirmed', bg: '#DBEAFE', fg: '#1E40AF', bd: '#DBEAFE', line: 'solid' },
+      partly: { status: 'Partly billed', bg: '#FEF3C7', fg: '#92400E', bd: '#FEF3C7', line: 'solid' },
+      completed: { status: 'Completed', bg: '#DCFCE7', fg: '#166534', bd: '#DCFCE7', line: 'solid' },
+      cancelled: { status: 'Cancelled', bg: '#FEE2E2', fg: '#991B1B', bd: '#FEE2E2', line: 'solid' }
+    };
+    return {
+      orders: [
+        { cust: 'Sri Murugan Stores', ref: 'Not sent yet', date: 'Today', note: '4 items · can change until Sync', amt: '₹5,054.00', editable: true, ...S.phone },
+        { cust: 'New Balaji Agencies', ref: 'sor00415', date: '16 Nov', note: 'Waiting for the office to confirm', amt: '₹7,830.00', editable: false, ...S.draft },
+        { cust: 'Lakshmi Traders', ref: 'sor00412', date: '12 Nov', note: 'Delivery 14 Nov', amt: '₹6,210.00', editable: false, ...S.confirmed },
+        { cust: 'Sri Murugan Stores', ref: 'sor00398', date: '05 Nov', note: '18 of 24 qty billed', amt: '₹4,880.00', editable: false, ...S.partly },
+        { cust: 'Kumaran Stores', ref: 'sor00391', date: '03 Nov', note: 'Billed on bil01284', amt: '₹3,140.00', editable: false, ...S.completed },
+        { cust: 'Annai Super Market', ref: 'sor00377', date: '30 Oct', note: 'Reason: customer cancelled', amt: '₹2,200.00', editable: false, ...S.cancelled },
+        { cust: 'Sri Murugan Stores', ref: 'sor00371', date: '28 Oct', note: '', amt: '₹6,040.00', editable: false, ...S.completed }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

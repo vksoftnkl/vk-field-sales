@@ -1,42 +1,18 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import * as Location from 'expo-location';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/screen-header';
 import { Button, TextField } from '@/components/ui';
-import { useDateNames } from '@/components/use-date-names';
 import { currentCompanyQuery } from '@/features/company/company';
-import { COLLECTION_REASONS, customerName, orderCustomerQuery, saveVisit, VISIT_REASONS, type VisitFix, type VisitReason } from '@/features/orders/queries';
-import { formatDay } from '@/lib/date-range';
-import { todayISO } from '@/lib/money';
+import { LocationCard, useLocate } from '@/features/orders/check-in-location';
+import { COLLECTION_REASONS, customerName, orderCustomerQuery, saveVisit, VISIT_REASONS, type VisitReason } from '@/features/orders/queries';
 import { useAppSelector } from '@/store';
 import { colors, font, radius, spacing } from '@/theme';
-
-type Locating = { kind: 'locating' } | { kind: 'fix'; fix: VisitFix } | { kind: 'denied' } | { kind: 'off' } | { kind: 'failed' };
-
-/** getCurrentPositionAsync has no timeout of its own. */
-const GPS_TIMEOUT_MS = 20_000;
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('GPS_TIMEOUT')), ms);
-    p.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      (e: unknown) => {
-        clearTimeout(timer);
-        reject(e instanceof Error ? e : new Error(String(e)));
-      },
-    );
-  });
-}
 
 /**
  * Check in · no order (the Qt app's OrderCheckin.qml), or · no collection (ReceiptCheckin.qml,
@@ -51,54 +27,15 @@ export default function CheckInScreen() {
   const reasonKey = (r: VisitReason) => (collection ? `checkIn.collectionReasons.${r}` : `checkIn.reasons.${r}`);
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
-  const names = useDateNames();
   const userId = useAppSelector((st) => st.session.session?.userId ?? '');
   const { data: found } = useLiveQuery(orderCustomerQuery(customerId), [customerId]);
   const c = found[0];
 
-  const [loc, setLoc] = useState<Locating>({ kind: 'locating' });
+  const { loc, locate } = useLocate();
   const [reason, setReason] = useState<VisitReason | null>(null);
   const [remarks, setRemarks] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const saved = useRef(false);
-  const alive = useRef(true);
-  useEffect(
-    () => () => {
-      alive.current = false;
-    },
-    [],
-  );
-
-  const locate = useCallback(async () => {
-    const put = (l: Locating) => {
-      if (alive.current) setLoc(l);
-    };
-    put({ kind: 'locating' });
-    try {
-      const perm = await Location.requestForegroundPermissionsAsync();
-      if (!perm.granted) return put({ kind: 'denied' });
-      if (!(await Location.hasServicesEnabledAsync())) return put({ kind: 'off' });
-      // A fix from the last two minutes, close enough, saves waiting for the GPS.
-      const pos =
-        (await Location.getLastKnownPositionAsync({ maxAge: 120_000, requiredAccuracy: 100 })) ??
-        (await withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }), GPS_TIMEOUT_MS));
-      put({
-        kind: 'fix',
-        fix: {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracyM: pos.coords.accuracy ?? null,
-          locatedAt: new Date(pos.timestamp).toISOString(),
-        },
-      });
-    } catch {
-      put({ kind: 'failed' });
-    }
-  }, []);
-
-  useEffect(() => {
-    void locate();
-  }, [locate]);
 
   const save = () => {
     setSubmitted(true);
@@ -124,7 +61,7 @@ export default function CheckInScreen() {
       <ScreenHeader title={collection ? t('checkIn.collectionTitle') : t('checkIn.title')} subtitle={c ? customerName(c) : undefined} backLabel={collection ? t('receipt.back') : t('checkIn.back')} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView contentContainerStyle={st.body} keyboardShouldPersistTaps="handled">
-          <LocationCard loc={loc} onRetry={() => void locate()} dateText={(iso) => formatDay(todayISO(new Date(iso)), names)} />
+          <LocationCard loc={loc} onRetry={() => void locate()} />
 
           <View accessibilityRole="radiogroup" accessibilityLabel={collection ? t('checkIn.collectionReason') : t('checkIn.reason')} style={{ gap: 6 }}>
             <Text style={st.legend} accessibilityRole="header">
@@ -161,68 +98,9 @@ export default function CheckInScreen() {
   );
 }
 
-function LocationCard({ loc, onRetry, dateText }: { loc: Locating; onRetry: () => void; dateText: (iso: string) => string }) {
-  const { t } = useTranslation();
-  if (loc.kind === 'locating') {
-    return (
-      <View style={st.card} accessibilityLiveRegion="polite">
-        <ActivityIndicator color={colors.primary} />
-        <Text style={st.cardTitle}>{t('checkIn.locating')}</Text>
-      </View>
-    );
-  }
-  if (loc.kind === 'fix') {
-    const at = new Date(loc.fix.locatedAt);
-    const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
-    return (
-      <View style={st.card} accessibilityLiveRegion="polite">
-        <View style={[st.pin, { backgroundColor: '#DCFCE7' }]}>
-          <Ionicons name="location-outline" size={20} color="#166534" />
-        </View>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={st.cardTitle}>{t('checkIn.located')}</Text>
-          <Text style={st.cardNote}>
-            {t('checkIn.locatedAt', { date: dateText(loc.fix.locatedAt), time, m: loc.fix.accuracyM === null ? '?' : Math.round(loc.fix.accuracyM) })}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-  const text = loc.kind === 'denied' ? t('checkIn.noPermission') : loc.kind === 'off' ? t('checkIn.servicesOff') : t('checkIn.failed');
-  return (
-    <View style={st.card} accessibilityRole="alert">
-      <View style={[st.pin, { backgroundColor: '#FEF3C7' }]}>
-        <Ionicons name="location-outline" size={20} color="#92400E" />
-      </View>
-      <Text style={[st.cardNote, { flex: 1 }]}>{text}</Text>
-      {loc.kind !== 'denied' ? (
-        <Pressable accessibilityRole="button" onPress={onRetry} hitSlop={8} style={st.retry}>
-          <Text style={st.retryText}>{t('checkIn.retry')}</Text>
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
-
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   body: { padding: spacing.lg, gap: spacing.md },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md + 2,
-  },
-  pin: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  cardTitle: { fontSize: 14, fontWeight: '600', color: colors.text },
-  cardNote: { fontSize: 12, color: colors.textMuted },
-  retry: { minHeight: 44, justifyContent: 'center' },
-  retryText: { fontSize: font.sm, fontWeight: '700', color: colors.primary },
   legend: { fontSize: font.md, fontWeight: '600', color: colors.text, marginBottom: spacing.xs },
   reason: {
     flexDirection: 'row',

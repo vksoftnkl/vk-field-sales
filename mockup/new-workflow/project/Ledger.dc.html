@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ledger</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 8px 10px; display: flex; align-items: center; gap: 2px">
+    <a href="Customer.dc.html" aria-label="Back to customer" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <h1 style="margin: 0; font-size: 19px; line-height: 24px; font-weight: 600">Ledger</h1>
+      <span style="font-size: 13px; line-height: 18px; color: #F3DADA">Sri Murugan Stores</span>
+    </div>
+  </header>
+
+  <div style="display: flex; gap: 8px; padding: 12px 16px 4px">
+    <button type="button" aria-pressed="true" style="height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid #8B1D1D; background: #F8E8E8; color: #8B1D1D; font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap">Last 60 days</button>
+    <button type="button" aria-pressed="false" style="height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 13px; white-space: nowrap">This FY</button>
+    <button type="button" aria-pressed="false" style="height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 13px; white-space: nowrap">Last FY</button>
+    <button type="button" aria-pressed="false" style="height: 34px; padding: 0 10px; display: flex; align-items: center; gap: 4px; border-radius: 17px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #1C1917; font: inherit; font-size: 13px; white-space: nowrap"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Dates</button>
+  </div>
+
+  <div style="flex: 1; overflow: hidden; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px">
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 13px; color: #57534E">18 Sep – 17 Nov 2026</span>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px">
+        <div style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #57534E">Brought forward</span><b style="font-size: 15px; font-variant-numeric: tabular-nums">₹6,000.00 Dr</b></div>
+        <div style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #57534E">Closing</span><b style="font-size: 15px; color: #8B1D1D; font-variant-numeric: tabular-nums">₹38,450.00 Dr</b></div>
+        <div style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #57534E">Debit</span><b style="font-size: 15px; font-variant-numeric: tabular-nums">₹38,450.00</b></div>
+        <div style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #57534E">Credit</span><b style="font-size: 15px; font-variant-numeric: tabular-nums">₹6,000.00</b></div>
+      </div>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; overflow: hidden">
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 92px 104px; gap: 8px; padding: 8px 14px; background: #F5F3F0; font-size: 12px; font-weight: 600; color: #57534E"><span>Date · entry</span><span style="text-align: right">Amount</span><span style="text-align: right">Balance</span></div>
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 92px 104px; gap: 8px; align-items: center; padding: 10px 14px; border-top: 1px solid #F1EDE4; font-size: 14px">
+          <span style="display: flex; flex-direction: column; min-width: 0"><b style="font-weight: 600">{{r.what}}</b><span style="font-size: 12px; color: #57534E">{{r.date}} · {{r.ref}}</span></span>
+          <span style="text-align: right; font-variant-numeric: tabular-nums">{{r.amt}}</span>
+          <span style="text-align: right; font-weight: 600; font-variant-numeric: tabular-nums">{{r.bal}}</span>
+        </div>
+      </sc-for>
+    </section>
+    <span style="font-size: 12px; line-height: 16px; color: #57534E; text-align: center">From VK Nex at Sync 08:42 · this FY and last FY are on the phone</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      rows: [
+        { what: 'Brought forward', date: '18 Sep', ref: 'opening', amt: '', bal: '6,000.00 Dr' },
+        { what: 'Sales bill', date: '02 Oct', ref: 'bil01214', amt: '12,350.00 Dr', bal: '18,350.00 Dr' },
+        { what: 'Sales bill', date: '24 Oct', ref: 'bil01262', amt: '7,560.00 Dr', bal: '25,910.00 Dr' },
+        { what: 'Receipt', date: '28 Oct', ref: 'cash', amt: '6,000.00 Cr', bal: '19,910.00 Dr' },
+        { what: 'Sales bill', date: '01 Nov', ref: 'bil01288', amt: '9,440.00 Dr', bal: '29,350.00 Dr' },
+        { what: 'Sales bill', date: '07 Nov', ref: 'bil01300', amt: '9,100.00 Dr', bal: '38,450.00 Dr' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

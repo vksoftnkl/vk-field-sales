@@ -1,7 +1,8 @@
-import { and, asc, count, desc, eq, ne, or, isNull } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, isNull, lte, max, min, ne, or } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import {
+  beats,
   companies,
   customers,
   itemBrandMaster,
@@ -9,17 +10,25 @@ import {
   itemMaster,
   itemPriceLevels,
   itemUnits,
+  openBills,
+  saleBill,
+  saleBillItem,
   saleOrder,
   saleOrderItem,
   visits,
 } from '@/db/schema';
+import { addDays } from '@/lib/date-range';
 import { todayISO } from '@/lib/money';
 import { uuidv7 } from '@/lib/uuid';
 
-import type { DraftLine } from './order-draft';
-import { lineAmounts, orderTotals, paiseText, qtyText, toPaise } from './order-math';
+import type { CheckIn, OrderDraftState, SoLine } from './order-draft';
+import { paiseText, qtyText, startingPrice, toPaise } from './order-math';
+import { nextRefSeq, phoneRef, validUntil, VALID_DAYS } from './order-status';
+import { soLineAmounts, soTotals, type DiscMode } from './so-math';
+import { SO_ORDER_TYPE, toPriority } from './so-priority';
+import { taxRate } from '../sales/sale-math';
 
-/** What Order entry, Order item and Check in need about the shop. */
+/** What the order screens, Receipt and Check in need about the shop. */
 export const orderCustomerQuery = (cusId: string) =>
   db
     .select({
@@ -30,6 +39,8 @@ export const orderCustomerQuery = (cusId: string) =>
       cusPriceLevelId: customers.cusPriceLevelId,
       cusLoadingCharge: customers.cusLoadingCharge,
       cusFreightCharge: customers.cusFreightCharge,
+      cusAllowPromotion: customers.cusAllowPromotion,
+      cusCreditAllowed: customers.cusCreditAllowed,
       appOrderStatus: customers.appOrderStatus,
     })
     .from(customers)
@@ -39,11 +50,36 @@ export type OrderCustomer = Awaited<ReturnType<ReturnType<typeof orderCustomerQu
 
 export const customerName = (c: Pick<OrderCustomer, 'cusName' | 'cusShort' | 'cusCode'>) => c.cusName ?? c.cusShort ?? c.cusCode ?? '';
 
+/** Visit: the beat, GST registration and credit terms (the rest comes from customerDetailQuery). */
+export const visitCustomerQuery = (cusId: string) =>
+  db
+    .select({
+      beatName: beats.name,
+      cusGstNo: customers.cusGstNo,
+      cusGstType: customers.cusGstType,
+      cusCreditAmtLimit: customers.cusCreditAmtLimit,
+      cusCreditDays: customers.cusCreditDays,
+    })
+    .from(customers)
+    .leftJoin(beats, eq(beats.id, customers.cusAreaId))
+    .where(eq(customers.cusId, cusId));
+
+/** VK Nex's GST types: anything but UNREGISTERED with a GSTIN is registered. */
+export const isGstRegistered = (c: { cusGstNo: string | null; cusGstType: string | null }): boolean =>
+  !!c.cusGstNo?.trim() && (c.cusGstType ?? '').toUpperCase() !== 'UNREGISTERED';
+
 export const companyQuery = (id: string) => db.select({ id: companies.id, name: companies.name, place: companies.place }).from(companies).where(eq(companies.id, id));
 
+/** The oldest bill of the shop still pending in a company, from the open bills Sync brought. */
+export const oldestOpenBillQuery = (cusId: string, companyId: string) =>
+  db
+    .select({ date: min(openBills.docDate) })
+    .from(openBills)
+    .where(and(eq(openBills.partyId, cusId), eq(openBills.companyId, companyId), gt(openBills.pendingPaise, 0)));
+
 /**
- * Every unit orderable in a company, one row each (as the Qt app listed them), by item name with
- * the default unit first. Units VK Nex has no price for are left out.
+ * Every orderable unit in a company, one row each (Sales lists these). Units VK Nex has no price
+ * for are left out.
  */
 export const orderItemColumns = {
   iucId: itemUnits.iucId,
@@ -68,128 +104,432 @@ export const orderItemColumns = {
   stockQty: itemUnits.isbAvailableQty,
 };
 
-export const orderItemsQuery = (companyId: string) =>
+/** A unit as the order screens use it: the Sales columns plus the unit, tax and price flags. */
+const soUnitColumns = {
+  ...orderItemColumns,
+  isDefault: itemUnits.iucIsDefaultUnit,
+  appPriced: itemUnits.appPriced,
+  factor: itemUnits.iucToBaseFactor,
+  inclTax: itemMaster.itemInclTax,
+  taxPerc: itemMaster.appTaxPerc,
+  taxId: itemMaster.appTaxId,
+  hsnCode: itemMaster.itemHsnCode,
+};
+
+/** Every unit of every item in a company, priced or not (Add items shows unpriced ones greyed). */
+export const soUnitsQuery = (companyId: string) =>
   db
-    .select(orderItemColumns)
+    .select(soUnitColumns)
     .from(itemUnits)
     .innerJoin(itemMaster, eq(itemMaster.itemId, itemUnits.iucItemId))
-    .where(and(eq(itemUnits.appCompanyId, companyId), eq(itemUnits.appPriced, true)))
-    .orderBy(asc(itemMaster.itemNameEn), desc(itemUnits.iucIsDefaultUnit), asc(itemUnits.appUnitName));
+    .where(eq(itemUnits.appCompanyId, companyId))
+    .orderBy(asc(itemMaster.itemNameEn), desc(itemUnits.iucIsDefaultUnit), asc(itemUnits.iucToBaseFactor), asc(itemUnits.appUnitName));
 
-export type OrderItemRow = Awaited<ReturnType<ReturnType<typeof orderItemsQuery>['all']>>[number];
+export type SoUnitRow = Awaited<ReturnType<ReturnType<typeof soUnitsQuery>['all']>>[number];
 
-/** One unit, for Order item. */
-export const orderItemQuery = (companyId: string, iucId: string) =>
+/** One item's units in a company, for Order item. */
+export const soItemUnitsQuery = (companyId: string, itemId: string) =>
   db
-    .select(orderItemColumns)
+    .select(soUnitColumns)
     .from(itemUnits)
     .innerJoin(itemMaster, eq(itemMaster.itemId, itemUnits.iucItemId))
-    .where(and(eq(itemUnits.appCompanyId, companyId), eq(itemUnits.iucId, iucId)));
+    .where(and(eq(itemUnits.appCompanyId, companyId), eq(itemUnits.iucItemId, itemId)))
+    .orderBy(desc(itemUnits.iucIsDefaultUnit), asc(itemUnits.iucToBaseFactor), asc(itemUnits.appUnitName));
 
 export const itemGroupsQuery = () => db.select({ id: itemGroupMaster.itgId, name: itemGroupMaster.itgName }).from(itemGroupMaster).orderBy(asc(itemGroupMaster.itgSort));
 export const itemBrandsQuery = () => db.select({ id: itemBrandMaster.brandId, name: itemBrandMaster.brandName }).from(itemBrandMaster).orderBy(asc(itemBrandMaster.brandSort));
 export const priceLevelsQuery = () => db.select({ id: itemPriceLevels.iplId, name: itemPriceLevels.iplName }).from(itemPriceLevels).orderBy(asc(itemPriceLevels.iplId));
 
-/** Cooly and freight apply only when the customer takes them AND the item allows them (the Qt rule). */
-export function seedLine(r: OrderItemRow, c: OrderCustomer, price: { level: number; price: string }): DraftLine {
+/**
+ * A new order line for a unit at a price. Cooly and freight apply only when the customer AND the
+ * item take them (the Qt rule); promotion when both allow it (the office applies the scheme).
+ */
+export function soSeedLine(u: SoUnitRow, c: OrderCustomer, price: { level: number; price: string }): SoLine {
   return {
-    iucId: r.iucId,
-    itemId: r.itemId,
-    name: r.itemNameEn,
-    nameTa: r.itemNameTa,
-    unitName: r.unitName,
+    itemId: u.itemId,
+    iucId: u.iucId,
+    name: u.itemNameEn,
+    nameTa: u.itemNameTa,
+    unitName: u.unitName,
+    factor: u.factor,
     qty: '',
     price: price.price,
     priceLevel: price.level,
-    discPerc: '',
-    discPerUnit: '',
-    loadPerUnit: c.cusLoadingCharge && r.itemAllowLoading ? (r.ipmLoadingCharge ?? '0') : '0',
-    freightPerUnit: c.cusFreightCharge && r.itemAllowFreight ? (r.ipmFreightCharge ?? '0') : '0',
-    promo: r.itemAllowPromo,
-    allowPromo: r.itemAllowPromo,
-    mrp: r.ipmMaxPrice,
-    minPrice: r.ipmMinPrice,
+    discMode: 'perc',
+    disc: '',
+    taxPerc: u.taxPerc,
+    inclTax: u.inclTax,
+    taxId: u.taxId,
+    hsnCode: u.hsnCode,
+    loadPerUnit: c.cusLoadingCharge && u.itemAllowLoading ? (u.ipmLoadingCharge ?? '0') : '0',
+    freightPerUnit: c.cusFreightCharge && u.itemAllowFreight ? (u.ipmFreightCharge ?? '0') : '0',
+    mrp: u.ipmMaxPrice,
+    minPrice: u.ipmMinPrice,
+    promo: c.cusAllowPromotion && u.itemAllowPromo,
   };
 }
 
-/** VK Nex's so_remarks is 500 long, and the vehicle number rides in it after '###'. */
-export const REMARKS_MAX = 480;
+/** VK Nex's so_remarks is varchar(500). */
+export const REMARKS_MAX = 500;
+
+/** The draft fields Save order writes. */
+export type OrderToSave = Pick<OrderDraftState, 'customerId' | 'companyId' | 'branchId' | 'editingSoId' | 'lines' | 'deliveryDate' | 'priority' | 'remarks' | 'checkIn'>;
+
+/** '5.000' → '2.5' (CGST and SGST each take half). */
+const halfRate = (perc: string | null): string => String(Number((taxRate(perc) / 2).toFixed(4)));
+
+function lineRow(soId: string, l: SoLine, lineNo: number) {
+  const a = soLineAmounts(l);
+  const rate = taxRate(l.taxPerc);
+  return {
+    soiId: uuidv7(),
+    soiOrderId: soId,
+    soiLineNo: lineNo,
+    soiItemId: l.itemId,
+    soiItemUnitId: l.iucId,
+    soiPriceLevel: l.priceLevel,
+    soiIsPromo: l.promo,
+    soiOrderQty: qtyText(a.qty),
+    soiNetQty: qtyText(a.qty),
+    soiRate: paiseText(toPaise(l.price) ?? 0),
+    soiMaxPrice: l.mrp ?? '0',
+    soiMinPrice: l.minPrice,
+    soiItemDiscPerc: l.discMode === 'perc' ? l.disc.trim() || '0' : '0',
+    soiItemDiscQty: l.discMode === 'perUnit' ? l.disc.trim() || '0' : '0',
+    soiItemDiscAmt: paiseText(a.discPaise),
+    soiGrossAmt: paiseText(a.grossPaise),
+    soiFreightQty: a.freightPaise > 0 ? qtyText(a.qty) : '0',
+    soiFreightAmt: paiseText(a.freightPaise),
+    soiLoadQty: a.loadPaise > 0 ? qtyText(a.qty) : '0',
+    soiLoadAmt: paiseText(a.loadPaise),
+    soiNetAmt: paiseText(a.netPaise),
+    soiToBaseFactor: l.factor,
+    soiHsnCode: l.hsnCode,
+    soiTaxId: l.taxId,
+    soiIsTaxIncl: l.inclTax,
+    soiTaxableAmt: paiseText(a.taxablePaise),
+    soiTaxPerc: String(rate),
+    soiTaxAmt: paiseText(a.taxPaise),
+    soiCgstPerc: halfRate(l.taxPerc),
+    soiCgstAmt: paiseText(a.cgstPaise),
+    soiSgstPerc: halfRate(l.taxPerc),
+    soiSgstAmt: paiseText(a.sgstPaise),
+    soiIgstPerc: '0',
+    soiIgstAmt: paiseText(a.igstPaise),
+    appItemName: l.name,
+    appItemNameTa: l.nameTa,
+    appUnitName: l.unitName,
+    appDiscMode: l.discMode,
+  };
+}
 
 /**
- * Save order: the order and its lines in one transaction, waiting for the next Sync (which sends
- * it to VK Nex as soClientUuid = so_id). Lines without a quantity are left out. The shop shows as
- * Ordered on the customer list.
+ * Save order: the order and its lines in one transaction, waiting for the next Sync (which sends it
+ * as soClientUuid = so_id). Lines without a quantity are left out. Editing an order not yet sent
+ * keeps its id, date and phone ref and replaces its lines; one VK Nex already has can't be edited.
+ * The shop shows as Ordered on the customer list.
  */
-export function saveOrder(
-  d: { customerId: string; companyId: string; lines: readonly DraftLine[]; vehicleNo: string; remarks: string },
-  c: OrderCustomer,
-  userId: string,
-): string {
-  const lines = d.lines.filter((l) => lineAmounts(l).qty > 0);
-  if (!lines.length) throw new Error('ORDER_EMPTY');
-  const t = orderTotals(lines);
-  const soId = uuidv7();
+export function saveOrder(d: OrderToSave, c: OrderCustomer, userId: string, deviceUid: string): { soId: string; ref: string } {
+  const lines = d.lines.filter((l) => soLineAmounts(l).qty > 0);
+  if (!lines.length || !d.customerId || !d.companyId) throw new Error('ORDER_EMPTY');
+  // A new order always has Switch company's branch (Take order asks first); only an order saved
+  // before branches came may be edited without one.
+  if (!d.branchId && !d.editingSoId) throw new Error('ORDER_NO_BRANCH');
+  const t = soTotals(lines);
   const now = new Date().toISOString();
-  db.transaction((tx) => {
-    tx.insert(saleOrder)
-      .values({
-        soId,
-        soCompanyId: d.companyId,
-        // VK Nex needs a level on the order; the customer's, else A (each line keeps its own).
-        soPriceLevel: c.cusPriceLevelId ?? 1,
-        soOrderDate: todayISO(),
-        soOrderDatetime: now,
-        soCustId: c.cusId,
-        soCustName: customerName(c),
-        soHasLoad: c.cusLoadingCharge,
-        soHasFreight: c.cusFreightCharge,
-        soUserId: userId,
-        soTotItems: t.items,
-        soTotBags: qtyText(t.qty),
-        soGrossAmt: paiseText(t.grossPaise),
-        soItemDisc: paiseText(t.discPaise),
-        soFreightAmt: paiseText(t.freightPaise),
-        soLoadAmt: paiseText(t.loadPaise),
-        soOrderAmt: paiseText(t.totalPaise),
-        soRemarks: d.remarks.trim() || null,
-        soCreatedOn: now,
-        appVehicleNo: d.vehicleNo.trim().toUpperCase() || null,
-        appPendingUpload: true,
-      })
-      .run();
+  const today = todayISO();
+
+  return db.transaction((tx) => {
+    const old = d.editingSoId ? tx.select().from(saleOrder).where(eq(saleOrder.soId, d.editingSoId)).get() : undefined;
+    if (d.editingSoId && !old) throw new Error('ORDER_GONE');
+    if (old && !old.appPendingUpload) throw new Error('ORDER_SENT');
+
+    const soId = old?.soId ?? uuidv7();
+    const orderDate = old?.soOrderDate ?? today;
+    const ref =
+      old?.soUsrRefno ??
+      phoneRef(
+        deviceUid,
+        orderDate,
+        nextRefSeq(
+          tx
+            .select({ ref: saleOrder.soUsrRefno })
+            .from(saleOrder)
+            .where(eq(saleOrder.soOrderDate, orderDate))
+            .all()
+            .map((r) => r.ref),
+        ),
+      );
+    const delivery = d.deliveryDate && d.deliveryDate > orderDate ? d.deliveryDate : orderDate;
+    const header = {
+      soCompanyId: d.companyId!,
+      // Kept with the order, so it reaches VK Nex in this branch even after a later switch.
+      soBranchId: d.branchId,
+      // VK Nex needs a level on the order; the customer's, else A (each line keeps its own).
+      soPriceLevel: c.cusPriceLevelId ?? 1,
+      soCustId: c.cusId,
+      soCustName: customerName(c),
+      soHasLoad: c.cusLoadingCharge,
+      soHasFreight: c.cusFreightCharge,
+      soHasPromo: c.cusAllowPromotion,
+      soUserId: userId,
+      soTotItems: t.items,
+      soTotBags: qtyText(t.qty),
+      soGrossAmt: paiseText(t.grossPaise),
+      soItemDisc: paiseText(t.discPaise),
+      soTaxableAmt: paiseText(t.taxablePaise),
+      soCgstAmt: paiseText(t.cgstPaise),
+      soSgstAmt: paiseText(t.sgstPaise),
+      soIgstAmt: paiseText(t.igstPaise),
+      soTaxAmt: paiseText(t.taxPaise),
+      soFreightAmt: paiseText(t.freightPaise),
+      soLoadAmt: paiseText(t.loadPaise),
+      soRoundOff: paiseText(t.roundOffPaise),
+      soOrderAmt: paiseText(t.totalPaise),
+      // Always on credit, whatever the customer's credit flag (user's rule, 2026-11-18).
+      soOrderType: SO_ORDER_TYPE,
+      soPriority: d.priority,
+      soDeliveryDate: delivery,
+      soValidUntil: validUntil(orderDate),
+      soRemarks: d.remarks.trim().slice(0, REMARKS_MAX) || null,
+      soUsrRefno: ref,
+    };
+
+    if (old) {
+      // A new try: the reason VK Nex sent it back no longer applies.
+      tx.update(saleOrder).set({ ...header, appVehicleNo: null, appSyncError: null }).where(eq(saleOrder.soId, soId)).run();
+      tx.delete(saleOrderItem).where(eq(saleOrderItem.soiOrderId, soId)).run();
+    } else {
+      tx.insert(saleOrder)
+        .values({
+          ...header,
+          soId,
+          soOrderDate: orderDate,
+          soOrderDatetime: now,
+          soCreatedOn: now,
+          appCheckinAt: d.checkIn?.at ?? null,
+          appCheckinLat: d.checkIn?.fix?.latitude ?? null,
+          appCheckinLng: d.checkIn?.fix?.longitude ?? null,
+          appCheckinAccuracyM: d.checkIn?.fix?.accuracyM ?? null,
+          appPendingUpload: true,
+        })
+        .run();
+    }
     tx.insert(saleOrderItem)
-      .values(
-        lines.map((l, i) => {
-          const a = lineAmounts(l);
-          return {
-            soiId: uuidv7(),
-            soiOrderId: soId,
-            soiLineNo: i + 1,
-            soiItemId: l.itemId,
-            soiItemUnitId: l.iucId,
-            soiPriceLevel: l.priceLevel,
-            soiIsPromo: l.allowPromo && l.promo,
-            soiOrderQty: qtyText(a.qty),
-            soiNetQty: qtyText(a.qty),
-            soiRate: paiseText(toPaise(l.price) ?? 0),
-            soiMaxPrice: l.mrp ?? '0',
-            soiItemDiscPerc: l.discPerc.trim() || '0',
-            soiItemDiscQty: l.discPerUnit.trim() || '0',
-            soiItemDiscAmt: paiseText(a.discPaise),
-            soiGrossAmt: paiseText(a.grossPaise),
-            soiFreightQty: a.freightPaise > 0 ? qtyText(a.qty) : '0',
-            soiFreightAmt: paiseText(a.freightPaise),
-            soiLoadQty: a.loadPaise > 0 ? qtyText(a.qty) : '0',
-            soiLoadAmt: paiseText(a.loadPaise),
-            soiNetAmt: paiseText(a.netPaise),
-          };
-        }),
-      )
+      .values(lines.map((l, i) => lineRow(soId, l, i + 1)))
       .run();
     tx.update(customers).set({ appOrderStatus: 'ordered' }).where(eq(customers.cusId, c.cusId)).run();
+    return { soId, ref };
   });
-  return soId;
 }
+
+/** Delete from phone: only an order VK Nex doesn't have yet. */
+export function deleteOrder(soId: string): void {
+  db.transaction((tx) => {
+    const o = tx.select({ pending: saleOrder.appPendingUpload, cusId: saleOrder.soCustId, date: saleOrder.soOrderDate }).from(saleOrder).where(eq(saleOrder.soId, soId)).get();
+    if (!o) return;
+    if (!o.pending) throw new Error('ORDER_SENT');
+    tx.delete(saleOrderItem).where(eq(saleOrderItem.soiOrderId, soId)).run();
+    tx.delete(saleOrder).where(eq(saleOrder.soId, soId)).run();
+    // The shop stops showing as Ordered when no other order was taken there that day.
+    const others = tx
+      .select({ n: count() })
+      .from(saleOrder)
+      .where(and(eq(saleOrder.soCustId, o.cusId), eq(saleOrder.soOrderDate, o.date)))
+      .get();
+    if (!others?.n) tx.update(customers).set({ appOrderStatus: null }).where(and(eq(customers.cusId, o.cusId), eq(customers.appOrderStatus, 'ordered'))).run();
+  });
+}
+
+/** One order on the phone. */
+export const orderQuery = (soId: string) => db.select().from(saleOrder).where(eq(saleOrder.soId, soId));
+export type SavedOrder = typeof saleOrder.$inferSelect;
+
+/** Its lines with the names to show (as ordered; older lines fall back to the item list). */
+export const orderLinesQuery = (soId: string) =>
+  db
+    .select({
+      line: saleOrderItem,
+      itemNameEn: itemMaster.itemNameEn,
+      itemNameTa: itemMaster.itemNameTa,
+    })
+    .from(saleOrderItem)
+    .leftJoin(itemMaster, eq(itemMaster.itemId, saleOrderItem.soiItemId))
+    .where(eq(saleOrderItem.soiOrderId, soId))
+    .orderBy(asc(saleOrderItem.soiLineNo));
+
+export type SavedLine = Awaited<ReturnType<ReturnType<typeof orderLinesQuery>['all']>>[number];
+
+/** Unit names of a company's units, for older lines saved without one. */
+const unitNameOf = (companyId: string, iucId: string): string =>
+  db
+    .select({ name: itemUnits.appUnitName })
+    .from(itemUnits)
+    .where(and(eq(itemUnits.appCompanyId, companyId), eq(itemUnits.iucId, iucId)))
+    .get()?.name ?? '';
+
+export const lineName = (l: SavedLine): { en: string; ta: string | null } => ({
+  en: l.line.appItemName ?? l.itemNameEn ?? '',
+  ta: l.line.appItemNameTa ?? l.itemNameTa ?? null,
+});
+
+/** Edit before sending: the saved order as a draft (Review opens on it). */
+export function loadOrderDraft(soId: string): Omit<OrderDraftState, 'entry'> | null {
+  const o = orderQuery(soId).get();
+  if (!o || !o.appPendingUpload) return null;
+  const units = new Map(soUnitsQuery(o.soCompanyId).all().map((u) => [u.iucId, u]));
+  const lines: SoLine[] = orderLinesQuery(soId)
+    .all()
+    .map((row) => {
+      const l = row.line;
+      const u = units.get(l.soiItemUnitId);
+      const mode = (l.appDiscMode as DiscMode | null) ?? (Number(l.soiItemDiscQty) > 0 ? 'perUnit' : 'perc');
+      const disc = mode === 'perc' ? l.soiItemDiscPerc : mode === 'perUnit' ? l.soiItemDiscQty : l.soiItemDiscAmt;
+      const perUnit = (amt: string, qty: string) => (Number(qty) > 0 ? paiseText(Math.round((toPaise(amt) ?? 0) / Number(qty))) : '0');
+      const name = lineName(row);
+      return {
+        itemId: l.soiItemId,
+        iucId: l.soiItemUnitId,
+        name: name.en,
+        nameTa: name.ta,
+        unitName: l.appUnitName ?? u?.unitName ?? unitNameOf(o.soCompanyId, l.soiItemUnitId),
+        factor: l.soiToBaseFactor ?? u?.factor ?? '1',
+        qty: l.soiOrderQty,
+        price: l.soiRate,
+        priceLevel: l.soiPriceLevel,
+        discMode: mode,
+        disc: Number(disc) > 0 ? disc : '',
+        taxPerc: l.soiTaxPerc ?? u?.taxPerc ?? null,
+        inclTax: l.soiIsTaxIncl ?? u?.inclTax ?? false,
+        taxId: l.soiTaxId ?? u?.taxId ?? null,
+        hsnCode: l.soiHsnCode ?? u?.hsnCode ?? null,
+        loadPerUnit: perUnit(l.soiLoadAmt, l.soiLoadQty),
+        freightPerUnit: perUnit(l.soiFreightAmt, l.soiFreightQty),
+        mrp: Number(l.soiMaxPrice) > 0 ? l.soiMaxPrice : (u?.ipmMaxPrice ?? null),
+        minPrice: l.soiMinPrice ?? u?.ipmMinPrice ?? null,
+        promo: l.soiIsPromo,
+      };
+    });
+  return {
+    customerId: o.soCustId,
+    companyId: o.soCompanyId,
+    branchId: o.soBranchId,
+    editingSoId: o.soId,
+    lines,
+    deliveryDate: o.soDeliveryDate,
+    // Saved before the dropdown: the old urgent flag is URGENT, no flag (null) NORMAL.
+    priority: toPriority(o.soPriority),
+    // Orders saved before the vehicle number was dropped keep it in the remarks.
+    remarks: [o.soRemarks ?? '', o.appVehicleNo ? `Vehicle ${o.appVehicleNo}` : ''].filter(Boolean).join(' · '),
+    checkIn: o.appCheckinAt ? { at: o.appCheckinAt, fix: null } : null,
+  };
+}
+
+/**
+ * Repeat order (Qt's Copy as new): the lines again at today's prices for the customer, in the same
+ * units and quantities, for the company picked in Switch company now (a new order, like any other).
+ * Units that company has no price for today are left out (`skipped`).
+ */
+export function repeatLines(soId: string, c: OrderCustomer, companyId: string): { lines: SoLine[]; skipped: number } | null {
+  const o = orderQuery(soId).get();
+  if (!o) return null;
+  const units = new Map(soUnitsQuery(companyId).all().map((u) => [u.iucId, u]));
+  const lines: SoLine[] = [];
+  let skipped = 0;
+  for (const { line } of orderLinesQuery(soId).all()) {
+    const u = units.get(line.soiItemUnitId);
+    const start = u?.appPriced ? startingPrice(u, c.cusPriceLevelId) : null;
+    if (!u || !start || lines.some((l) => l.itemId === u.itemId)) {
+      skipped += 1;
+      continue;
+    }
+    lines.push({ ...soSeedLine(u, c, start), qty: line.soiOrderQty });
+  }
+  return { lines, skipped };
+}
+
+/** My orders: the phone's orders taken between two dates, newest first. */
+export const myOrdersQuery = (from: string, to: string) =>
+  db
+    .select({
+      soId: saleOrder.soId,
+      soCustId: saleOrder.soCustId,
+      soCustName: saleOrder.soCustName,
+      soOrderDate: saleOrder.soOrderDate,
+      soOrderDatetime: saleOrder.soOrderDatetime,
+      soUsrRefno: saleOrder.soUsrRefno,
+      soOrderRefno: saleOrder.soOrderRefno,
+      soStatus: saleOrder.soStatus,
+      soTotItems: saleOrder.soTotItems,
+      soOrderAmt: saleOrder.soOrderAmt,
+      appPendingUpload: saleOrder.appPendingUpload,
+      appSyncError: saleOrder.appSyncError,
+    })
+    .from(saleOrder)
+    .where(and(gte(saleOrder.soOrderDate, from), lte(saleOrder.soOrderDate, to)))
+    .orderBy(desc(saleOrder.soOrderDatetime));
+
+export type MyOrderRow = Awaited<ReturnType<ReturnType<typeof myOrdersQuery>['all']>>[number];
+
+/** The reference to show: VK Nex's number once it has one, else the phone's. */
+export const orderRef = (o: { soOrderRefno: string | null; soUsrRefno: string | null }): string => o.soOrderRefno ?? o.soUsrRefno ?? '—';
+
+/**
+ * The shop's recent orders for a company with their lines (Visit's open orders, the "already on
+ * an order" hint on Add items). The phone only knows its own orders, and their status as of the
+ * upload.
+ */
+export const shopOrderLinesQuery = (cusId: string, companyId: string, today = todayISO()) =>
+  db
+    .select({
+      soId: saleOrder.soId,
+      soOrderDate: saleOrder.soOrderDate,
+      soUsrRefno: saleOrder.soUsrRefno,
+      soOrderRefno: saleOrder.soOrderRefno,
+      soStatus: saleOrder.soStatus,
+      soOrderAmt: saleOrder.soOrderAmt,
+      soTotItems: saleOrder.soTotItems,
+      appPendingUpload: saleOrder.appPendingUpload,
+      appSyncError: saleOrder.appSyncError,
+      itemId: saleOrderItem.soiItemId,
+      qty: saleOrderItem.soiOrderQty,
+      unitName: saleOrderItem.appUnitName,
+    })
+    .from(saleOrder)
+    .innerJoin(saleOrderItem, eq(saleOrderItem.soiOrderId, saleOrder.soId))
+    .where(and(eq(saleOrder.soCustId, cusId), eq(saleOrder.soCompanyId, companyId), gte(saleOrder.soOrderDate, addDays(today, -VALID_DAYS))))
+    .orderBy(desc(saleOrder.soOrderDatetime));
+
+/**
+ * Last rates for this shop (Order item): the item on the phone's own bills and orders for the
+ * customer, newest first. Bills VK Nex made elsewhere don't come to the phone with their lines.
+ */
+export function lastRates(cusId: string, itemId: string, exceptSoId: string | null, limit = 5): { date: string; qty: string; unitName: string; rate: string }[] {
+  const bills = db
+    .select({ date: saleBill.sbBillDate, at: saleBill.sbBillDatetime, qty: saleBillItem.sbiBillQty, rate: saleBillItem.sbiRate, unitName: itemUnits.appUnitName })
+    .from(saleBillItem)
+    .innerJoin(saleBill, eq(saleBill.sbId, saleBillItem.sbiBillId))
+    .leftJoin(itemUnits, and(eq(itemUnits.iucId, saleBillItem.sbiItemUnitId), eq(itemUnits.appCompanyId, saleBill.sbCompanyId)))
+    .where(and(eq(saleBill.sbCustId, cusId), eq(saleBillItem.sbiItemId, itemId)))
+    .orderBy(desc(saleBill.sbBillDatetime))
+    .limit(limit)
+    .all();
+  const orders = db
+    .select({ date: saleOrder.soOrderDate, at: saleOrder.soOrderDatetime, qty: saleOrderItem.soiOrderQty, rate: saleOrderItem.soiRate, unitName: saleOrderItem.appUnitName })
+    .from(saleOrderItem)
+    .innerJoin(saleOrder, eq(saleOrder.soId, saleOrderItem.soiOrderId))
+    .where(and(eq(saleOrder.soCustId, cusId), eq(saleOrderItem.soiItemId, itemId), exceptSoId ? ne(saleOrder.soId, exceptSoId) : undefined))
+    .orderBy(desc(saleOrder.soOrderDatetime))
+    .limit(limit)
+    .all();
+  return [...bills, ...orders]
+    .sort((a, b) => (a.at < b.at ? 1 : -1))
+    .slice(0, limit)
+    .map((r) => ({ date: r.date, qty: r.qty, unitName: r.unitName ?? '', rate: r.rate }));
+}
+
+/** When the phone last got an answer for an order (My orders' "last sent"). */
+export const lastSentQuery = () => db.select({ at: max(saleOrder.appSyncedOn) }).from(saleOrder);
 
 export type VisitReason = 'shopClosed' | 'noOrder' | 'shopBusy' | 'ownerAway' | 'paymentPending' | 'nextVisit';
 export const VISIT_REASONS: readonly VisitReason[] = ['shopClosed', 'noOrder', 'shopBusy', 'ownerAway', 'paymentPending', 'nextVisit'];
@@ -199,20 +539,16 @@ export const VISIT_REASONS: readonly VisitReason[] = ['shopClosed', 'noOrder', '
  */
 export const COLLECTION_REASONS: readonly VisitReason[] = ['shopClosed', 'ownerAway', 'paymentPending'];
 
-export interface VisitFix {
-  latitude: number;
-  longitude: number;
-  accuracyM: number | null;
-  locatedAt: string;
-}
+export type VisitFix = NonNullable<CheckIn['fix']>;
 
 /**
- * Save visit (Check in): waits for the next Sync. After a "no order" check-in the shop shows as
- * "No order" on the customer list, unless an order was already taken there on this trip; a "no
- * collection" check-in leaves the shop's status alone.
+ * Save visit (No order, or Receipt's no collection): waits for the next Sync. After a "no order"
+ * visit the shop shows as "No order" on the customer list, unless an order was already taken there
+ * on this trip; a "no collection" visit leaves the shop's status alone. `visitedAt` is the check-in
+ * time when the visit screen made one.
  */
 export function saveVisit(
-  v: { customerId: string; companyId: string | null; reason: VisitReason; remarks: string; fix: VisitFix | null; kind?: 'order' | 'collection' },
+  v: { customerId: string; companyId: string | null; reason: VisitReason; remarks: string; fix: VisitFix | null; kind?: 'order' | 'collection'; visitedAt?: string },
   userId: string,
 ): string {
   const id = uuidv7();
@@ -229,7 +565,7 @@ export function saveVisit(
         longitude: v.fix?.longitude ?? null,
         accuracyM: v.fix?.accuracyM ?? null,
         locatedAt: v.fix?.locatedAt ?? null,
-        visitedAt: new Date().toISOString(),
+        visitedAt: v.visitedAt ?? new Date().toISOString(),
         appPendingUpload: true,
       })
       .run();
@@ -242,6 +578,7 @@ export function saveVisit(
   return id;
 }
 
-/** For the Upload button: orders and check-ins still to send. */
+/** For the Upload button and My orders: orders and check-ins still to send. */
 export const pendingOrdersCountQuery = () => db.select({ n: count() }).from(saleOrder).where(eq(saleOrder.appPendingUpload, true));
 export const pendingVisitsCountQuery = () => db.select({ n: count() }).from(visits).where(eq(visits.appPendingUpload, true));
+

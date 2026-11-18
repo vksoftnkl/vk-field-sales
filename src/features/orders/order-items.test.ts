@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { filterOrderItems, itemName } from './order-items.ts';
+import { filterOrderItems, groupUnits, itemName } from './order-items.ts';
 
 const rows = [
   { itemCode: 'R25', itemNameEn: 'Ponni Raw Rice 25 kg', itemNameTa: 'பொன்னி அரிசி', itemGroupId: 'g-rice', itemBrandId: 'b-1' },
@@ -27,4 +27,23 @@ test('the Tamil name is shown only in Tamil, and only when there is one', () => 
   assert.equal(itemName(rows[0]!, 'ta'), 'பொன்னி அரிசி');
   assert.equal(itemName(rows[0]!, 'en'), 'Ponni Raw Rice 25 kg');
   assert.equal(itemName(rows[1]!, 'ta'), 'Sunflower Oil 1 L pouch');
+});
+
+test('units group into one row per item, default priced unit first', () => {
+  const rows = [
+    { itemId: 'oil', iucId: 'oil-box', isDefault: false, appPriced: true },
+    { itemId: 'oil', iucId: 'oil-pouch', isDefault: true, appPriced: true },
+    { itemId: 'soap', iucId: 'soap-pc', isDefault: true, appPriced: false },
+    { itemId: 'soap', iucId: 'soap-box', isDefault: false, appPriced: true },
+    { itemId: 'gone', iucId: 'gone-pc', isDefault: true, appPriced: false },
+  ];
+  const items = groupUnits(rows);
+  assert.deepEqual(
+    items.map((i) => [i.itemId, i.rowUnit.iucId, i.priced, i.units.length]),
+    [
+      ['oil', 'oil-pouch', true, 2],
+      ['soap', 'soap-box', true, 2],
+      ['gone', 'gone-pc', false, 1],
+    ],
+  );
 });

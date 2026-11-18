@@ -1,6 +1,8 @@
 // Pure TypeScript (no React Native imports) so `npm test` can run it in Node.
 import type { saleOrder, saleOrderItem } from '@/db/schema';
 
+import { SO_ORDER_TYPE, toPriority } from '../features/orders/so-priority.ts';
+
 import type { ApiError, CreatedOrder } from './vk-nex-api';
 
 export type OrderHeader = typeof saleOrder.$inferSelect;
@@ -36,7 +38,8 @@ function compact(o: Record<string, unknown>): Record<string, unknown> {
 
 /**
  * Body for POST /mobile/orders/create: VK Nex's desktop order (so* / soi*) without the keys it
- * fills itself (branch, year, device, number, status). The phone's so_id goes as soClientUuid.
+ * fills itself (branch, year, device, number, status). The phone's so_id goes as soClientUuid;
+ * the phone-only app_* columns (names, discount mode, check-in) stay on the phone.
  * soUserId is not sent: Sync always signs in, and VK Nex then takes the signed-in user. deviceUid
  * is added by the client.
  */
@@ -46,6 +49,9 @@ export function toOrderPayload(o: PendingOrder): Record<string, unknown> {
     ...compact({
       soClientUuid: h.soId,
       soCompanyId: h.soCompanyId,
+      // The branch picked in Switch company when the order was taken. Absent on older orders: VK Nex
+      // then uses the phone's Device List branch, else the company's default, as before.
+      soBranchId: h.soBranchId,
       soCustId: h.soCustId,
       soCustName: h.soCustName,
       soPriceLevel: h.soPriceLevel ?? o.customerPriceLevelId,
@@ -59,6 +65,22 @@ export function toOrderPayload(o: PendingOrder): Record<string, unknown> {
       soLoadAmt: h.soLoadAmt,
       soOrderAmt: h.soOrderAmt,
       soRemarks: remarksWithVehicle(h.soRemarks, h.appVehicleNo),
+      // Since the 3b workflow; null on older orders, so their keys stay out as before.
+      soUsrRefno: h.soUsrRefno,
+      // Phone orders are on credit. Older orders saved without a term go as CREDIT too (VK Nex's
+      // own default would be CASH); a term saved on the order is sent as it is.
+      soOrderType: h.soOrderType ?? SO_ORDER_TYPE,
+      soDeliveryDate: h.soDeliveryDate,
+      // Always sent: the old urgent flag ('URGENT') stays URGENT, no flag (null) goes as NORMAL.
+      soPriority: toPriority(h.soPriority),
+      soValidUntil: h.soValidUntil,
+      soHasPromo: h.soHasPromo,
+      soTaxableAmt: h.soTaxableAmt,
+      soCgstAmt: h.soCgstAmt,
+      soSgstAmt: h.soSgstAmt,
+      soIgstAmt: h.soIgstAmt,
+      soTaxAmt: h.soTaxAmt,
+      soRoundOff: h.soRoundOff,
     }),
     soHasLoad: h.soHasLoad,
     soHasFreight: h.soHasFreight,
@@ -83,6 +105,20 @@ export function toOrderPayload(o: PendingOrder): Record<string, unknown> {
           soiLoadQty: l.soiLoadQty,
           soiLoadAmt: l.soiLoadAmt,
           soiNetAmt: l.soiNetAmt,
+          soiToBaseFactor: l.soiToBaseFactor,
+          soiHsnCode: l.soiHsnCode,
+          soiTaxId: l.soiTaxId,
+          soiIsTaxIncl: l.soiIsTaxIncl,
+          soiMinPrice: l.soiMinPrice,
+          soiTaxableAmt: l.soiTaxableAmt,
+          soiTaxPerc: l.soiTaxPerc,
+          soiTaxAmt: l.soiTaxAmt,
+          soiCgstPerc: l.soiCgstPerc,
+          soiCgstAmt: l.soiCgstAmt,
+          soiSgstPerc: l.soiSgstPerc,
+          soiSgstAmt: l.soiSgstAmt,
+          soiIgstPerc: l.soiIgstPerc,
+          soiIgstAmt: l.soiIgstAmt,
         }),
         soiIsPromo: l.soiIsPromo,
       })),

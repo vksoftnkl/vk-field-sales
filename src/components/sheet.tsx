@@ -156,28 +156,30 @@ export interface PickOption {
   count?: string;
 }
 
+const NONE_TICKED: readonly string[] = [];
+
 /**
- * Tick several options (beats, customer types). `selected` [] means all, and shows every box
- * ticked. Apply hands back [] again for all-or-none; Clear goes straight back to all.
+ * Tick several options (beats, customer types). Opens with every box unticked each time, as the
+ * Qt app's Beat popup did (user's request 2026-11-18): the salesman ticks what they want and
+ * taps Apply, which replaces the filter. Apply hands back [] when all are ticked (= all);
+ * Clear goes straight back to all.
  */
 export function MultiPickSheet({
   visible,
   title,
   options,
-  selected,
   onApply,
   onClose,
 }: {
   visible: boolean;
   title: string;
   options: readonly PickOption[];
-  selected: readonly string[];
   onApply: (ids: string[]) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const allIds = options.map((o) => o.value);
-  const [draft, setDraft] = useDraft<readonly string[]>(visible, selected.length ? selected : allIds);
+  const [draft, setDraft] = useDraft(visible, NONE_TICKED);
   const toggle = (id: string) => setDraft(draft.includes(id) ? draft.filter((d) => d !== id) : [...draft, id]);
   const apply = (ids: readonly string[]) => {
     onApply(normalizeSelection(ids, allIds));

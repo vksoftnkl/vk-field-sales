@@ -6,7 +6,6 @@ import { Provider } from 'react-redux';
 
 import { s } from '@/components/ui';
 import { ensureMigrated } from '@/db/migrate';
-import { seedTestSalesmen } from '@/db/seed';
 import { ensureCurrentCompany } from '@/features/company/company';
 import { store, useAppSelector } from '@/store';
 import { colors } from '@/theme';
@@ -21,7 +20,6 @@ export default function RootLayout() {
   useEffect(() => {
     ensureMigrated()
       .then(() => {
-        seedTestSalesmen();
         ensureCurrentCompany();
         setReady(true);
       })
@@ -62,13 +60,20 @@ function RootStack() {
         <Stack.Screen name="customer/[id]" />
         <Stack.Screen name="customer/edit/[id]" />
         <Stack.Screen name="customer/ledger/[id]" />
-        <Stack.Screen name="order/company/[customerId]" />
+        <Stack.Screen name="order/visit/[customerId]" />
+        <Stack.Screen name="order/no-order" />
         <Stack.Screen name="order/[customerId]" />
         <Stack.Screen name="order/item" />
         <Stack.Screen name="order/summary" />
+        <Stack.Screen name="orders/index" />
+        <Stack.Screen name="orders/[soId]" />
         <Stack.Screen name="sales/[customerId]" />
         <Stack.Screen name="sales/item" />
         <Stack.Screen name="sales/bill" />
+        <Stack.Screen name="sales-return/[customerId]" />
+        <Stack.Screen name="sales-return/customer" />
+        <Stack.Screen name="sales-return/products" />
+        <Stack.Screen name="sales-return/item" />
         <Stack.Screen name="receipt/company/[customerId]" />
         <Stack.Screen name="receipt/[customerId]" />
         <Stack.Screen name="receipt/payment" />

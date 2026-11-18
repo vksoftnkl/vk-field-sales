@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sync</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 960px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 8px 10px; display: flex; align-items: center; gap: 2px">
+    <a href="Today.dc.html" aria-label="Back to Today" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <h1 style="margin: 0; font-size: 19px; line-height: 24px; font-weight: 600">Sync</h1>
+      <span style="font-size: 13px; line-height: 18px; color: #F3DADA">Last sync today 08:42</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; overflow: hidden">
+      <h2 style="margin: 0; padding: 12px 16px 8px; font-size: 15px; font-weight: 600">To send · 8</h2>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 10px 16px; border-top: 1px solid #F1EDE4; font-size: 14px"><span>Customers (new or edited)</span><b>1</b></div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 10px 16px; border-top: 1px solid #F1EDE4; font-size: 14px"><span>Sales orders</span><b>2</b></div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 10px 16px; border-top: 1px solid #F1EDE4; font-size: 14px"><span>Sales bills</span><b>1</b></div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 10px 16px; border-top: 1px solid #F1EDE4; font-size: 14px"><span>Receipts</span><b>2</b></div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 10px 16px; border-top: 1px solid #F1EDE4; font-size: 14px"><span>Sales returns</span><b>1</b></div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 10px 16px; border-top: 1px solid #F1EDE4; font-size: 14px"><span>No order visits</span><b>1</b></div>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600">Last result · 08:42</h2>
+      <div style="display: flex; gap: 10px; font-size: 14px; line-height: 20px">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>
+        <span><b>Sent</b> · 3 orders, 1 bill, 2 receipts, 1 visit</span>
+      </div>
+      <div style="display: flex; gap: 10px; font-size: 14px; line-height: 20px">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>
+        <span><b>Received</b> · 412 customers, 1,286 items, prices and schemes, 318 open bills, 26 order statuses, ledgers</span>
+      </div>
+      <div style="display: flex; gap: 10px; font-size: 14px; line-height: 20px; background: #FEE2E2; color: #991B1B; border-radius: 10px; padding: 10px 12px">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+        <span><b>Refused · Receipt, Kumaran Stores, ₹2,000.00</b><br>Your VK Nex login can't post receipts. Ask the office to give it the Post right on Receipt. It stays here and goes at the next Sync.</span>
+      </div>
+      <div style="display: flex; gap: 10px; font-size: 14px; line-height: 20px; background: #FEF3C7; color: #92400E; border-radius: 10px; padding: 10px 12px">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.01"/></svg>
+        <span><b>Waiting · 1 sales return</b><br>VK Nex can't take returns from phones yet. It stays on this phone.</span>
+      </div>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600">Server and phone</h2>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #57534E">VK Nex server</span><span style="font-size: 14px; font-weight: 600">https://erp.[your-domain]:3011</span></span>
+        <a href="Settings.dc.html" style="padding: 12px 4px; font-size: 14px; font-weight: 600; color: #8B1D1D">Change</a>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+        <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #57534E">Signed in as</span><span style="font-size: 14px; font-weight: 600">karthik · Acme Foods</span></div>
+        <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #57534E">This phone</span><span style="font-size: 14px; font-weight: 600; color: #15803D">Registered</span></div>
+      </div>
+      <span style="font-size: 12px; color: #57534E">Device VKSMAN-3F9A2C1B7D04</span>
+    </section>
+  </div>
+
+  <footer style="background: #FFFFFF; border-top: 1px solid #E7E5E4; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px">
+    <a href="SyncProgress.dc.html" style="height: 48px; border-radius: 12px; background: #8B1D1D; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; text-decoration: none">Sync now</a>
+    <span style="font-size: 12px; line-height: 16px; color: #57534E; text-align: center">Sends first, then receives. Use the office Wi-Fi.</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -119,6 +119,21 @@ test("the login company is read from VK Nex's token", async () => {
   assert.equal(api.companyId(), 'comp-1');
 });
 
+test('sign-in says which VK Nex user it was: usrId and login name as VK Nex spells it', async () => {
+  const s = fakeServer(() => ({ status: 200, body: { access_token: jwt({ sub: 'u-from-token' }), usrId: 'u-7', user_name: 'Karthik' } }));
+  const api = createVkNexClient({ baseUrl: base, appVersion: '1.0.0', credentials: creds, fetch: s.fetch });
+  assert.deepEqual(await api.login(), { usrId: 'u-7', loginName: 'Karthik' });
+});
+
+test("sign-in without usrId falls back to the token's sub, then to nothing", async () => {
+  const withSub = fakeServer(() => ({ status: 200, body: { access_token: jwt({ sub: 'u-9' }) } }));
+  const a = createVkNexClient({ baseUrl: base, appVersion: '1.0.0', credentials: creds, fetch: withSub.fetch });
+  assert.deepEqual(await a.login(), { usrId: 'u-9', loginName: 'karthik' });
+  const bare = fakeServer(() => ({ status: 200, body: { access_token: 'tok' } }));
+  const b = createVkNexClient({ baseUrl: base, appVersion: '1.0.0', credentials: creds, fetch: bare.fetch });
+  assert.deepEqual(await b.login(), { usrId: null, loginName: 'karthik' });
+});
+
 test('ledger pages, fiscal years and customer updates go to their VK Nex routes', async () => {
   const s = fakeServer((c) => {
     if (c.url.endsWith('/auth/login')) return { status: 200, body: { access_token: 'tok' } };

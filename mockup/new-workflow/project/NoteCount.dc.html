@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Note count</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 8px 10px; display: flex; align-items: center; gap: 2px">
+    <a href="CashHandover.dc.html" aria-label="Back to Cash handover" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <h1 style="margin: 0; font-size: 19px; line-height: 24px; font-weight: 600">Note count</h1>
+      <span style="font-size: 13px; line-height: 18px; color: #F3DADA">Net cash to hand over ₹21,990.00</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+    <section style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; overflow: hidden">
+      <div style="display: grid; grid-template-columns: 72px minmax(0, 1fr) 96px; gap: 8px; padding: 8px 16px; background: #F5F3F0; font-size: 12px; font-weight: 600; color: #57534E"><span>Note</span><span style="text-align: center">Count</span><span style="text-align: right">Amount</span></div>
+      <sc-for list="{{notes}}" as="d" hint-placeholder-count="7">
+        <div style="display: grid; grid-template-columns: 72px minmax(0, 1fr) 96px; gap: 8px; align-items: center; padding: 6px 16px; border-top: 1px solid #F1EDE4; font-size: 15px; font-variant-numeric: tabular-nums">
+          <b>{{d.label}}</b>
+          <div style="justify-self: center; display: flex; align-items: center; height: 40px; border: 1px solid #D6D3D1; border-radius: 10px">
+            <button type="button" aria-label="One less {{d.label}}" style="width: 40px; height: 38px; border: 0; background: transparent; color: #8B1D1D; font: inherit; font-size: 20px">−</button>
+            <b style="width: 40px; text-align: center">{{d.count}}</b>
+            <button type="button" aria-label="One more {{d.label}}" style="width: 40px; height: 38px; border: 0; background: transparent; color: #8B1D1D; font: inherit; font-size: 20px">+</button>
+          </div>
+          <span style="text-align: right; font-weight: 600">{{d.amount}}</span>
+        </div>
+      </sc-for>
+      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 16px; border-top: 1px solid #E7E5E4; font-variant-numeric: tabular-nums"><b>Counted</b><b style="font-size: 20px">₹21,990.00</b></div>
+    </section>
+
+    <div role="status" style="display: flex; align-items: center; gap: 10px; background: #DCFCE7; color: #166534; border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 20px">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M5 12l5 5 9-10"/></svg>
+      <span><b>Matches the net cash.</b> If it doesn't match, the difference shows here in red, and you can still save it with a note.</span>
+    </div>
+  </div>
+
+  <footer style="background: #FFFFFF; border-top: 1px solid #E7E5E4; padding: 12px 16px; display: flex; gap: 10px">
+    <a href="CashHandover.dc.html" style="flex: 1; height: 48px; border-radius: 12px; border: 1px solid #D6D3D1; background: #FFFFFF; color: #8B1D1D; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; text-decoration: none">Cancel</a>
+    <a href="CashHandover.dc.html" style="flex: 2; height: 48px; border-radius: 12px; background: #8B1D1D; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; text-decoration: none">Save count</a>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      notes: [
+        { label: '₹500', count: '38', amount: '19,000.00' },
+        { label: '₹200', count: '10', amount: '2,000.00' },
+        { label: '₹100', count: '8', amount: '800.00' },
+        { label: '₹50', count: '3', amount: '150.00' },
+        { label: '₹20', count: '2', amount: '40.00' },
+        { label: '₹10', count: '0', amount: '0.00' },
+        { label: 'Coins', count: '0', amount: '0.00' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
