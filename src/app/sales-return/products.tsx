@@ -6,13 +6,15 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LoadMoreFooter, useLoadMore } from '@/components/load-more';
 import { ScreenHeader } from '@/components/screen-header';
+import { itemFilterKey } from '@/features/orders/item-filter-sql';
 import { ItemFilterSheet, type ItemFilter } from '@/features/orders/item-filter-sheet';
-import { filterOrderItems, itemName } from '@/features/orders/order-items';
+import { itemName } from '@/features/orders/order-items';
 import { startingPrice, toPaise } from '@/features/orders/order-math';
 import { itemBrandsQuery, itemGroupsQuery } from '@/features/orders/queries';
 import { returnCustomerQuery } from '@/features/returns/queries';
-import { saleItemsQuery, type SaleItemRow } from '@/features/sales/queries';
+import { saleItemCountQuery, saleItemsUpToQuery, type SaleItemRow } from '@/features/sales/queries';
 import { formatAmount } from '@/lib/money';
 import { useAppSelector } from '@/store';
 import { colors, font, radius, spacing } from '@/theme';
@@ -34,7 +36,6 @@ export default function ReturnProductsScreen() {
   const companyId = useAppSelector((st) => st.returnDraft.companyId) ?? '';
   const customerId = useAppSelector((st) => st.returnDraft.customerId) ?? '';
 
-  const { data: rows, updatedAt } = useLiveQuery(saleItemsQuery(companyId), [companyId]);
   const { data: found } = useLiveQuery(returnCustomerQuery(customerId), [customerId]);
   const { data: groups } = useLiveQuery(itemGroupsQuery());
   const { data: brands } = useLiveQuery(itemBrandsQuery());
@@ -44,6 +45,17 @@ export default function ReturnProductsScreen() {
   const [filter, setFilter] = useState<ItemFilter>({ groupIds: [], brandIds: [] });
   const [filterOpen, setFilterOpen] = useState(false);
 
+  // 50 units at first and 50 more as the list is scrolled to its end, searched and filtered in the
+  // database (only units with a price for this customer's level). Another search, filter or
+  // customer starts again from the first 50.
+  const listFilter = useMemo(() => ({ search, groupIds: filter.groupIds, brandIds: filter.brandIds }), [search, filter]);
+  const listKey = `${companyId}|${level ?? ''}|${itemFilterKey(listFilter)}`;
+  const { limit, more } = useLoadMore(listKey);
+  const { data: counted, updatedAt } = useLiveQuery(saleItemCountQuery(companyId, level, listFilter), [listKey]);
+  const total = counted[0]?.n ?? 0;
+  const { data: rows } = useLiveQuery(saleItemsUpToQuery(companyId, level, listFilter, limit), [listKey, limit]);
+  const searching = search.trim() !== '' || filter.groupIds.length + filter.brandIds.length > 0;
+
   const priced = useMemo<ListRow[]>(
     () =>
       rows.flatMap((row) => {
@@ -52,10 +64,6 @@ export default function ReturnProductsScreen() {
       }),
     [rows, level],
   );
-  const shown = useMemo(() => {
-    const keep = new Set(filterOrderItems(priced.map((p) => p.row), search, filter.groupIds, filter.brandIds).map((r) => r.iucId));
-    return priced.filter((p) => keep.has(p.row.iucId));
-  }, [priced, search, filter]);
   const filtered = filter.groupIds.length + filter.brandIds.length > 0;
 
   const onOpen = useCallback((p: ListRow) => router.push({ pathname: '/sales-return/item', params: { iucId: p.row.iucId } }), []);
@@ -95,14 +103,17 @@ export default function ReturnProductsScreen() {
       </View>
 
       <FlatList
-        data={shown}
+        data={priced}
         keyExtractor={(p) => p.row.iucId}
         contentContainerStyle={[st.list, { paddingBottom: insets.bottom + spacing.lg }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         initialNumToRender={12}
         windowSize={7}
-        ListEmptyComponent={updatedAt ? <Text style={st.empty}>{priced.length === 0 ? t('order.noItems') : t('order.noMatch')}</Text> : undefined}
+        onEndReached={() => more(rows.length, total)}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={<LoadMoreFooter shown={rows.length} total={total} />}
+        ListEmptyComponent={updatedAt ? <Text style={st.empty}>{searching ? t('order.noMatch') : t('order.noItems')}</Text> : undefined}
         renderItem={({ item }) => <ProductRow p={item} language={i18n.language} onOpen={onOpen} />}
       />
 

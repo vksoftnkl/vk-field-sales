@@ -6,16 +6,18 @@ import { useTranslation } from 'react-i18next';
 import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LoadMoreFooter, useLoadMore } from '@/components/load-more';
 import { ScreenHeader } from '@/components/screen-header';
 import { useDateNames } from '@/components/use-date-names';
 import { metaQuery } from '@/db/meta';
+import { itemFilterKey } from '@/features/orders/item-filter-sql';
 import { ItemFilterSheet, type ItemFilter } from '@/features/orders/item-filter-sheet';
-import { filterOrderItems, itemName } from '@/features/orders/order-items';
+import { itemName } from '@/features/orders/order-items';
 import { decimalInput, num, orderTotals, qtyText, startingPrice, toPaise } from '@/features/orders/order-math';
 import { companyQuery, customerName, itemBrandsQuery, itemGroupsQuery } from '@/features/orders/queries';
 import { saleCleared, saleQtyTyped, saleStarted, type SaleLine } from '@/features/sales/sale-draft';
 import { overStock, stockLeft } from '@/features/sales/sale-math';
-import { billedOnPhoneQuery, saleCustomerQuery, saleItemsQuery, seedSaleLine, type SaleItemRow } from '@/features/sales/queries';
+import { billedOnPhoneQuery, saleCustomerQuery, saleItemCountQuery, saleItemsUpToQuery, seedSaleLine, type SaleItemRow } from '@/features/sales/queries';
 import { formatDay } from '@/lib/date-range';
 import { formatAmount } from '@/lib/money';
 import { useAppDispatch, useAppSelector } from '@/store';
@@ -46,7 +48,6 @@ export default function SelectItemsScreen() {
 
   const { data: found } = useLiveQuery(saleCustomerQuery(customerId), [customerId]);
   const { data: company } = useLiveQuery(companyQuery(companyId), [companyId]);
-  const { data: rows, updatedAt } = useLiveQuery(saleItemsQuery(companyId), [companyId]);
   const { data: billed } = useLiveQuery(billedOnPhoneQuery(companyId), [companyId]);
   const { data: groups } = useLiveQuery(itemGroupsQuery());
   const { data: brands } = useLiveQuery(itemBrandsQuery());
@@ -80,20 +81,28 @@ export default function SelectItemsScreen() {
     ]);
   });
 
+  // 50 units at first and 50 more as the list is scrolled to its end: the units this customer's
+  // price level can be sold, searched and filtered in the database. Another search, filter or
+  // customer level starts again from the first 50.
+  const level = c?.cusPriceLevelId ?? null;
+  const listFilter = useMemo(() => ({ search, groupIds: filter.groupIds, brandIds: filter.brandIds }), [search, filter]);
+  const listKey = `${companyId}|${level ?? ''}|${itemFilterKey(listFilter)}`;
+  const { limit, more } = useLoadMore(listKey);
+  const { data: counted, updatedAt } = useLiveQuery(saleItemCountQuery(companyId, level, listFilter), [listKey]);
+  const total = counted[0]?.n ?? 0;
+  const { data: rows } = useLiveQuery(saleItemsUpToQuery(companyId, level, listFilter, limit), [listKey, limit]);
+  const searching = search.trim() !== '' || filter.groupIds.length + filter.brandIds.length > 0;
+
   const billedBy = useMemo(() => new Map(billed.map((b) => [b.itemId, b.base])), [billed]);
   const priced = useMemo<ListRow[]>(
     () =>
       rows.flatMap((row) => {
-        const start = startingPrice(row, c?.cusPriceLevelId ?? null);
+        const start = startingPrice(row, level);
         const billedBase = billedBy.get(row.itemId) ?? 0;
         return start ? [{ row, start, billedBase, left: stockLeft(row.stockQty, row.factor, billedBase) }] : [];
       }),
-    [rows, c?.cusPriceLevelId, billedBy],
+    [rows, level, billedBy],
   );
-  const shown = useMemo(() => {
-    const keep = new Set(filterOrderItems(priced.map((p) => p.row), search, filter.groupIds, filter.brandIds).map((r) => r.iucId));
-    return priced.filter((p) => keep.has(p.row.iucId));
-  }, [priced, search, filter]);
   const byUnit = useMemo(() => new Map(lines.map((l) => [l.iucId, l])), [lines]);
   const short = useMemo(() => overStock(lines), [lines]);
   const totals = orderTotals(lines);
@@ -144,13 +153,16 @@ export default function SelectItemsScreen() {
       {syncedOn ? <Text style={st.asOf}>{t('order.stockAsOf', { date: formatDay(syncedOn.slice(0, 10), names) })}</Text> : null}
 
       <FlatList
-        data={shown}
+        data={priced}
         keyExtractor={(p) => p.row.iucId}
         contentContainerStyle={st.list}
         keyboardShouldPersistTaps="handled"
         initialNumToRender={12}
         windowSize={7}
-        ListEmptyComponent={updatedAt ? <Text style={st.empty}>{priced.length === 0 ? t('order.noItems') : t('order.noMatch')}</Text> : undefined}
+        onEndReached={() => more(rows.length, total)}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={<LoadMoreFooter shown={rows.length} total={total} />}
+        ListEmptyComponent={updatedAt ? <Text style={st.empty}>{searching ? t('order.noMatch') : t('order.noItems')}</Text> : undefined}
         renderItem={({ item }) => (
           <ItemRow p={item} line={byUnit.get(item.row.iucId)} isShort={short.has(item.row.iucId)} language={i18n.language} onQty={onQty} onOpen={onOpen} />
         )}

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, gte, isNull, lte, max, min, ne, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lte, max, min, ne, or, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import {
@@ -21,6 +21,7 @@ import { addDays } from '@/lib/date-range';
 import { todayISO } from '@/lib/money';
 import { uuidv7 } from '@/lib/uuid';
 
+import { itemFilterSql, type ItemListFilter } from './item-filter-sql';
 import type { CheckIn, OrderDraftState, SoLine } from './order-draft';
 import { paiseText, qtyText, startingPrice, toPaise } from './order-math';
 import { nextRefSeq, phoneRef, validUntil, VALID_DAYS } from './order-status';
@@ -126,6 +127,39 @@ export const soUnitsQuery = (companyId: string) =>
     .orderBy(asc(itemMaster.itemNameEn), desc(itemUnits.iucIsDefaultUnit), asc(itemUnits.iucToBaseFactor), asc(itemUnits.appUnitName));
 
 export type SoUnitRow = Awaited<ReturnType<ReturnType<typeof soUnitsQuery>['all']>>[number];
+
+/** Add items' search and filter on a company's items (any unit, priced or not). */
+const soItemWhere = (companyId: string, f: ItemListFilter) => and(eq(itemUnits.appCompanyId, companyId), itemFilterSql(f));
+
+/** How many items Add items lists for this search and filter (one row per item). */
+export const soItemCountQuery = (companyId: string, f: ItemListFilter) =>
+  db
+    .select({ n: sql<number>`count(distinct ${itemMaster.itemId})`.mapWith(Number) })
+    .from(itemUnits)
+    .innerJoin(itemMaster, eq(itemMaster.itemId, itemUnits.iucItemId))
+    .where(soItemWhere(companyId, f));
+
+/**
+ * Add items as far as it is scrolled: the first `limit` items, by name (then id, so the rows
+ * already shown never move when the next 50 come).
+ */
+export const soItemsUpToQuery = (companyId: string, f: ItemListFilter, limit: number) =>
+  db
+    .selectDistinct({ itemId: itemMaster.itemId, name: itemMaster.itemNameEn })
+    .from(itemUnits)
+    .innerJoin(itemMaster, eq(itemMaster.itemId, itemUnits.iucItemId))
+    .where(soItemWhere(companyId, f))
+    .orderBy(asc(itemMaster.itemNameEn), asc(itemMaster.itemId))
+    .limit(limit);
+
+/** Every unit of these items in a company, in the same order (the rows of the items loaded). */
+export const soUnitsOfItemsQuery = (companyId: string, itemIds: readonly string[]) =>
+  db
+    .select(soUnitColumns)
+    .from(itemUnits)
+    .innerJoin(itemMaster, eq(itemMaster.itemId, itemUnits.iucItemId))
+    .where(and(eq(itemUnits.appCompanyId, companyId), inArray(itemUnits.iucItemId, [...itemIds])))
+    .orderBy(asc(itemMaster.itemNameEn), asc(itemMaster.itemId), desc(itemUnits.iucIsDefaultUnit), asc(itemUnits.iucToBaseFactor), asc(itemUnits.appUnitName));
 
 /** One item's units in a company, for Order item. */
 export const soItemUnitsQuery = (companyId: string, itemId: string) =>

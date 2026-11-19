@@ -916,5 +916,9 @@
     "pickCompany": "Choose company and branch",
     "pickCompanyNote": "Pick the company and branch this order is for before taking it.",
     "changeInMenu": "To order for another company or branch, use Switch company in the menu."
+  },
+  "paging": {
+    "loadingMore": "Loading more…",
+    "showing": "Showing {{shown}} of {{total}} items"
   }
 }

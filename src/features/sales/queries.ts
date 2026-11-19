@@ -2,6 +2,7 @@ import { and, asc, desc, eq, max, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { customers, itemMaster, itemUnits, saleBill, saleBillItem } from '@/db/schema';
+import { itemFilterSql, startingPriceSql, type ItemListFilter } from '@/features/orders/item-filter-sql';
 import { num, paiseText, qtyText, toPaise } from '@/features/orders/order-math';
 import { customerName, orderItemColumns } from '@/features/orders/queries';
 import { addDays } from '@/lib/date-range';
@@ -51,6 +52,34 @@ export const saleItemsQuery = (companyId: string) =>
     .orderBy(asc(itemMaster.itemNameEn), desc(itemUnits.iucIsDefaultUnit), asc(itemUnits.appUnitName));
 
 export type SaleItemRow = Awaited<ReturnType<ReturnType<typeof saleItemsQuery>['all']>>[number];
+
+/**
+ * Select items / Select return items: the priced units a customer of this level can be sold
+ * (startingPrice is not null), narrowed by the search and filter.
+ */
+const saleItemWhere = (companyId: string, level: number | null, f: ItemListFilter) =>
+  and(eq(itemUnits.appCompanyId, companyId), eq(itemUnits.appPriced, true), startingPriceSql(level), itemFilterSql(f));
+
+/** How many units the list has for this customer level, search and filter. */
+export const saleItemCountQuery = (companyId: string, level: number | null, f: ItemListFilter) =>
+  db
+    .select({ n: sql<number>`count(*)`.mapWith(Number) })
+    .from(itemUnits)
+    .innerJoin(itemMaster, eq(itemMaster.itemId, itemUnits.iucItemId))
+    .where(saleItemWhere(companyId, level, f));
+
+/**
+ * That list as far as it is scrolled: the first `limit` units, in saleItemsQuery's order (then
+ * the unit id, so the rows already shown never move when the next 50 come).
+ */
+export const saleItemsUpToQuery = (companyId: string, level: number | null, f: ItemListFilter, limit: number) =>
+  db
+    .select(saleItemColumns)
+    .from(itemUnits)
+    .innerJoin(itemMaster, eq(itemMaster.itemId, itemUnits.iucItemId))
+    .where(saleItemWhere(companyId, level, f))
+    .orderBy(asc(itemMaster.itemNameEn), desc(itemUnits.iucIsDefaultUnit), asc(itemUnits.appUnitName), asc(itemUnits.iucId))
+    .limit(limit);
 
 /** One unit, for Bill item. */
 export const saleItemQuery = (companyId: string, iucId: string) =>

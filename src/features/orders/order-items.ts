@@ -19,7 +19,7 @@ export function filterOrderItems<T extends SearchableItem>(
   groupIds: readonly string[],
   brandIds: readonly string[],
 ): T[] {
-  const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const words = searchWords(query);
   return rows.filter((r) => {
     if (groupIds.length && !groupIds.includes(r.itemGroupId)) return false;
     if (brandIds.length && !(r.itemBrandId && brandIds.includes(r.itemBrandId))) return false;
@@ -28,6 +28,9 @@ export function filterOrderItems<T extends SearchableItem>(
     return words.every((w) => text.includes(w));
   });
 }
+
+/** The typed search as lower-case words (the item lists' SQL search uses the same words). */
+export const searchWords = (query: string): string[] => query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
 
 /** The name to show: Tamil when the app is in Tamil and the item has one (the Qt app showed Tamil always: a bug). */
 export const itemName = (r: { itemNameEn: string; itemNameTa: string | null }, language: string): string =>

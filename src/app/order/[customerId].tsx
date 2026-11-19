@@ -6,13 +6,15 @@ import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LoadMoreFooter, useLoadMore } from '@/components/load-more';
 import { ScreenHeader } from '@/components/screen-header';
 import { useDateNames } from '@/components/use-date-names';
 import { metaQuery } from '@/db/meta';
 import { currentContext } from '@/features/company/company';
+import { itemFilterKey } from '@/features/orders/item-filter-sql';
 import { ItemFilterSheet, type ItemFilter } from '@/features/orders/item-filter-sheet';
 import { contextChosen, orderCleared, orderRepeated, qtyTyped, type SoLine } from '@/features/orders/order-draft';
-import { filterOrderItems, groupUnits, itemName, type ItemUnits } from '@/features/orders/order-items';
+import { groupUnits, itemName, type ItemUnits } from '@/features/orders/order-items';
 import { decimalInput, num, qtyText, startingPrice, toPaise } from '@/features/orders/order-math';
 import { asOfText, isRecentOpen, soState } from '@/features/orders/order-status';
 import {
@@ -23,8 +25,10 @@ import {
   orderCustomerQuery,
   orderRef,
   shopOrderLinesQuery,
+  soItemCountQuery,
+  soItemsUpToQuery,
   soSeedLine,
-  soUnitsQuery,
+  soUnitsOfItemsQuery,
   type OrderCustomer,
   type SoUnitRow,
 } from '@/features/orders/queries';
@@ -52,7 +56,6 @@ export default function AddItemsScreen() {
 
   const { data: found } = useLiveQuery(orderCustomerQuery(customerId), [customerId]);
   const { data: company } = useLiveQuery(companyQuery(companyId), [companyId]);
-  const { data: rows, updatedAt } = useLiveQuery(soUnitsQuery(companyId), [companyId]);
   const { data: groups } = useLiveQuery(itemGroupsQuery());
   const { data: brands } = useLiveQuery(itemBrandsQuery());
   const { data: synced } = useLiveQuery(metaQuery('itemsSyncedAt'));
@@ -93,11 +96,18 @@ export default function AddItemsScreen() {
     ]);
   });
 
-  const items = useMemo(() => groupUnits(rows), [rows]);
-  const shown = useMemo(() => {
-    const keep = new Set(filterOrderItems(items.map((i) => i.rowUnit), search, filter.groupIds, filter.brandIds).map((r) => r.itemId));
-    return items.filter((i) => keep.has(i.itemId));
-  }, [items, search, filter]);
+  // 50 items at first and 50 more as the list is scrolled to its end, searched and filtered in
+  // the database; another search, filter or company starts again from the first 50.
+  const listFilter = useMemo(() => ({ search, groupIds: filter.groupIds, brandIds: filter.brandIds }), [search, filter]);
+  const listKey = `${companyId}|${itemFilterKey(listFilter)}`;
+  const { limit, more } = useLoadMore(listKey);
+  const { data: counted, updatedAt } = useLiveQuery(soItemCountQuery(companyId, listFilter), [listKey]);
+  const total = counted[0]?.n ?? 0;
+  const { data: loadedItems } = useLiveQuery(soItemsUpToQuery(companyId, listFilter, limit), [listKey, limit]);
+  const itemIds = loadedItems.map((r) => r.itemId);
+  const { data: rows } = useLiveQuery(soUnitsOfItemsQuery(companyId, itemIds), [companyId, itemIds.join(',')]);
+  const shown = useMemo(() => groupUnits(rows), [rows]);
+  const searching = search.trim() !== '' || filter.groupIds.length + filter.brandIds.length > 0;
   const byItem = useMemo(() => new Map(lines.map((l) => [l.itemId, l])), [lines]);
 
   // "Already on sor00042: 4 Bag": the first open order of this shop holding the item.
@@ -189,7 +199,10 @@ export default function AddItemsScreen() {
         keyboardShouldPersistTaps="handled"
         initialNumToRender={12}
         windowSize={7}
-        ListEmptyComponent={updatedAt ? <Text style={st.empty}>{items.length === 0 ? t('order.noItems') : t('order.noMatch')}</Text> : undefined}
+        onEndReached={() => more(loadedItems.length, total)}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={<LoadMoreFooter shown={loadedItems.length} total={total} />}
+        ListEmptyComponent={updatedAt ? <Text style={st.empty}>{searching ? t('order.noMatch') : t('order.noItems')}</Text> : undefined}
         renderItem={({ item }) => (
           <ItemRow it={item} line={byItem.get(item.itemId)} customer={c} note={onOrder.get(item.itemId)} language={i18n.language} onQty={onQty} onOpen={onOpen} />
         )}
