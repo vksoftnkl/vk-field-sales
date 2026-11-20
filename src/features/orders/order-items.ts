@@ -1,4 +1,5 @@
 // Pure TypeScript (no React Native imports) so `npm test` can run it in Node.
+import { num } from './order-math.ts';
 
 /** The fields Order entry searches and filters on. */
 export interface SearchableItem {
@@ -55,8 +56,8 @@ export interface ItemUnits<T extends UnitRow> {
 }
 
 /**
- * Groups unit rows (one per unit, as Sync keeps them) into items, keeping the rows' order. Since
- * the 3b workflow an item is one row in its default unit; Order item switches the unit.
+ * Groups unit rows (one per unit, as Sync keeps them) into items, keeping the rows' order (the
+ * no-bill return list shows one row per item; order Add items lists every unit since 2026-11-20).
  */
 export function groupUnits<T extends UnitRow>(rows: readonly T[]): ItemUnits<T>[] {
   const byItem = new Map<string, T[]>();
@@ -114,15 +115,28 @@ export function qtyInBase<T extends UnitFactor>(qty: number, u: T, units: readon
   return conv ? { qty: Number((qty * conv.n).toFixed(3)), base: conv.base } : null;
 }
 
-/** The units a salesman may order in: the priced ones (an unpriced unit has no rate today). */
-export const pickableUnits = <T extends UnitRow>(it: ItemUnits<T>): T[] => it.units.filter((u) => u.appPriced);
+/** A line of the order as stock sees it: its unit, quantity and size. */
+export interface StockLine {
+  itemId: string;
+  iucId: string;
+  qty: string;
+  factor: string | number | null;
+}
 
 /**
- * The unit an Add items row shows: the order line's when the item is on the order, else the one
- * picked on the row (while it is still priced), else the item's row unit.
+ * The stock a line (or an Add items row) may still draw, in its own unit: the unit's stock as of
+ * Sync less what the item's lines in other units ahead of it take, since they all come out of one
+ * stock (4 Box and 10 Pcs of Sugar both draw on its 48 Pcs). The first line gets the stock first, as
+ * VK Nex reserves line by line; a row with no line yet comes after every line. Unknown factors
+ * leave the stock as it is.
  */
-export function shownUnit<T extends UnitRow>(it: ItemUnits<T>, lineIucId: string | undefined, pickedIucId: string | undefined): T {
-  const onLine = lineIucId ? it.units.find((u) => u.iucId === lineIucId) : undefined;
-  const picked = pickedIucId ? it.units.find((u) => u.iucId === pickedIucId && u.appPriced) : undefined;
-  return onLine ?? picked ?? it.rowUnit;
+export function stockLeft(lines: readonly StockLine[], u: Omit<StockLine, 'qty'>, stock: number): number {
+  const f = factorOf({ unitName: '', factor: u.factor });
+  if (!f) return stock;
+  let used = 0;
+  for (const l of lines) {
+    if (l.iucId === u.iucId) break;
+    if (l.itemId === u.itemId) used += num(l.qty) * factorOf({ unitName: '', factor: l.factor });
+  }
+  return used > 0 ? Number((stock - used / f).toFixed(3)) : stock;
 }

@@ -73,10 +73,18 @@ export default function NoOrderScreen() {
     setSubmitted(true);
     if (saved.current || !reason || loc.kind === 'locating') return;
     const items = store.getState().orderDraft.lines.length;
-    if (!items) return write();
-    Alert.alert(t('so.noOrderDropTitle'), t('so.noOrderDropText', { count: items }), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('checkIn.save'), style: 'destructive', onPress: write },
+    const go = () => {
+      if (!items) return write();
+      Alert.alert(t('so.noOrderDropTitle'), t('so.noOrderDropText', { count: items }), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('checkIn.save'), style: 'destructive', onPress: write },
+      ]);
+    };
+    // No place yet: VK Nex would get the visit without it, so ask first (user, 2026-11-20).
+    if (loc.kind === 'fix' || store.getState().orderDraft.checkIn?.fix) return go();
+    Alert.alert(t('checkIn.noFixTitle'), t('checkIn.noFixText'), [
+      { text: t('checkIn.retry'), onPress: () => void locate() },
+      { text: t('checkIn.saveWithoutFix'), style: 'destructive', onPress: go },
     ]);
   };
 

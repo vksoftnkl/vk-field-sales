@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useDateNames } from '@/components/use-date-names';
 import { formatDay } from '@/lib/date-range';
@@ -11,27 +11,20 @@ import { colors, font, radius, spacing } from '@/theme';
 
 import { hhmm } from './order-status';
 import type { VisitFix } from './queries';
+import { readLocation, type LocateResult, type LocationApi } from './read-location';
 
-export type Locating = { kind: 'locating' } | { kind: 'fix'; fix: VisitFix } | { kind: 'denied' } | { kind: 'off' } | { kind: 'failed' };
+export type Locating = { kind: 'locating' } | LocateResult;
 
-/** getCurrentPositionAsync has no timeout of its own. */
-const GPS_TIMEOUT_MS = 20_000;
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('GPS_TIMEOUT')), ms);
-    p.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      (e: unknown) => {
-        clearTimeout(timer);
-        reject(e instanceof Error ? e : new Error(String(e)));
-      },
-    );
-  });
-}
+/** expo-location for readLocation. */
+const EXPO_LOCATION: LocationApi = {
+  getPermission: () => Location.getForegroundPermissionsAsync(),
+  requestPermission: () => Location.requestForegroundPermissionsAsync(),
+  servicesOn: () => Location.hasServicesEnabledAsync(),
+  // Android's "Turn on location" dialog; iOS has none (Settings only).
+  askToTurnOn: Platform.OS === 'android' ? () => Location.enableNetworkProviderAsync() : undefined,
+  lastKnown: (o) => Location.getLastKnownPositionAsync(o),
+  current: () => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+};
 
 /**
  * Where the salesman is, read once when the screen opens (offline too: GPS needs no internet).
@@ -52,26 +45,9 @@ export function useLocate(start: VisitFix | null = null) {
       if (alive.current) setLoc(l);
     };
     put({ kind: 'locating' });
-    try {
-      const perm = await Location.requestForegroundPermissionsAsync();
-      if (!perm.granted) return put({ kind: 'denied' });
-      if (!(await Location.hasServicesEnabledAsync())) return put({ kind: 'off' });
-      // A fix from the last two minutes, close enough, saves waiting for the GPS.
-      const pos =
-        (await Location.getLastKnownPositionAsync({ maxAge: 120_000, requiredAccuracy: 100 })) ??
-        (await withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }), GPS_TIMEOUT_MS));
-      put({
-        kind: 'fix',
-        fix: {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracyM: pos.coords.accuracy ?? null,
-          locatedAt: new Date(pos.timestamp).toISOString(),
-        },
-      });
-    } catch {
-      put({ kind: 'failed' });
-    }
+    const r = await readLocation(EXPO_LOCATION);
+    put(r);
+    return r;
   }, []);
 
   const hadStart = useRef(start !== null);
@@ -128,6 +104,10 @@ export function LocationCard({ loc, onRetry, checkedInAt, note }: { loc: Locatin
     );
   }
   const text = loc.kind === 'denied' ? t('checkIn.noPermission') : loc.kind === 'off' ? t('checkIn.servicesOff') : t('checkIn.failed');
+  // Refused for good: only the app's settings can allow it now; else ask (or switch on) again.
+  const settings = loc.kind === 'denied' && !loc.canAskAgain;
+  const action = settings ? t('checkIn.openSettings') : loc.kind === 'denied' ? t('checkIn.allow') : loc.kind === 'off' ? t('checkIn.turnOn') : t('checkIn.retry');
+  const press = settings ? () => void Linking.openSettings() : onRetry;
   return (
     <View style={st.card} accessibilityRole="alert">
       <View style={[st.pin, { backgroundColor: '#FEF3C7' }]}>
@@ -137,11 +117,9 @@ export function LocationCard({ loc, onRetry, checkedInAt, note }: { loc: Locatin
         {checkedInAt ? <Text style={st.cardTitle}>{title}</Text> : null}
         <Text style={st.cardNote}>{text}</Text>
       </View>
-      {loc.kind !== 'denied' ? (
-        <Pressable accessibilityRole="button" onPress={onRetry} hitSlop={8} style={st.retry}>
-          <Text style={st.retryText}>{t('checkIn.retry')}</Text>
-        </Pressable>
-      ) : null}
+      <Pressable accessibilityRole="button" onPress={press} hitSlop={8} style={st.retry}>
+        <Text style={st.retryText}>{action}</Text>
+      </Pressable>
     </View>
   );
 }

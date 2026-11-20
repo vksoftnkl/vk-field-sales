@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { baseUnitOf, groupUnits, pickableUnits, qtyInBase, shownUnit, unitInBase } from './order-items.ts';
+import { baseUnitOf, qtyInBase, stockLeft, unitInBase } from './order-items.ts';
 
 const unit = (iucId: string, unitName: string, factor: string, isDefault = false, appPriced = true) => ({ itemId: 'i1', iucId, unitName, factor, isDefault, appPriced });
 
@@ -41,17 +41,19 @@ test('stock in a unit converts to the base unit', () => {
   assert.equal(qtyInBase(7, pcs, units), null);
 });
 
-test('only priced units can be picked', () => {
-  const [it] = groupUnits(units);
-  assert.deepEqual(pickableUnits(it!).map((u) => u.iucId), ['u-box', 'u-pcs']);
-});
-
-test("a row shows the line's unit, else the picked unit while priced, else the default", () => {
-  const [it] = groupUnits(units);
-  assert.equal(shownUnit(it!, undefined, undefined).iucId, 'u-box');
-  assert.equal(shownUnit(it!, undefined, 'u-pcs').iucId, 'u-pcs');
-  assert.equal(shownUnit(it!, 'u-pcs', 'u-box').iucId, 'u-pcs');
-  // A pick that is no longer priced (a Sync dropped its rate), or gone, falls back.
-  assert.equal(shownUnit(it!, undefined, 'u-ctn').iucId, 'u-box');
-  assert.equal(shownUnit(it!, undefined, 'u-gone').iucId, 'u-box');
+test('units of one item on one order share its stock: the earlier lines draw first', () => {
+  const line = (iucId: string, qty: string, factor: string, itemId = 'i1') => ({ itemId, iucId, qty, factor });
+  // 48 Pcs in stock = 4 Box. The order has 2 Box, then 10 Pcs.
+  const lines = [line('u-box', '2', '12'), line('u-tea', '9', '1', 'tea'), line('u-pcs', '10', '1')];
+  // The Box line comes first: all 4 Box are there for it.
+  assert.equal(stockLeft(lines, { itemId: 'i1', iucId: 'u-box', factor: '12' }, 4), 4);
+  // The Pcs line comes after 2 Box (24 Pcs): 24 Pcs left; another item's line takes nothing.
+  assert.equal(stockLeft(lines, { itemId: 'i1', iucId: 'u-pcs', factor: '1' }, 48), 24);
+  // A Carton row not on the order comes after both: 48 - 24 - 10 = 14 Pcs = 0.097 Carton of 144.
+  assert.equal(stockLeft(lines, { itemId: 'i1', iucId: 'u-ctn', factor: '144' }, 48 / 144), 0.097);
+  // Over-ordered in Pcs first: the Box row is left with less than nothing.
+  assert.equal(stockLeft([line('u-pcs', '60', '1')], { itemId: 'i1', iucId: 'u-box', factor: '12' }, 4), -1);
+  // No other unit on the order, or no factor: the unit's own stock.
+  assert.equal(stockLeft([line('u-box', '9', '12')], { itemId: 'i1', iucId: 'u-box', factor: '12' }, 4), 4);
+  assert.equal(stockLeft(lines, { itemId: 'i1', iucId: 'u-x', factor: '0' }, 7), 7);
 });

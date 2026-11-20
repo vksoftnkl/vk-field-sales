@@ -46,9 +46,8 @@ export default function CheckInScreen() {
   const [submitted, setSubmitted] = useState(false);
   const saved = useRef(false);
 
-  const save = () => {
-    setSubmitted(true);
-    if (saved.current || !reason || loc.kind === 'locating') return;
+  const write = () => {
+    if (saved.current || !reason) return;
     try {
       // The receipt's company, else the one chosen in Choose company (else Sync picks it at upload).
       const companyId = forCompany ?? currentCompanyQuery().get()?.id ?? null;
@@ -63,6 +62,16 @@ export default function CheckInScreen() {
     } catch {
       Alert.alert(t('common.error'));
     }
+  };
+  /** No place yet: VK Nex would get the visit without it, so ask first (user, 2026-11-20). */
+  const save = () => {
+    setSubmitted(true);
+    if (saved.current || !reason || loc.kind === 'locating') return;
+    if (loc.kind === 'fix') return write();
+    Alert.alert(t('checkIn.noFixTitle'), t('checkIn.noFixText'), [
+      { text: t('checkIn.retry'), onPress: () => void locate() },
+      { text: t('checkIn.saveWithoutFix'), style: 'destructive', onPress: write },
+    ]);
   };
 
   const other = i18n.language.startsWith('ta') ? 'en' : 'ta';

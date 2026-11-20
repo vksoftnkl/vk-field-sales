@@ -140,6 +140,19 @@ test('save: the free line is its own row right after the line that earned it, nu
   assert.equal(r.missingFree.length, 0);
 });
 
+test('save: one item in two units goes as two lines, each with its own unit, factor and quantity', () => {
+  const oilBox = soLine({ itemId: 'OIL', iucId: 'iuc-oil-box', name: 'Oil', unitName: 'Box', factor: '12', qty: '2', price: '1680.00' });
+  const r = build({ lines: [oil, oilBox], applyOffers: false });
+  assert.deepEqual(
+    r.rows.map((x) => [x.soiLineNo, x.soiItemId, x.soiItemUnitId, x.appUnitName, x.soiToBaseFactor, x.soiOrderQty]),
+    [
+      [1, 'OIL', 'iuc-oil', 'PCS', '1', '30'],
+      [2, 'OIL', 'iuc-oil-box', 'Box', '12', '2'],
+    ],
+  );
+  assert.equal(r.totals.items, 2);
+});
+
 test('save: a paid line carries the scheme fields and amounts that include the scheme', () => {
   const r = build();
   const c = r.rows[0]!;
@@ -184,7 +197,7 @@ test("save: the offers off writes plain lines, no scheme, no free line, today's 
 });
 
 test('save: a line switched off writes soi_is_promo false and takes no offer', () => {
-  const r = build({ offersOn: { SAMBAR: false } });
+  const r = build({ offersOn: { 'iuc-sambar': false } });
   const s = r.rows.find((x) => x.soiItemId === 'SAMBAR')!;
   assert.equal(s.soiIsPromo, false);
   assert.equal(s.soiSchemeId, null);
@@ -233,10 +246,11 @@ test('edit and repeat: only the paid lines of a saved order are taken', () => {
 test('edit: a paid line saved with offers off, where the shop and item allow them, comes back switched off', () => {
   assert.deepEqual(
     offersOnFromSaved([
-      { itemId: 'a', savedPromo: false, allowed: true },
-      { itemId: 'b', savedPromo: true, allowed: true },
-      { itemId: 'c', savedPromo: false, allowed: false },
+      { iucId: 'a-pc', savedPromo: false, allowed: true },
+      { iucId: 'a-box', savedPromo: true, allowed: true },
+      { iucId: 'b-pc', savedPromo: true, allowed: true },
+      { iucId: 'c-pc', savedPromo: false, allowed: false },
     ]),
-    { a: false },
+    { 'a-pc': false },
   );
 });

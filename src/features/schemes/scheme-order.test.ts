@@ -293,6 +293,35 @@ test('badges: LIST offers reaching an item, green when they give something now',
   );
 });
 
+test('unit rows: an offer for PKT shows on the PKT row only, applied when the PKT line earns it', () => {
+  const rows = [
+    { itemId: 'TEA', iucId: 'iuc-tea-case' },
+    { itemId: 'TEA', iucId: 'iuc-tea' },
+  ];
+  // Not on the order: the PKT row shows the offer outlined; the CASE row (another unit) shows none.
+  const none = evaluateOrder(baseInput()).unitBadges(rows);
+  assert.deepEqual(none['iuc-tea-case'], []);
+  assert.deepEqual(
+    none['iuc-tea']!.map((x) => [x.code, x.applied]),
+    [['TEA5', false]],
+  );
+  // Tea in two units on one order: 1 CASE and 13 PKT. Only the PKT line counts for TEA5.
+  const inCase = soLine({ itemId: 'TEA', iucId: 'iuc-tea-case', unitName: 'CASE', qty: '1', price: '1200.00' });
+  const inPkt = soLine({ itemId: 'TEA', iucId: 'iuc-tea', unitName: 'PKT', qty: '13', price: '100.00' });
+  const o = evaluateOrder(baseInput({ lines: [inCase, inPkt], unitIds: { ...unitIds, 'iuc-tea-case': 'U-CASE' } }));
+  const b = o.unitBadges(rows);
+  assert.deepEqual(b['iuc-tea-case'], []);
+  assert.deepEqual(
+    b['iuc-tea']!.map((x) => [x.code, x.applied]),
+    [['TEA5', true]],
+  );
+  // Explained from each line: the CASE line is another unit, the PKT line has it.
+  assert.equal(o.explain('TEA', 'iuc-tea-case')[0]!.reason, 'unit');
+  assert.equal(o.explain('TEA', 'iuc-tea')[0]!.reason, 'applied');
+  assert.equal(o.lines[0]!.schemeId, null);
+  assert.equal(o.lines[1]!.schDiscQty, '5');
+});
+
 test('explain: applied, the current band and the next one (18 PKT counted together)', () => {
   const [e] = evaluateOrder(baseInput()).explain('SAMBAR');
   assert.equal(e!.applied, true);
@@ -428,7 +457,7 @@ test("Apply offers off, and a line's own switch off", () => {
   assert.equal(soTotals(off.priced).totalPaise, soTotals(mockupLines).totalPaise, "today's math");
   assert.equal(off.explain('CHILLI')[0]!.reason, 'offersOff');
   assert.equal(off.orderOffers()[0]!.reason, 'offersOff');
-  const lineOff = evaluateOrder(baseInput({ offersOn: { SAMBAR: false } }));
+  const lineOff = evaluateOrder(baseInput({ offersOn: { 'iuc-sambar': false } }));
   assert.equal(lineOff.lines[2]!.schemeId, null);
   assert.equal(lineOff.lines[0]!.schDiscPerc, '2', 'chilli alone is 6 PKT');
   assert.equal(lineOff.explain('SAMBAR')[0]!.reason, 'lineOff');

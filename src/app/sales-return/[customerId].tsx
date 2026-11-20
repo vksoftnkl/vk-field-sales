@@ -1,62 +1,82 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router, useLocalSearchParams, usePreventRemove } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button } from '@/components/ui';
 import { ScreenHeader } from '@/components/screen-header';
+import { useDateNames } from '@/components/use-date-names';
+import { getMeta } from '@/db/meta';
+import { branchQuery } from '@/features/company/company';
 import { addressLine } from '@/features/customers/customer-list';
-import { itemName } from '@/features/orders/order-items';
-import { qtyText, toPaise } from '@/features/orders/order-math';
-import { customerName } from '@/features/orders/queries';
-import { returnCleared, returnLineRemoved, returnStarted } from '@/features/returns/return-draft';
-import { returnTotals, type ReturnLine } from '@/features/returns/return-math';
-import { returnCustomerQuery, saveReturn } from '@/features/returns/queries';
-import { saleCustomerQuery } from '@/features/sales/queries';
-import type { SaleLineAmounts } from '@/features/sales/sale-math';
-import { formatAmount } from '@/lib/money';
-import { store, useAppDispatch, useAppSelector } from '@/store';
-import { getDeviceUid } from '@/sync/sync-store';
+import { asOfText } from '@/features/orders/order-status';
+import { companyQuery, customerName } from '@/features/orders/queries';
+import { returnBillPicked, returnCleared, returnNoBillChosen, returnStarted } from '@/features/returns/return-draft';
+import { moneyPaise, pastWindow } from '@/features/returns/return-math';
+import { useReturnSetup } from '@/features/returns/return-parts';
+import { returnCustomerQuery, shopBillLineCountsQuery, shopReturnBillsQuery } from '@/features/returns/queries';
+import { returnStyles } from '@/features/returns/return-styles';
+import { formatDay } from '@/lib/date-range';
+import { daysBetween, formatAmount, todayISO } from '@/lib/money';
+import { useAppDispatch, useAppSelector } from '@/store';
 import { colors, font, radius, spacing } from '@/theme';
 
-/** Reason chips: damaged red, expired amber. */
-const REASON_COLORS = {
-  DAMAGED: { bg: '#FEE2E2', fg: '#991B1B' },
-  EXPIRED: { bg: '#FEF3C7', fg: '#92400E' },
-} as const;
-
 /**
- * Sales return (the Qt app's ReturnEntry.qml), opened by Return on Customer detail: the shop
- * (Change picks another), the products coming back with why, and Create credit note, which saves
- * the return on the phone as pending. The return is for the company picked on the phone, as bills are.
+ * Sales return, step 1–2 (canvas 6b, "Shop and bill"): the shop (Change only until a bill is
+ * picked, as the desktop locks the customer then), From a bill (default, as the desktop's
+ * "Against: Bill") or No bill, and the shop's posted bills from Sync with how many lines can still
+ * come back. Picking a bill opens Return items. Opened by Return on Customer detail, for the
+ * company and branch picked in Switch company.
  */
-export default function SalesReturnScreen() {
+export default function ReturnStartScreen() {
   const { customerId: openedFor, companyId } = useLocalSearchParams<{ customerId: string; companyId: string }>();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const names = useDateNames();
   const dispatch = useAppDispatch();
   const draft = useAppSelector((st) => st.returnDraft);
-  const userId = useAppSelector((st) => st.session.session?.userId ?? '');
+  const [query, setQuery] = useState('');
+  const [showReturned, setShowReturned] = useState(false);
+  const today = todayISO();
 
   useEffect(() => {
-    dispatch(returnStarted({ customerId: openedFor, companyId }));
+    dispatch(returnStarted({ customerId: openedFor, companyId, branchId: getMeta('branchId') }));
   }, [dispatch, openedFor, companyId]);
 
   const customerId = draft.customerId ?? openedFor;
-  const { data: found } = useLiveQuery(returnCustomerQuery(customerId), [customerId]);
-  const c = found[0];
+  const { data: shop } = useLiveQuery(returnCustomerQuery(customerId), [customerId]);
+  const { data: company } = useLiveQuery(companyQuery(companyId), [companyId]);
+  const { data: branch } = useLiveQuery(branchQuery(draft.branchId ?? ''), [draft.branchId]);
+  const { settings, ready } = useReturnSetup(companyId);
+  const { data: bills } = useLiveQuery(shopReturnBillsQuery(customerId, companyId), [customerId, companyId]);
+  const { data: counts } = useLiveQuery(shopBillLineCountsQuery(customerId, companyId), [customerId, companyId]);
+  const c = shop[0];
   const name = c ? customerName(c) : '';
-  const totals = returnTotals(draft.lines);
-  const [saving, setSaving] = useState(false);
-  const saved = useRef(false);
+  const windowDays = settings?.returnWindowDays ?? 0;
+  const freeAllowed = settings?.freeReturnAllowed !== false;
 
-  // Leaving with products entered asks first. Create credit note clears the return before it
-  // closes this screen, so it is not asked then.
-  usePreventRemove(draft.lines.length > 0, ({ repeat }) => {
-    Alert.alert(t('salesReturn.discardTitle'), t('salesReturn.discardText', { name }), [
+  const rows = useMemo(() => {
+    const byBill = new Map(counts.map((k) => [`${k.sbId}|${k.accYear}`, k]));
+    const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    return bills
+      .map((b) => {
+        const k = byBill.get(`${b.sbId}|${b.accYear}`);
+        return { ...b, lines: k?.lines ?? 0, open: k?.open ?? 0, itemNames: k?.itemNames ?? '' };
+      })
+      .filter((b) => {
+        if (!words.length) return true;
+        const hay = `${b.refno} ${b.billAmount} ${b.itemNames}`.toLocaleLowerCase();
+        return words.every((w) => hay.includes(w));
+      });
+  }, [bills, counts, query]);
+  const fullyReturned = rows.filter((b) => b.open === 0);
+  const shown = showReturned ? rows : rows.filter((b) => b.open > 0);
+
+  // Leaving with lines typed asks first (Save return clears the return before it closes).
+  usePreventRemove(draft.parts.length > 0 && !draft.editingId, ({ repeat }) => {
+    Alert.alert(t('sr.discardTitle'), t('sr.discardText', { name }), [
       { text: t('order.keep'), style: 'cancel' },
       {
         text: t('order.discard'),
@@ -69,211 +89,170 @@ export default function SalesReturnScreen() {
     ]);
   });
 
-  const create = () => {
-    const d = store.getState().returnDraft;
-    if (saved.current || !d.customerId || !d.companyId || d.lines.length === 0) return;
-    const shop = saleCustomerQuery(d.customerId).get();
-    if (!shop) return Alert.alert(t('common.error'));
-    setSaving(true);
-    try {
-      const { refNo } = saveReturn({ companyId: d.companyId, lines: d.lines }, shop, userId, getDeviceUid());
-      saved.current = true;
-      // Cleared first, and the screen closed a frame later, once it has drawn itself without
-      // products: then it lets itself be closed without asking to discard.
-      dispatch(returnCleared());
-      requestAnimationFrame(() => {
-        router.back();
-        Alert.alert(t('salesReturn.savedTitle'), t('salesReturn.savedText', { no: refNo, name: customerName(shop) }));
-      });
-    } catch {
-      setSaving(false);
-      Alert.alert(t('common.error'));
-    }
+  const pick = (b: (typeof rows)[number]) => {
+    if (b.open === 0) return Alert.alert(t('sr.start.fullyReturnedTitle'), t('sr.start.fullyReturnedText', { bill: b.refno }));
+    const change = draft.parts.length > 0 && !!draft.bill && (draft.bill.sbId !== b.sbId || draft.bill.accYear !== b.accYear);
+    const go = () => {
+      dispatch(returnBillPicked({ sbId: b.sbId, accYear: b.accYear, refno: b.refno, date: b.billDate }));
+      router.push('/sales-return/items');
+    };
+    if (!change) return go();
+    Alert.alert(t('sr.start.switchTitle'), t('sr.start.switchText', { from: draft.bill?.refno ?? '', to: b.refno }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('sr.start.switch', { to: b.refno }), onPress: go },
+    ]);
   };
-
-  const place = c ? [addressLine(c), c.beatName].filter(Boolean).join(' · ') : '';
-  const extras = [
-    totals.taxPaise > 0 ? t('salesReturn.taxNote', { amount: formatAmount(totals.taxPaise) }) : null,
-    totals.roundOffPaise !== 0 ? t('salesReturn.roundOff', { amount: formatAmount(totals.roundOffPaise) }) : null,
-  ].filter(Boolean);
+  const noBill = () => {
+    if (!freeAllowed) return Alert.alert(t('sr.start.noBillOffTitle'), t('sr.start.noBillOffText'));
+    dispatch(returnNoBillChosen());
+    router.push('/sales-return/no-bill');
+  };
+  const canChangeShop = !draft.bill && draft.parts.length === 0 && !draft.editingId;
+  const asOf = settings?.billsAsOf ? asOfText(settings.billsAsOf, names, t('so.today')) : null;
 
   return (
     <View style={st.root}>
-      <ScreenHeader title={t('salesReturn.title')} subtitle={t('salesReturn.subtitle')} backLabel={t('salesReturn.back')} />
-
-      <ScrollView contentContainerStyle={st.body}>
-        <View style={st.customer}>
-          <View style={st.customerText}>
-            <Text style={st.small}>{t('salesReturn.customer')}</Text>
-            <Text style={st.customerName}>{name}</Text>
-            {place ? <Text style={st.small}>{place}</Text> : null}
+      <ScreenHeader
+        title={t('sr.title')}
+        subtitle={[company[0]?.name, branch[0]?.name].filter(Boolean).join(' · ')}
+        backLabel={t('sr.back')}
+      />
+      <ScrollView contentContainerStyle={[st.body, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled">
+        {!ready ? (
+          <View style={st.warn}>
+            <Ionicons name="cloud-download-outline" size={18} color="#78350F" />
+            <Text style={st.warnText}>{t('sr.start.syncFirst')}</Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('salesReturn.changeCustomer')}
-            onPress={() => router.push('/sales-return/customer')}
-            style={({ pressed }) => [st.outlineBtn, pressed && { opacity: 0.8 }]}
-          >
-            <Text style={st.outlineText}>{t('salesReturn.change')}</Text>
+        ) : null}
+
+        <View style={st.card}>
+          <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+            <Text style={st.shopName} numberOfLines={1}>
+              {name}
+            </Text>
+            {c ? (
+              <Text style={st.small} numberOfLines={1}>
+                {[c.beatName, addressLine(c)].filter(Boolean).join(' · ')}
+              </Text>
+            ) : null}
+          </View>
+          {canChangeShop ? (
+            <Pressable accessibilityRole="button" onPress={() => router.push('/sales-return/customer')} style={st.linkBtn}>
+              <Text style={st.link}>{t('sr.start.change')}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {canChangeShop ? <Text style={st.hint}>{t('sr.start.changeHint')}</Text> : null}
+
+        <View style={st.segment} accessibilityRole="radiogroup">
+          <Pressable accessibilityRole="radio" accessibilityState={{ checked: !draft.noBill }} style={[st.segBtn, !draft.noBill && st.segOn]}>
+            <Text style={[st.segText, !draft.noBill && st.segTextOn]}>{t('sr.start.fromBill')}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="radio" accessibilityState={{ checked: draft.noBill }} onPress={noBill} style={[st.segBtn, draft.noBill && st.segOn]}>
+            <Text style={[st.segText, draft.noBill && st.segTextOn]}>{t('sr.start.noBill')}</Text>
           </Pressable>
         </View>
 
-        <View style={st.productsHead}>
-          <Text style={st.h2} accessibilityRole="header">
-            {t('salesReturn.products')}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/sales-return/products')}
-            style={({ pressed }) => [st.addBtn, pressed && { opacity: 0.85 }]}
-          >
-            <Ionicons name="add" size={18} color={colors.onPrimary} />
-            <Text style={st.addText}>{t('salesReturn.addProduct')}</Text>
-          </Pressable>
-        </View>
-
-        {draft.lines.length === 0 ? <Text style={st.empty}>{t('salesReturn.empty')}</Text> : null}
-        {draft.lines.map((l, i) => (
-          <ReturnRow
-            key={l.key}
-            line={l}
-            amounts={totals.lines[i]!}
-            language={i18n.language}
-            onOpen={() => router.push({ pathname: '/sales-return/item', params: { lineKey: l.key } })}
-            onRemove={() => dispatch(returnLineRemoved(l.key))}
+        <View style={st.search}>
+          <Ionicons name="search" size={18} color={colors.textMuted} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder={t('sr.start.search')}
+            placeholderTextColor={colors.textMuted}
+            accessibilityLabel={t('sr.start.search')}
+            style={st.searchInput}
           />
-        ))}
+        </View>
+        <Text style={st.hint}>{asOf ? t('sr.start.billsAsOf', { days: settings?.billDays ?? 90, when: asOf }) : t('sr.start.billsNone')}</Text>
+
+        {shown.map((b) => {
+          const on = draft.bill?.sbId === b.sbId && draft.bill?.accYear === b.accYear;
+          const days = daysBetween(b.billDate, today);
+          const late = pastWindow(b.billDate, today, windowDays);
+          const duePaise = moneyPaise(b.due);
+          const returnedPaise = moneyPaise(b.returnedAmt);
+          return (
+            <Pressable
+              key={`${b.sbId}|${b.accYear}`}
+              accessibilityRole="button"
+              onPress={() => pick(b)}
+              style={({ pressed }) => [st.bill, on && st.billOn, b.open === 0 && { opacity: 0.6 }, pressed && { backgroundColor: colors.bg }]}
+            >
+              <View style={st.between}>
+                <Text style={st.billNo}>{b.refno}</Text>
+                <Text style={st.billNo}>{formatAmount(moneyPaise(b.billAmount))}</Text>
+              </View>
+              <Text style={st.small}>
+                {[
+                  formatDay(b.billDate, names).replace(/ \d{4}$/, ''),
+                  t('sr.start.days', { count: days }),
+                  b.payMode ? b.payMode.toLocaleLowerCase() : null,
+                  duePaise > 0 ? t('sr.start.due', { amount: formatAmount(duePaise) }) : t('sr.start.paid'),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+              <View style={st.chips}>
+                {b.open > 0 ? (
+                  <Text style={[st.chip, st.chipOk]}>{t('sr.start.linesOpen', { open: b.open, lines: b.lines })}</Text>
+                ) : (
+                  <Text style={[st.chip, st.chipGrey]}>{t('sr.start.allBack')}</Text>
+                )}
+                {returnedPaise > 0 ? <Text style={[st.chip, st.chipWarn]}>{t('sr.start.returnedBefore', { amount: formatAmount(returnedPaise) })}</Text> : null}
+                {late ? <Text style={[st.chip, st.chipWarn]}>{t('sr.start.pastWindow', { days: windowDays })}</Text> : null}
+              </View>
+            </Pressable>
+          );
+        })}
+        {ready && shown.length === 0 ? <Text style={st.empty}>{query ? t('sr.start.noMatch') : t('sr.start.noBills')}</Text> : null}
+
+        {fullyReturned.length > 0 ? (
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: showReturned }}
+            onPress={() => setShowReturned((v) => !v)}
+            style={st.check}
+          >
+            <Ionicons name={showReturned ? 'checkbox' : 'square-outline'} size={22} color={colors.primary} />
+            <Text style={st.checkText}>{t('sr.start.showReturned', { n: fullyReturned.length })}</Text>
+          </Pressable>
+        ) : null}
+
+        {freeAllowed ? (
+          <Pressable accessibilityRole="button" onPress={noBill} style={({ pressed }) => [st.noBillCard, pressed && { backgroundColor: colors.bg }]}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={st.noBillTitle}>{t('sr.start.notOnBills')}</Text>
+              <Text style={st.small}>{t('sr.start.notOnBillsHint')}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
       </ScrollView>
-
-      <View style={[st.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
-        <View style={st.totalRow} accessible accessibilityLabel={`${t('salesReturn.total')}: ${formatAmount(totals.totalPaise)}`}>
-          <Text style={st.totalLabel}>{t('salesReturn.total')}</Text>
-          <Text style={st.totalValue}>{formatAmount(totals.totalPaise)}</Text>
-        </View>
-        {extras.length ? <Text style={st.extras}>{extras.join(' · ')}</Text> : null}
-        <Button title={t('salesReturn.create')} onPress={create} loading={saving} disabled={totals.items === 0 || !c} style={{ height: 52 }} />
-        <Text style={st.note}>{t('salesReturn.keptNote')}</Text>
-      </View>
     </View>
   );
 }
 
-function ReturnRow({
-  line,
-  amounts,
-  language,
-  onOpen,
-  onRemove,
-}: {
-  line: ReturnLine;
-  amounts: SaleLineAmounts;
-  language: string;
-  onOpen: () => void;
-  onRemove: () => void;
-}) {
-  const { t } = useTranslation();
-  const name = itemName({ itemNameEn: line.name, itemNameTa: line.nameTa }, language);
-  const mrp = toPaise(line.mrp);
-  const rate = t('order.rate', { unit: line.unitName, price: formatAmount(toPaise(line.price) ?? 0) }) + (mrp ? t('sale.lineMrp', { mrp: formatAmount(mrp) }) : '');
-  const batch = [
-    line.batchNo.trim() ? t('salesReturn.batch', { no: line.batchNo.trim().toUpperCase() }) : null,
-    line.expiryDate.trim() ? t('salesReturn.exp', { date: line.expiryDate.trim() }) : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  const chip = REASON_COLORS[line.reason];
-  return (
-    <View style={st.line}>
-      <Pressable accessibilityRole="button" accessibilityHint={t('salesReturn.itemTitle')} onPress={onOpen} style={st.lineMain}>
-        <Text style={st.lineName}>{name}</Text>
-        <Text style={st.lineRate}>{rate}</Text>
-        <View style={st.lineTags}>
-          <Text style={[st.reason, { backgroundColor: chip.bg, color: chip.fg }]}>{t(`salesReturn.reasons.${line.reason}`)}</Text>
-          {batch ? <Text style={st.lineRate}>{batch}</Text> : null}
-        </View>
-      </Pressable>
-      <View style={st.lineRight}>
-        <Text style={st.lineQty}>{t('salesReturn.qty', { qty: qtyText(amounts.qty) })}</Text>
-        <Text style={st.lineAmount}>{formatAmount(amounts.netPaise)}</Text>
-      </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={t('salesReturn.removeLine', { name })} onPress={onRemove} hitSlop={4} style={st.delete}>
-        <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
-      </Pressable>
-    </View>
-  );
-}
 
 const st = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
-  body: { padding: spacing.lg, gap: spacing.md },
-  customer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    paddingLeft: spacing.md + 2,
-  },
-  customerText: { flex: 1, gap: 3, minWidth: 0 },
-  small: { fontSize: 12, color: colors.textMuted },
-  customerName: { fontSize: 16, fontWeight: '600', color: colors.text },
-  outlineBtn: {
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    justifyContent: 'center',
-  },
-  outlineText: { fontSize: 14, fontWeight: '600', color: colors.primary },
-  productsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.xs },
-  h2: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  addBtn: {
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  addText: { fontSize: 14, fontWeight: '600', color: colors.onPrimary },
-  empty: { fontSize: font.md, color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.xl, paddingHorizontal: spacing.lg },
-  line: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md + 2,
-    paddingVertical: spacing.md,
-    paddingLeft: spacing.md + 2,
-    paddingRight: 6,
-  },
-  lineMain: { flex: 1, gap: 4, minWidth: 0 },
-  lineName: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  lineRate: { fontSize: 12, color: colors.textMuted },
-  lineTags: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  reason: { fontSize: 12, fontWeight: '600', paddingHorizontal: spacing.sm, paddingVertical: 1, borderRadius: radius.sm, overflow: 'hidden' },
-  lineRight: { alignItems: 'flex-end', gap: 2 },
-  lineQty: { fontSize: font.sm, color: colors.textMuted },
-  lineAmount: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  delete: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  footer: {
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    gap: 10,
-  },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  totalLabel: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  totalValue: { fontSize: font.xl, fontWeight: '700', color: colors.text },
-  extras: { fontSize: 12, color: colors.textMuted, marginTop: -6 },
-  note: { fontSize: 12, color: colors.textMuted, textAlign: 'center' },
+  ...returnStyles,
+  shopName: { fontSize: 16, fontWeight: '600', color: colors.text },
+  linkBtn: { minHeight: 44, paddingHorizontal: spacing.sm, justifyContent: 'center' },
+  link: { fontSize: font.sm, fontWeight: '600', color: colors.primary },
+  segment: { flexDirection: 'row', backgroundColor: colors.border, borderRadius: radius.md + 2, padding: 3, gap: 3 },
+  segBtn: { flex: 1, minHeight: 42, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  segOn: { backgroundColor: colors.surface },
+  segText: { fontSize: 14, color: colors.textLabel },
+  segTextOn: { fontWeight: '600', color: colors.primary },
+  search: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, height: 46, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: radius.md + 2, paddingHorizontal: spacing.md, backgroundColor: colors.surface },
+  searchInput: { flex: 1, fontSize: font.md, color: colors.text, paddingVertical: 0 },
+  bill: { gap: 5, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md + 2, paddingVertical: 10, paddingHorizontal: spacing.md + 2 },
+  billOn: { borderColor: colors.primary, borderWidth: 1.5 },
+  billNo: { fontSize: font.md, fontWeight: '600', color: colors.text },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  empty: { textAlign: 'center', fontSize: font.md, color: colors.textMuted, padding: spacing.xl },
+  check: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
+  checkText: { fontSize: 14, color: colors.textLabel },
+  noBillCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderWidth: 1, borderStyle: 'dashed', borderColor: '#A8A29E', borderRadius: radius.md + 2, padding: spacing.md + 2 },
+  noBillTitle: { fontSize: 14, fontWeight: '600', color: colors.text },
 });

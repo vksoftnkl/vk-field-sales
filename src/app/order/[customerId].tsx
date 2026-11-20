@@ -13,8 +13,8 @@ import { metaQuery } from '@/db/meta';
 import { currentContext } from '@/features/company/company';
 import { itemFilterKey } from '@/features/orders/item-filter-sql';
 import { ItemFilterSheet, type ItemFilter } from '@/features/orders/item-filter-sheet';
-import { contextChosen, lineSaved, orderCleared, orderRepeated, qtyTyped, type SoLine } from '@/features/orders/order-draft';
-import { groupUnits, itemName, pickableUnits, shownUnit, type ItemUnits } from '@/features/orders/order-items';
+import { contextChosen, lineKey, orderCleared, orderRepeated, qtyTyped, type SoLine } from '@/features/orders/order-draft';
+import { itemName, stockLeft } from '@/features/orders/order-items';
 import { decimalInput, num, qtyText, startingPrice, toPaise } from '@/features/orders/order-math';
 import { asOfText, isRecentOpen, soState } from '@/features/orders/order-status';
 import {
@@ -25,35 +25,45 @@ import {
   orderCustomerQuery,
   orderRef,
   shopOrderLinesQuery,
-  soItemCountQuery,
-  soItemsUpToQuery,
   soSeedLine,
-  soUnitsOfItemsQuery,
+  soUnitRowCountQuery,
+  soUnitRowsUpToQuery,
+  soUnitSizesQuery,
   type OrderCustomer,
   type SoUnitRow,
+  type SoUnitSize,
 } from '@/features/orders/queries';
 import { backOrderQty, soLineAmounts, soTotals } from '@/features/orders/so-math';
-import { UnitSheet, useUnitEquals, useUnitStock } from '@/features/orders/unit-sheet';
-import { soLineInUnit, unitStartPrice } from '@/features/orders/unit-switch';
+import { useUnitEquals, useUnitStock } from '@/features/orders/unit-text';
+import { useRefreshItems } from '@/features/orders/use-send-now';
 import { badgeText, rupees } from '@/features/schemes/offer-text';
 import { OfferSheet } from '@/features/schemes/offer-sheet';
-import { PromoCode, type PromoScheme } from '@/features/schemes/scheme-types';
-import { useItemBadges, type ItemBadgeView } from '@/features/schemes/use-item-badges';
+import { PromoCode } from '@/features/schemes/scheme-types';
 import { useOrderSchemes } from '@/features/schemes/use-order-schemes';
-import { useRefreshItems } from '@/features/orders/use-send-now';
 import { daysBetween, formatAmount, todayISO } from '@/lib/money';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { colors, font, offerColors, radius, spacing } from '@/theme';
 
 const GST = (perc: string | null) => String(Number(num(perc).toFixed(3)));
 
+/** An offer badge on a row, worded for the row's unit. */
+interface RowBadge {
+  schemeId: string;
+  text: string;
+  /** Applied now (green), else outlined. */
+  on: boolean;
+  icon: 'gift-outline' | 'checkmark' | 'pricetag-outline';
+}
+const NO_BADGES: RowBadge[] = [];
+const NO_UNITS: SoUnitSize[] = [];
+
 /**
- * Add items (canvas 3b, step 3; was Order entry): one row per item in its default unit, with the
- * rate, GST and MRP, the stock as of the last Sync and the shop's open orders. An item sold in more
- * than one unit has a unit button under its quantity ("Box ▾") that picks the unit the row's rate,
- * stock, offers and quantity are in. Type a quantity on the row, or tap it for the unit, price
- * level, rate and discount. Low stock warns (a back-order), never blocks; an item with no price
- * today can't be ordered. Review order opens the review.
+ * Add items (canvas 3b, step 3; was Order entry): one row per unit of each item since 2026-11-20
+ * ("Sugar 1kg – Pcs", "Sugar 1kg – Box"), each with its own rate, GST and MRP, its size in the
+ * item's base unit, its stock as of the last Sync (in that unit) and the offers for that unit. Type
+ * a quantity on a row to order that unit, or tap the row to open it on Order item; the same item
+ * may be on the order in two units. An item with no price today shows one greyed row and can't be
+ * ordered. Low stock warns (a back-order), never blocks. Review order opens the review.
  */
 export default function AddItemsScreen() {
   const { customerId, companyId } = useLocalSearchParams<{ customerId: string; companyId: string }>();
@@ -106,51 +116,71 @@ export default function AddItemsScreen() {
     ]);
   });
 
-  // 50 items at first and 50 more as the list is scrolled to its end, searched and filtered in
+  // 50 unit rows at first and 50 more as the list is scrolled to its end, searched and filtered in
   // the database; another search, filter or company starts again from the first 50.
   const listFilter = useMemo(() => ({ search, groupIds: filter.groupIds, brandIds: filter.brandIds }), [search, filter]);
   const listKey = `${companyId}|${itemFilterKey(listFilter)}`;
   const { limit, more } = useLoadMore(listKey);
-  const { data: counted, updatedAt } = useLiveQuery(soItemCountQuery(companyId, listFilter), [listKey]);
+  const { data: counted, updatedAt } = useLiveQuery(soUnitRowCountQuery(companyId, listFilter), [listKey]);
   const total = counted[0]?.n ?? 0;
-  const { data: loadedItems } = useLiveQuery(soItemsUpToQuery(companyId, listFilter, limit), [listKey, limit]);
-  const itemIds = loadedItems.map((r) => r.itemId);
-  const { data: rows } = useLiveQuery(soUnitsOfItemsQuery(companyId, itemIds), [companyId, itemIds.join(',')]);
-  const shown = useMemo(() => groupUnits(rows), [rows]);
+  const { data: rows } = useLiveQuery(soUnitRowsUpToQuery(companyId, listFilter, limit), [listKey, limit]);
+  // Every unit of the items loaded (priced or not), for "1 Box = 12 Pcs" against the base unit.
+  const itemIds = useMemo(() => [...new Set(rows.map((r) => r.itemId))], [rows]);
+  const idsKey = itemIds.join(',');
+  const { data: sizeRows } = useLiveQuery(soUnitSizesQuery(companyId, itemIds), [companyId, idsKey]);
+  const sizes = useMemo(() => {
+    const m = new Map<string, SoUnitSize[]>();
+    for (const r of sizeRows) {
+      const list = m.get(r.itemId);
+      if (list) list.push(r);
+      else m.set(r.itemId, [r]);
+    }
+    return m;
+  }, [sizeRows]);
   const searching = search.trim() !== '' || filter.groupIds.length + filter.brandIds.length > 0;
-  const byItem = useMemo(() => new Map(lines.map((l) => [l.itemId, l])), [lines]);
+  const byUnit = useMemo(() => new Map(lines.map((l) => [lineKey(l), l])), [lines]);
 
-  // "Already on sor00042: 4 Bag": the first open order of this shop holding the item.
+  // "Already on sor00042: 4 Bag": on the row of that unit, from the first open order of this shop holding it.
   const onOrder = useMemo(() => {
     const m = new Map<string, string>();
     for (const r of shopLines) {
-      if (r.soId === draft.editingSoId || m.has(r.itemId)) continue;
+      if (r.soId === draft.editingSoId || m.has(r.iucId)) continue;
       if (!isRecentOpen({ state: soState(r), soOrderDate: r.soOrderDate }, today)) continue;
-      m.set(r.itemId, t('so.alreadyOn', { ref: orderRef(r), qty: qtyText(num(r.qty)), unit: r.unitName ?? '' }).trim());
+      m.set(r.iucId, t('so.alreadyOn', { ref: orderRef(r), qty: qtyText(num(r.qty)), unit: r.unitName ?? '' }).trim());
     }
     return m;
   }, [shopLines, draft.editingSoId, today, t]);
 
-  // The unit picked on a row for an item not on the order yet (itemId → iucId); on the order, the
-  // line's unit is the row's. unitItem: the item whose Pick unit sheet is open.
-  const [picked, setPicked] = useState<Record<string, string>>({});
-  const [unitItem, setUnitItem] = useState<ItemUnits<SoUnitRow> | null>(null);
-
-  // The offers on the order (derived from the draft) and the badges of the rows loaded, each worked
-  // out in the unit its row shows.
+  // The offers on the order (derived from the draft) and each row's badges, for its own unit: an
+  // offer naming the item in another unit shows on that unit's row only.
   const { order, applyOffers } = useOrderSchemes({ extraItemIds: itemIds });
-  const rowUnits = useMemo(() => Object.fromEntries(shown.map((it) => [it.itemId, shownUnit(it, byItem.get(it.itemId)?.iucId, picked[it.itemId]).iucId])), [shown, byItem, picked]);
-  const badges = useItemBadges(order, companyId, itemIds, rowUnits);
+  const badges = useMemo(() => {
+    const out: Record<string, RowBadge[]> = {};
+    const byRow = order.unitBadges(rows);
+    for (const u of rows) {
+      const list = byRow[u.iucId] ?? [];
+      out[u.iucId] = list.length
+        ? list.flatMap((b) => {
+            const s = order.scheme(b.schemeId);
+            if (!s) return [];
+            // Green = applied now, outlined = not reached yet; a gift for free goods, else a tick or a tag.
+            const icon: RowBadge['icon'] = s.benefit === PromoCode.FreeItem ? 'gift-outline' : b.applied ? 'checkmark' : 'pricetag-outline';
+            return [{ schemeId: b.schemeId, text: badgeText(s, b, u.unitName, t), on: b.applied, icon }];
+          })
+        : NO_BADGES;
+    }
+    return out;
+  }, [order, rows, t]);
   const orderOffers = useMemo(() => (applyOffers ? order.orderOffers() : []), [order, applyOffers]);
-  const [sheet, setSheet] = useState<{ schemeId: string; itemId: string | null; unit: string } | null>(null);
+  const [sheet, setSheet] = useState<{ schemeId: string; itemId: string | null; iucId?: string; unit: string } | null>(null);
   const sheetScheme = sheet ? (order.scheme(sheet.schemeId) ?? null) : null;
-  const sheetOffer = sheet ? (sheet.itemId ? order.explain(sheet.itemId) : order.orderOffers()).find((o) => o.schemeId === sheet.schemeId) : undefined;
-  const onBadge = useCallback((schemeId: string, itemId: string, unit: string) => setSheet({ schemeId, itemId, unit }), []);
+  const sheetOffer = sheet ? (sheet.itemId ? order.explain(sheet.itemId, sheet.iucId) : order.orderOffers()).find((o) => o.schemeId === sheet.schemeId) : undefined;
+  const onBadge = useCallback((schemeId: string, u: SoUnitRow) => setSheet({ schemeId, itemId: u.itemId, iucId: u.iucId, unit: u.unitName }), []);
 
   const totals = soTotals(order.priced);
   const filtered = filter.groupIds.length + filter.brandIds.length > 0;
 
-  // A quantity typed on a row not on the order starts a line in the unit the row shows.
+  // A quantity typed on a row not on the order starts a line in that row's unit.
   const onQty = useCallback(
     (u: SoUnitRow, line: SoLine | undefined, qty: string) => {
       if (!c) return;
@@ -162,18 +192,6 @@ export default function AddItemsScreen() {
     [dispatch, c],
   );
   const onOpen = useCallback((u: SoUnitRow) => router.push({ pathname: '/order/item', params: { itemId: u.itemId, iucId: u.iucId } }), []);
-  const onPickUnit = useCallback((it: ItemUnits<SoUnitRow>) => setUnitItem(it), []);
-  // Another unit: a line on the order moves to it (that unit's rate, MRP, charges and factor; the
-  // quantity stays as typed), and the row keeps showing it.
-  const pickUnit = (it: ItemUnits<SoUnitRow>, u: SoUnitRow) => {
-    const line = byItem.get(it.itemId);
-    if (line && c && line.iucId !== u.iucId) {
-      const next = soLineInUnit(line, u, c);
-      if (next) dispatch(lineSaved(next));
-    }
-    setPicked((p) => ({ ...p, [it.itemId]: u.iucId }));
-  };
-  const unitLine = unitItem ? byItem.get(unitItem.itemId) : undefined;
 
   const subtitle = [c ? customerName(c) : '', company[0]?.name ?? ''].filter(Boolean).join(' · ');
   // "Prices, stock and offers as of …": the older of the two Syncs; amber after 3 days.
@@ -260,29 +278,30 @@ export default function AddItemsScreen() {
       })}
 
       <FlatList
-        data={shown}
-        keyExtractor={(it) => it.itemId}
+        data={rows}
+        keyExtractor={(u) => u.iucId}
         contentContainerStyle={st.list}
         keyboardShouldPersistTaps="handled"
         initialNumToRender={12}
+        maxToRenderPerBatch={12}
         windowSize={7}
-        onEndReached={() => more(loadedItems.length, total)}
+        onEndReached={() => more(rows.length, total)}
         onEndReachedThreshold={0.5}
-        ListFooterComponent={<LoadMoreFooter shown={loadedItems.length} total={total} />}
+        ListFooterComponent={<LoadMoreFooter shown={rows.length} total={total} />}
         ListEmptyComponent={updatedAt ? <Text style={st.empty}>{searching ? t('order.noMatch') : t('order.noItems')}</Text> : undefined}
         renderItem={({ item }) => (
-          <ItemRow
-            it={item}
-            line={byItem.get(item.itemId)}
+          <UnitRow
+            u={item}
+            units={sizes.get(item.itemId) ?? NO_UNITS}
+            line={byUnit.get(item.iucId)}
+            // The item's lines in other units ahead of this one draw on the same stock.
+            stockLeft={stockLeft(lines, item, Number(item.stockQty) || 0)}
             customer={c}
-            note={onOrder.get(item.itemId)}
-            pickedIucId={picked[item.itemId]}
+            note={onOrder.get(item.iucId)}
             language={i18n.language}
-            badges={badges[item.itemId]}
-            schemeOf={order.scheme}
+            badges={badges[item.iucId] ?? NO_BADGES}
             onQty={onQty}
             onOpen={onOpen}
-            onPickUnit={onPickUnit}
             onBadge={onBadge}
           />
         )}
@@ -310,66 +329,53 @@ export default function AddItemsScreen() {
         </Pressable>
       </View>
 
-      <UnitSheet
-        visible={unitItem !== null}
-        itemName={unitItem ? itemName(unitItem.rowUnit, i18n.language) : ''}
-        units={unitItem ? pickableUnits(unitItem) : []}
-        allUnits={unitItem?.units ?? []}
-        selectedIucId={unitItem ? shownUnit(unitItem, unitLine?.iucId, picked[unitItem.itemId]).iucId : undefined}
-        priceOf={(u) => (c ? (unitStartPrice(u, c, unitLine?.priceLevel)?.price ?? null) : null)}
-        onPick={(u) => unitItem && pickUnit(unitItem, u)}
-        onClose={() => setUnitItem(null)}
-      />
       <OfferSheet scheme={sheetScheme} offer={sheetOffer} unit={sheet?.unit ?? ''} syncedOn={offersAt ?? null} companyName={company[0]?.name} onClose={() => setSheet(null)} />
       <ItemFilterSheet visible={filterOpen} value={filter} groups={groups} brands={brands} onApply={setFilter} onClose={() => setFilterOpen(false)} />
     </View>
   );
 }
 
-const ItemRow = memo(function ItemRow({
-  it,
+/** One unit of an item: "Sugar 1kg – Box", its rate, size, offers and stock, and the quantity box. */
+const UnitRow = memo(function UnitRow({
+  u,
+  units,
   line,
+  stockLeft: left,
   customer,
   note,
-  pickedIucId,
   language,
   badges,
-  schemeOf,
   onQty,
   onOpen,
-  onPickUnit,
   onBadge,
 }: {
-  it: ItemUnits<SoUnitRow>;
+  u: SoUnitRow;
+  /** Every unit of the item, for its size against the base unit. */
+  units: readonly SoUnitSize[];
   line: SoLine | undefined;
+  /** The stock this unit may still draw after the item's lines in other units. */
+  stockLeft: number;
   customer: OrderCustomer | undefined;
   note: string | undefined;
-  pickedIucId: string | undefined;
   language: string;
-  badges: ItemBadgeView[] | undefined;
-  schemeOf: (id: string) => PromoScheme | undefined;
+  badges: RowBadge[];
   onQty: (u: SoUnitRow, line: SoLine | undefined, qty: string) => void;
   onOpen: (u: SoUnitRow) => void;
-  onPickUnit: (it: ItemUnits<SoUnitRow>) => void;
-  onBadge: (schemeId: string, itemId: string, unit: string) => void;
+  onBadge: (schemeId: string, u: SoUnitRow) => void;
 }) {
   const { t } = useTranslation();
   const unitEquals = useUnitEquals();
   const unitStock = useUnitStock();
-  // The line's unit when it is on the order (Order item or the unit button may have switched it),
-  // else the unit picked on the row, else the item's default unit.
-  const u = shownUnit(it, line?.iucId, pickedIucId);
-  const many = pickableUnits(it).length > 1;
-  const equals = unitEquals(u, it.units);
+  const equals = unitEquals(u, units);
   const name = itemName(u, language);
-  const off = !it.priced;
+  // Only an item with no priced unit has an unpriced row (greyed, "ask the office").
+  const off = !u.appPriced;
   const qty = num(line?.qty);
   const on = qty > 0;
   const start = customer && !off ? startingPrice(u, customer.cusPriceLevelId) : null;
   const price = toPaise(line?.price ?? start?.price) ?? 0;
   const mrp = toPaise(u.ipmMaxPrice);
-  const stock = Number(u.stockQty) || 0;
-  const back = backOrderQty(qty, stock);
+  const back = backOrderQty(qty, left);
   const discPaise = line ? soLineAmounts(line).discPaise : 0;
 
   let meta: string;
@@ -378,51 +384,43 @@ const ItemRow = memo(function ItemRow({
     meta = t('so.askOffice');
     warn = true;
   } else if (back > 0) {
-    meta = t('so.backOrder', { stock: qtyText(stock), qty: qtyText(back), unit: u.unitName });
+    meta = t('so.backOrder', { stock: qtyText(Math.max(0, left)), qty: qtyText(back), unit: u.unitName });
     warn = true;
-  } else if (stock <= 0) {
-    meta = t('so.stockZero', { stock: qtyText(stock) });
+  } else if (left <= 0) {
+    meta = t('so.stockZero', { stock: qtyText(Math.max(0, left)) });
     warn = true;
   } else {
-    meta = [unitStock(u, it.units), discPaise > 0 ? t('so.discApplied', { amount: formatAmount(discPaise) }) : null].filter(Boolean).join(' · ');
+    meta = [unitStock(u, units), discPaise > 0 ? t('so.discApplied', { amount: formatAmount(discPaise) }) : null].filter(Boolean).join(' · ');
   }
 
   return (
     <View style={[st.row, on && st.rowOn]}>
       <Pressable accessibilityRole="button" accessibilityHint={t('order.itemTitle')} disabled={off} onPress={() => onOpen(u)} style={st.rowMain}>
-        <Text style={st.rowName}>{name}</Text>
+        <Text style={st.rowName}>{t('so.itemUnit', { name, unit: u.unitName })}</Text>
         <View style={st.rateLine}>
           <Text style={st.rate}>{off ? t('so.noPriceToday') : t('so.rateLine', { price: formatAmount(price), unit: u.unitName, gst: GST(u.taxPerc) })}</Text>
           <View style={st.mrp}>
             <Text style={st.mrpText}>{mrp ? t('order.mrp', { price: formatAmount(mrp) }) : t('so.noMrp')}</Text>
           </View>
-          {equals && !off ? <Text style={st.conv}>{equals}</Text> : null}
+          {equals ? <Text style={st.conv}>{equals}</Text> : null}
         </View>
-        {badges && badges.length > 0 ? (
+        {badges.length > 0 ? (
           <View style={st.badges}>
-            {badges.map((b) => {
-              const s = schemeOf(b.schemeId);
-              if (!s) return null;
-              const text = badgeText(s, b, b.unitName || u.unitName, t);
-              // Green = applied now, outlined = not reached yet; a gift for free goods, else a tick or a tag.
-              const on = b.applied && !b.unitMismatch;
-              const icon = s.benefit === PromoCode.FreeItem ? 'gift-outline' : on ? 'checkmark' : 'pricetag-outline';
-              return (
-                <Pressable
-                  key={b.schemeId}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${text}. ${t('offers.badgeHint')}`}
-                  hitSlop={6}
-                  onPress={() => onBadge(b.schemeId, it.itemId, b.unitName || u.unitName)}
-                  style={({ pressed }) => [st.badge, on && st.badgeOn, pressed && { opacity: 0.7 }]}
-                >
-                  <Ionicons name={icon} size={13} color={on ? offerColors.okText : colors.primary} />
-                  <Text style={[st.badgeText, on && { color: offerColors.okText }]} numberOfLines={1}>
-                    {text}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            {badges.map((b) => (
+              <Pressable
+                key={b.schemeId}
+                accessibilityRole="button"
+                accessibilityLabel={`${b.text}. ${t('offers.badgeHint')}`}
+                hitSlop={6}
+                onPress={() => onBadge(b.schemeId, u)}
+                style={({ pressed }) => [st.badge, b.on && st.badgeOn, pressed && { opacity: 0.7 }]}
+              >
+                <Ionicons name={b.icon} size={13} color={b.on ? offerColors.okText : colors.primary} />
+                <Text style={[st.badgeText, b.on && { color: offerColors.okText }]} numberOfLines={1}>
+                  {b.text}
+                </Text>
+              </Pressable>
+            ))}
           </View>
         ) : null}
         <Text style={[st.meta, warn && { color: offerColors.warn }]}>{meta}</Text>
@@ -445,25 +443,9 @@ const ItemRow = memo(function ItemRow({
           maxLength={9}
           style={[st.qty, off && st.qtyOff]}
         />
-        {many && !off ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('so.unitChange', { name })}
-            accessibilityValue={{ text: u.unitName }}
-            hitSlop={{ top: 4, bottom: 8, left: 6, right: 6 }}
-            onPress={() => onPickUnit(it)}
-            style={({ pressed }) => [st.unitBtn, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={st.unitBtnText} numberOfLines={1}>
-              {u.unitName}
-            </Text>
-            <Ionicons name="chevron-down" size={12} color={colors.primary} />
-          </Pressable>
-        ) : (
-          <Text style={st.unit} numberOfLines={1}>
-            {u.unitName}
-          </Text>
-        )}
+        <Text style={st.unit} numberOfLines={1}>
+          {u.unitName}
+        </Text>
       </View>
     </View>
   );
@@ -588,20 +570,6 @@ const st = StyleSheet.create({
   },
   qtyOff: { backgroundColor: '#EEECE9' },
   unit: { fontSize: 11.5, fontWeight: '600', color: colors.textMuted },
-  unitBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    maxWidth: 64,
-    minHeight: 24,
-    paddingHorizontal: 6,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  unitBtnText: { flexShrink: 1, fontSize: 11.5, fontWeight: '600', color: colors.primary },
   conv: { fontSize: 11.5, color: colors.textMuted },
   footer: { paddingTop: spacing.sm, paddingHorizontal: spacing.lg, backgroundColor: colors.bg },
   proceed: {

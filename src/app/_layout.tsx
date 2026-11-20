@@ -72,8 +72,14 @@ function RootStack() {
         <Stack.Screen name="sales/bill" />
         <Stack.Screen name="sales-return/[customerId]" />
         <Stack.Screen name="sales-return/customer" />
-        <Stack.Screen name="sales-return/products" />
-        <Stack.Screen name="sales-return/item" />
+        <Stack.Screen name="sales-return/no-bill" />
+        <Stack.Screen name="sales-return/items" />
+        <Stack.Screen name="sales-return/line" />
+        <Stack.Screen name="sales-return/review" />
+        <Stack.Screen name="sales-return/adjust" />
+        <Stack.Screen name="sales-return/saved/[id]" />
+        <Stack.Screen name="returns/index" />
+        <Stack.Screen name="returns/[id]" />
         <Stack.Screen name="receipt/[customerId]" />
         <Stack.Screen name="receipt/bill" />
         <Stack.Screen name="receipt/payment" />

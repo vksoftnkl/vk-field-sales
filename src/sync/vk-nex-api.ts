@@ -501,6 +501,151 @@ export interface ReceiptStatusPage {
   asOf?: string | null;
 }
 
+/**
+ * GET /mobile/returns/options (canvas 6b): the reasons, the branch's godowns, the return rules and
+ * the login's rights on menu 13 (Sale Return). Every key but the lists may be missing.
+ */
+export interface ReturnOptions {
+  branchId?: string | null;
+  reasons: { reasonId: string; code?: string | null; name: string; defaultCondition?: string | null; refundCharges?: boolean | null; isClaim?: boolean | null; sortOrder?: number | null }[];
+  godowns: { godownId: string; name: string; isDefault?: boolean | null }[];
+  settings?: { returnWindowDays?: number | null; freeReturnAllowed?: boolean | null; settleDefault?: string | null; expiredLotDays?: number | null; billDays?: number | null } | null;
+  rights?: { create?: boolean | null; post?: boolean | null } | null;
+}
+
+/** One line of a posted bill, as a return sees it. Quantities in base units unless named; money as text. */
+export interface ReturnBillLine {
+  billItemId: string;
+  accYear: string;
+  lineNo: number;
+  itemId: string;
+  itemName?: string | null;
+  itemUnitId: string;
+  unitName?: string | null;
+  toBaseFactor: string | number;
+  billQty: string | number;
+  billQtyBase: string | number;
+  returnedQtyBase: string | number;
+  qtyLeftBase: string | number;
+  onOtherDraftsBase?: string | number | null;
+  ratePreTaxBase: string | number;
+  rate?: string | number | null;
+  taxPerc?: string | number | null;
+  cgstPerc?: string | number | null;
+  sgstPerc?: string | number | null;
+  igstPerc?: string | number | null;
+  lotId?: string | null;
+  batchNo?: string | null;
+  expiryDate?: string | null;
+  godownId?: string | null;
+  isFree?: boolean | null;
+  allowReturn?: boolean | null;
+}
+
+export interface ReturnBill {
+  sbId: string;
+  accYear: string;
+  refno: string;
+  date: string;
+  custId: string;
+  branchId?: string | null;
+  billAmount: string | number;
+  due?: string | number | null;
+  payMode?: string | null;
+  returnedAmt?: string | number | null;
+  returnStatus?: string | null;
+  lines: ReturnBillLine[];
+}
+
+/** GET /mobile/returns/bill-lines: one page of bills (newest first). */
+export interface ReturnBillsPage {
+  asOf?: string | null;
+  billDays?: number | null;
+  page?: number | null;
+  pageSize?: number | null;
+  total?: number | null;
+  hasMore?: boolean | null;
+  bills?: ReturnBill[] | null;
+}
+
+/** Why VK Nex held a return for the office, or sent it back. */
+export interface ReturnNote {
+  code?: string | null;
+  message?: string | null;
+  field?: string | null;
+  line?: number | null;
+  /** VK Nex's plain words for it (Error_Messages): what happened and what to do. */
+  user?: { title?: string | null; line?: string | null; todo?: string | null } | null;
+}
+
+/** One bill a return was set against. */
+export interface ReturnAdjusted {
+  billId: string;
+  billAccYear: string;
+  refno?: string | null;
+  amount: string | number;
+}
+
+/**
+ * POST /mobile/returns/create: VK Nex saved the return as a draft and tried to post it. POSTED,
+ * or HELD (a draft the office must clear), or SENT_BACK (refused: fix and send again). A resend of
+ * a posted one answers it again with duplicate: true.
+ */
+export interface CreatedReturn {
+  duplicate?: boolean | null;
+  srId: string;
+  srClientUuid?: string | null;
+  srReturnRefno?: string | null;
+  /** POSTED | HELD | SENT_BACK; srStatus is the row's own (DRAFT | POSTED | CANCELLED). */
+  status: string;
+  srStatus?: string | null;
+  srReturnAmt?: string | number | null;
+  /** The office's approval of a held return (the latest request not withdrawn). */
+  approval?: { status?: string | null; note?: string | null } | null;
+  totals?: { goods?: string | number | null; tax?: string | number | null; chargesNet?: string | number | null; roundOff?: string | number | null; creditNote?: string | number | null } | null;
+  settlement?: { mode?: string | null; credited?: string | number | null; settleStatus?: string | null; adjusted?: ReturnAdjusted[] | null } | null;
+  lines?: { sriLineNo: number; sriSplitNo?: number | null; sriId?: string | null; rateSource?: string | null; taxableAmt?: string | number | null; taxAmt?: string | number | null; netAmt?: string | number | null; bucket?: string | null }[] | null;
+  held?: ReturnNote | null;
+  refusal?: ReturnNote | null;
+  warnings?: ReturnNote[] | null;
+  replanned?: { billId: string; billAccYear: string; refno?: string | null; from?: string | number | null; to?: string | number | null; reason?: string | null }[] | null;
+}
+
+/** One of this phone's returns as VK Nex has it now (GET /mobile/returns/status). */
+export interface ReturnStatusRow {
+  srClientUuid: string;
+  srId?: string | null;
+  srReturnRefno?: string | null;
+  /** DRAFT | POSTED | CANCELLED | DELETED (a draft deleted in the office or from the phone). */
+  status: string;
+  approval?: { status?: string | null; note?: string | null } | null;
+  revisionNo?: number | null;
+  srReturnAmt?: string | number | null;
+  settleStatus?: string | null;
+  adjusted?: ReturnAdjusted[] | null;
+  cancelledOn?: string | null;
+  cancelReason?: string | null;
+  updatedOn?: string | null;
+}
+
+export interface ReturnStatusPage {
+  asOf?: string | null;
+  page?: number | null;
+  pageSize?: number | null;
+  total?: number | null;
+  hasMore?: boolean | null;
+  returns?: ReturnStatusRow[] | null;
+}
+
+/** Whether a paged answer has another page: its hasMore, else page × pageSize < total. */
+export function pageHasMore(p: { page?: number | null; pageSize?: number | null; total?: number | null; hasMore?: boolean | null }, got: number): boolean {
+  if (typeof p.hasMore === 'boolean') return p.hasMore;
+  if (got === 0) return false;
+  const page = p.page ?? 1;
+  const size = p.pageSize ?? got;
+  return typeof p.total === 'number' ? page * size < p.total : false;
+}
+
 /** The middle part of a JWT, read (not checked: VK Nex checks it on every request). */
 export function readTokenClaims(token: string): Record<string, unknown> {
   const part = token.split('.')[1];
@@ -764,6 +909,36 @@ export function createVkNexClient(opts: VkNexClientOptions) {
       return authed<Envelope<ReceiptStatusPage>>(
         'GET',
         `/mobile/receipts/status?companyId=${encodeURIComponent(companyId)}&page=${page}&pageSize=${pageSize}${from}${device}`,
+      ).then((r) => r.data);
+    },
+    /** A company's return reasons, godowns, rules and the login's menu-13 rights (canvas 6b). */
+    returnOptions: (companyId: string, branchId: string | null) => {
+      const device = deviceId && opts.deviceUid ? `&deviceUid=${encodeURIComponent(opts.deviceUid)}` : '';
+      const branch = branchId ? `&branchId=${encodeURIComponent(branchId)}` : '';
+      return authed<Envelope<ReturnOptions>>('GET', `/mobile/returns/options?companyId=${encodeURIComponent(companyId)}${branch}${device}`).then((r) => r.data);
+    },
+    /** One page of the posted bills a return can come back on, every customer, newest first. */
+    returnBillsPage: (companyId: string, branchId: string | null, page: number, pageSize = 200) => {
+      const device = opts.deviceUid ? `&deviceUid=${encodeURIComponent(opts.deviceUid)}` : '';
+      const branch = branchId ? `&branchId=${encodeURIComponent(branchId)}` : '';
+      return authed<Envelope<ReturnBillsPage>>(
+        'GET',
+        `/mobile/returns/bill-lines?companyId=${encodeURIComponent(companyId)}&page=${page}&pageSize=${pageSize}${branch}${device}`,
+      ).then((r) => r.data);
+    },
+    /** One return: saved as a draft and posted when VK Nex can. Safe to resend (srClientUuid). */
+    createReturn: (payload: Record<string, unknown>) =>
+      authed<Envelope<CreatedReturn>>('POST', '/mobile/returns/create', { ...payload, deviceUid: opts.deviceUid }).then((r) => r.data),
+    /** Deletes this phone's draft return in VK Nex (a sent-back one the salesman deletes). */
+    deleteReturn: (payload: { srClientUuid: string; srCompanyId: string }) =>
+      authed<Envelope<{ deleted?: boolean | null }>>('POST', '/mobile/returns/delete', { ...payload, deviceUid: opts.deviceUid }).then((r) => r.data),
+    /** This phone's returns changed in VK Nex since a time (posted, approved, cancelled in the office). */
+    returnStatus: (companyId: string, since: string | null, page: number, pageSize = 200) => {
+      const device = opts.deviceUid ? `&deviceUid=${encodeURIComponent(opts.deviceUid)}` : '';
+      const from = since ? `&since=${encodeURIComponent(since)}` : '';
+      return authed<Envelope<ReturnStatusPage>>(
+        'GET',
+        `/mobile/returns/status?companyId=${encodeURIComponent(companyId)}&page=${page}&pageSize=${pageSize}${from}${device}`,
       ).then((r) => r.data);
     },
     /** One check-in. Safe to resend, as orders. */

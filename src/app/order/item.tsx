@@ -10,13 +10,13 @@ import { ScreenHeader } from '@/components/screen-header';
 import { TextField } from '@/components/ui';
 import { useDateNames } from '@/components/use-date-names';
 import { metaQuery } from '@/db/meta';
-import { lineOffersSet, lineRemoved, lineSaved, type SoLine } from '@/features/orders/order-draft';
-import { itemName, unitInBase } from '@/features/orders/order-items';
+import { lineKey, lineOffersSet, lineRemoved, lineSaved, type SoLine } from '@/features/orders/order-draft';
+import { itemName, stockLeft, unitInBase } from '@/features/orders/order-items';
 import { decimalInput, num, priceForLevel, pricedLevels, qtyText, startingPrice, toPaise } from '@/features/orders/order-math';
 import { asOfText } from '@/features/orders/order-status';
 import { companyQuery, customerName, lastRates, orderCustomerQuery, priceLevelsQuery, soItemUnitsQuery, soSeedLine, type SoUnitRow } from '@/features/orders/queries';
 import { backOrderQty, DISC_MODES, soLineAmounts, soLineProblem, type DiscMode } from '@/features/orders/so-math';
-import { useUnitQty } from '@/features/orders/unit-sheet';
+import { useUnitQty } from '@/features/orders/unit-text';
 import { soLineInUnit } from '@/features/orders/unit-switch';
 import { isShownOffer } from '@/features/schemes/offer-text';
 import { OfferSection } from '@/features/schemes/offer-body';
@@ -31,14 +31,17 @@ const LETTERS = ['', 'A', 'B', 'C', 'D'];
 const pct = (perc: string | null) => String(Number(num(perc).toFixed(3)));
 
 /**
- * Order item (canvas 3b, step 4; offers mockup screen 2): the unit (the item's priced units, each with its size in the
- * base unit, "CASE (24 PKT)"; a new line starts in the unit its Add items row showed), price level A–D, quantity and
+ * Order item (canvas 3b, step 4; offers mockup screen 2): one unit line of an item (Add items lists every unit as its
+ * own row since 2026-11-20, and opens the line in the row's unit). The unit buttons (the item's priced units, each with
+ * its size in the base unit, "CASE (24 PKT)") move the line to another unit, never to one that already has its own line
+ * on the order. Then price level A–D, quantity and
  * rate, the item discount as %, ₹ per unit or ₹ for the line, and the line's taxable, GST split and
  * total. A rate below the minimum price or above the MRP is refused here, because VK Nex doesn't
  * check them on phone orders. Last rates come from this phone's bills and orders for the shop.
  * No cost price: VK Nex sends none to phones. Promotion is the customer's and item's flags.
  */
 export default function OrderItemScreen() {
+  // iucId: the unit line to open (Add items' row, Review's line); without it, the item's first line.
   const { itemId, iucId } = useLocalSearchParams<{ itemId: string; iucId?: string }>();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -54,7 +57,7 @@ export default function OrderItemScreen() {
   const [units] = useState(() => (draft.companyId ? soItemUnitsQuery(draft.companyId, itemId).all() : []));
   const [customer] = useState(() => (draft.customerId ? orderCustomerQuery(draft.customerId).get() : undefined));
   const [rates] = useState(() => (draft.customerId ? lastRates(draft.customerId, itemId, draft.editingSoId) : []));
-  const existing = draft.lines.find((l) => l.itemId === itemId);
+  const existing = draft.lines.find((l) => (iucId ? lineKey(l) === iucId : l.itemId === itemId));
   const priced = units.filter((u) => u.appPriced);
   const [form, setForm] = useState<SoLine | null>(() => {
     if (existing) return existing;
@@ -65,19 +68,24 @@ export default function OrderItemScreen() {
   });
   const [submitted, setSubmitted] = useState(false);
   const [showRates, setShowRates] = useState(false);
+  // The line's key as it opened (its unit then): Save replaces that line, even after a unit switch.
+  const [key] = useState(() => (existing ? lineKey(existing) : (form?.iucId ?? '')));
   // The line's own offers switch, kept with the form until Save line.
-  const [offersOnLine, setOffersOnLine] = useState(() => draft.offersOn[itemId] !== false);
+  const [offersOnLine, setOffersOnLine] = useState(() => draft.offersOn[key] !== false);
   const [sheetId, setSheetId] = useState<string | null>(null);
   const { data: schemesSynced } = useLiveQuery(metaQuery('schemesSyncedOn'));
 
   // The offers worked out as you type: the order's lines with this one as it is in the form.
   const evalLines = useMemo(() => {
     if (!form) return draft.lines;
-    return draft.lines.some((l) => l.itemId === itemId) ? draft.lines.map((l) => (l.itemId === itemId ? form : l)) : [...draft.lines, form];
-  }, [draft.lines, form, itemId]);
-  const evalOn = useMemo(() => ({ ...draft.offersOn, [itemId]: offersOnLine }), [draft.offersOn, itemId, offersOnLine]);
+    return draft.lines.some((l) => lineKey(l) === key) ? draft.lines.map((l) => (lineKey(l) === key ? form : l)) : [...draft.lines, form];
+  }, [draft.lines, form, key]);
+  const formKey = form ? lineKey(form) : key;
+  const evalOn = useMemo(() => ({ ...draft.offersOn, [formKey]: offersOnLine }), [draft.offersOn, formKey, offersOnLine]);
   const { order, applyOffers } = useOrderSchemes({ lines: evalLines, offersOn: evalOn, extraItemIds: [itemId] });
-  const lineIndex = evalLines.findIndex((l) => l.itemId === itemId);
+  const lineIndex = form ? evalLines.indexOf(form) : -1;
+  // The units the line may move to: its own, and those without a line of their own on the order.
+  const movable = priced.filter((u) => u.iucId === formKey || u.iucId === key || !draft.lines.some((l) => lineKey(l) === u.iucId));
 
   const unitQty = useUnitQty();
   const unit = form ? units.find((u) => u.iucId === form.iucId) : undefined;
@@ -93,7 +101,7 @@ export default function OrderItemScreen() {
   const set = (patch: Partial<SoLine>) => setForm({ ...form, ...patch });
   const a = soLineAmounts(order.priced[lineIndex] ?? form);
   const ls = order.lines[lineIndex];
-  const offers = order.explain(itemId).filter(isShownOffer);
+  const offers = order.explain(itemId, form.iucId).filter(isShownOffer);
   const sheetScheme = sheetId ? (order.scheme(sheetId) ?? null) : null;
   const problem = soLineProblem(form, { minPrice: form.minPrice, mrp: form.mrp });
   const levels = unit ? pricedLevels(unit) : [];
@@ -101,7 +109,8 @@ export default function OrderItemScreen() {
   const own = customer.cusPriceLevelId;
   const name = itemName({ itemNameEn: form.name, itemNameTa: form.nameTa }, i18n.language);
   const stock = Number(unit?.stockQty) || 0;
-  const back = backOrderQty(num(form.qty), stock);
+  // The item's lines in other units ahead of this one draw on the same stock.
+  const back = backOrderQty(num(form.qty), stockLeft(evalLines, form, stock));
   // Stock in the line's unit and in the base unit: "4 Box (48 Pcs)".
   const stockText = unit ? unitQty(stock, unit, units) : qtyText(stock);
   const rate = num(form.taxPerc);
@@ -112,12 +121,12 @@ export default function OrderItemScreen() {
   const save = () => {
     setSubmitted(true);
     if (problem) return;
-    dispatch(lineSaved(form));
-    dispatch(lineOffersSet({ itemId, on: offersOnLine }));
+    dispatch(lineSaved(form, key));
+    dispatch(lineOffersSet({ key: lineKey(form), on: offersOnLine }));
     router.back();
   };
   const remove = () => {
-    dispatch(lineRemoved(itemId));
+    dispatch(lineRemoved(key));
     router.back();
   };
   const pickUnit = (u: SoUnitRow) => {
@@ -137,11 +146,11 @@ export default function OrderItemScreen() {
       <ScreenHeader title={t('order.itemTitle')} subtitle={t('so.itemShop', { name, shop: customerName(customer) })} backLabel={t('so.backToItems')} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView contentContainerStyle={st.form} keyboardShouldPersistTaps="handled">
-          {priced.length > 1 ? (
+          {movable.length > 1 ? (
             <View style={{ gap: 6 }}>
               <Text style={st.label}>{t('so.unit')}</Text>
               <View style={st.segment} accessibilityRole="radiogroup" accessibilityLabel={t('so.unit')}>
-                {priced.map((u, i) => {
+                {movable.map((u, i) => {
                   const on = u.iucId === form.iucId;
                   // "CASE (24 PKT)": its size in the base unit (the base unit itself is just its name).
                   const conv = unitInBase(u, units);

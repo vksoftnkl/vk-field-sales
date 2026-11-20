@@ -67,14 +67,47 @@ test('qty on a row adds the line once, updates it, and an empty box takes it off
   assert.equal(s.lines.length, 0);
 });
 
-test('Save line replaces the item in another unit instead of adding a second line', () => {
+test('each unit of an item is its own line (Add items has a row per unit)', () => {
+  const box = seed('oil', { iucId: 'oil-box', unitName: 'Box', factor: '12' });
   let s = start();
   s = reducer(s, qtyTyped({ seed: seed('oil'), qty: '12' }));
-  s = reducer(s, lineSaved(seed('oil', { iucId: 'oil-box', unitName: 'Box', factor: '12', qty: '1' })));
+  s = reducer(s, qtyTyped({ seed: box, qty: '2' }));
   assert.deepEqual(
     s.lines.map((l) => [l.iucId, l.qty]),
-    [['oil-box', '1']],
+    [
+      ['oil-pc', '12'],
+      ['oil-box', '2'],
+    ],
   );
+  // Typing on the Box row changes only the Box line; emptying it takes only that line off.
+  s = reducer(s, qtyTyped({ seed: box, qty: '3' }));
+  s = reducer(s, qtyTyped({ seed: seed('oil'), qty: '' }));
+  assert.deepEqual(
+    s.lines.map((l) => [l.iucId, l.qty]),
+    [['oil-box', '3']],
+  );
+  // Save line on Order item updates the line of its own unit.
+  s = reducer(s, lineSaved({ ...s.lines[0]!, qty: '4' }));
+  assert.deepEqual(
+    s.lines.map((l) => [l.iucId, l.qty]),
+    [['oil-box', '4']],
+  );
+});
+
+test('Save line after a unit switch on Order item replaces the line it opened, in place, with its switch', () => {
+  let s = start();
+  s = reducer(s, qtyTyped({ seed: seed('oil', { promo: true }), qty: '12' }));
+  s = reducer(s, qtyTyped({ seed: seed('tea'), qty: '1' }));
+  s = reducer(s, lineOffersSet({ key: 'oil-pc', on: false }));
+  s = reducer(s, lineSaved(seed('oil', { iucId: 'oil-box', unitName: 'Box', factor: '12', qty: '1', promo: true }), 'oil-pc'));
+  assert.deepEqual(
+    s.lines.map((l) => [l.iucId, l.qty]),
+    [
+      ['oil-box', '1'],
+      ['tea-pc', '1'],
+    ],
+  );
+  assert.deepEqual(s.offersOn, { 'oil-box': false }, 'the switch moves with the line');
 });
 
 test('a visit takes Switch company’s company and branch, and keeps them', () => {
@@ -113,9 +146,9 @@ test("a new draft has every offer on and Apply offers untouched (the shop's own 
 
 test('the line switch keeps only an explicit off; on again takes the key away', () => {
   let s = reducer(start(), qtyTyped({ seed: seed('oil', { promo: true }), qty: '2' }));
-  s = reducer(s, lineOffersSet({ itemId: 'oil', on: false }));
-  assert.deepEqual(s.offersOn, { oil: false });
-  s = reducer(s, lineOffersSet({ itemId: 'oil', on: true }));
+  s = reducer(s, lineOffersSet({ key: 'oil-pc', on: false }));
+  assert.deepEqual(s.offersOn, { 'oil-pc': false });
+  s = reducer(s, lineOffersSet({ key: 'oil-pc', on: true }));
   assert.deepEqual(s.offersOn, {});
 });
 
@@ -129,23 +162,23 @@ test('Apply offers is set on or off', () => {
 test('taking a line off (typing nothing, or Remove) forgets its switch', () => {
   let s = reducer(start(), qtyTyped({ seed: seed('oil'), qty: '2' }));
   s = reducer(s, qtyTyped({ seed: seed('tea'), qty: '1' }));
-  s = reducer(s, lineOffersSet({ itemId: 'oil', on: false }));
-  s = reducer(s, lineOffersSet({ itemId: 'tea', on: false }));
+  s = reducer(s, lineOffersSet({ key: 'oil-pc', on: false }));
+  s = reducer(s, lineOffersSet({ key: 'tea-pc', on: false }));
   s = reducer(s, qtyTyped({ seed: seed('oil'), qty: '' }));
-  assert.deepEqual(s.offersOn, { tea: false });
-  s = reducer(s, lineRemoved('tea'));
+  assert.deepEqual(s.offersOn, { 'tea-pc': false });
+  s = reducer(s, lineRemoved('tea-pc'));
   assert.deepEqual(s.offersOn, {});
 });
 
 test('a new visit, a repeat, another company and a clear reset the switches', () => {
   let s = reducer(start(), applyOffersSet(false));
-  s = reducer(s, lineOffersSet({ itemId: 'oil', on: false }));
+  s = reducer(s, lineOffersSet({ key: 'oil-pc', on: false }));
   assert.deepEqual(reducer(s, visitStarted({ customerId: 'cus-2', companyId: 'co-1', branchId: 'br-1', at: '2026-11-18T11:00:00.000Z' })).offersOn, {});
   assert.equal(reducer(s, visitStarted({ customerId: 'cus-2', companyId: 'co-1', branchId: 'br-1', at: '2026-11-18T11:00:00.000Z' })).applyOffers, null);
   const rep = reducer(s, orderRepeated({ customerId: 'cus-1', companyId: 'co-1', branchId: 'br-1', lines: [] }));
   assert.deepEqual([rep.offersOn, rep.applyOffers], [{}, null]);
   assert.deepEqual(reducer(s, contextChosen({ companyId: 'co-2', branchId: null })).offersOn, {});
-  assert.deepEqual(reducer(s, contextChosen({ companyId: 'co-1', branchId: 'br-9' })).offersOn, { oil: false }, 'the same company keeps them');
+  assert.deepEqual(reducer(s, contextChosen({ companyId: 'co-1', branchId: 'br-9' })).offersOn, { 'oil-pc': false }, 'the same company keeps them');
   const cleared = reducer(s, orderCleared());
   assert.deepEqual([cleared.offersOn, cleared.applyOffers], [{}, null]);
 });
@@ -163,10 +196,10 @@ test('a loaded order brings its switches back', () => {
       priority: 'NORMAL',
       remarks: '',
       checkIn: null,
-      offersOn: { oil: false },
+      offersOn: { 'oil-pc': false },
       applyOffers: false,
     }),
   );
   assert.equal(s.entry, 'edit');
-  assert.deepEqual([s.offersOn, s.applyOffers], [{ oil: false }, false]);
+  assert.deepEqual([s.offersOn, s.applyOffers], [{ 'oil-pc': false }, false]);
 });

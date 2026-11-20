@@ -103,6 +103,12 @@ export default function SyncScreen() {
         return total ? t('sync.stepOrders', { n, total }) : t('sync.stepOrdersNone');
       case 'visits':
         return total ? t('sync.stepVisits', { n, total }) : t('sync.stepVisitsNone');
+      case 'returns':
+        return total ? t('sr.sync.stepReturns', { n, total }) : t('sr.sync.stepReturnsNone');
+      case 'returnData':
+        return total ? t('sr.sync.stepReturnData', { n, total }) : t('sr.sync.stepReturnDataNone');
+      case 'returnStatus':
+        return t('sr.sync.stepReturnStatus');
       case 'receipts':
         return total ? t('sync.stepReceipts', { n, total }) : t('sync.stepReceiptsNone');
       case 'receiptData':
@@ -189,6 +195,19 @@ export default function SyncScreen() {
   const visitsSent = visits.filter((v) => v.status === 'uploaded' || v.status === 'alreadySaved').length;
   const rcts = report?.receipts ?? [];
   const rctsSent = rcts.filter((r) => r.status === 'uploaded' || r.status === 'alreadySaved').length;
+  const rets = report?.returns ?? [];
+  const retsPosted = rets.filter((r) => r.status === 'posted').length;
+  const retsHeld = rets.filter((r) => r.status === 'held').length;
+  const retsBack = rets.filter((r) => r.status === 'sentBack' || r.status === 'refused').length;
+  const returnDataGot = report?.returnData;
+  const returnDataStop = report?.returnDataStoppedBy
+    ? isNetworkError(report.returnDataStoppedBy)
+      ? noAnswer(address)
+      : t('sr.sync.dataFailed', { message: errorText(report.returnDataStoppedBy) })
+    : null;
+  const returnsChanged = report?.returnStatus?.changed ?? 0;
+  const returnStatusStop =
+    report?.returnStatusStoppedBy && !isNetworkError(report.returnStatusStoppedBy) ? t('sr.sync.statusFailed', { message: errorText(report.returnStatusStoppedBy) }) : null;
   const receiptData = report?.receiptData;
   const receiptDataStop = report?.receiptDataStoppedBy
     ? isNetworkError(report.receiptDataStoppedBy)
@@ -238,6 +257,12 @@ export default function SyncScreen() {
       orders.length > 0 ||
       visits.length > 0 ||
       rcts.length > 0 ||
+      rets.length > 0 ||
+      !!report.returnsRouteMissing ||
+      !!returnDataGot ||
+      !!returnDataStop ||
+      returnsChanged > 0 ||
+      !!returnStatusStop ||
       !!got ||
       !!stop ||
       !!ledger ||
@@ -361,9 +386,14 @@ export default function SyncScreen() {
 
           {returns.length > 0 ? (
             <Card title={t('sync.returnsTitle', { n: returns.length })}>
-              <Text style={st.note}>{t('sync.returnsNote')}</Text>
+              <Text style={st.note}>{t('sr.sync.waitingNote')}</Text>
               {returns.map((r) => (
-                <WaitingRow key={`sr-${r.id}`} name={r.customerName} tag={`${r.refNo} · ${formatAmount(toPaise(r.amount) ?? 0)}`} error={null} />
+                <WaitingRow
+                  key={`sr-${r.id}`}
+                  name={r.customerName}
+                  tag={`${r.refNo} · ${formatAmount(toPaise(r.amount) ?? 0)}`}
+                  error={r.status === 'SENT_BACK' ? t('sr.sync.sentBackTag') : null}
+                />
               ))}
             </Card>
           ) : null}
@@ -445,6 +475,29 @@ export default function SyncScreen() {
                   />
                 );
               })}
+              {rets.length > 0 ? (
+                <Text style={[st.note, { marginTop: spacing.md }]}>{t('sr.sync.summary', { posted: retsPosted, held: retsHeld, back: retsBack })}</Text>
+              ) : null}
+              {rets.map((r) => {
+                const ok = r.status === 'posted' || r.status === 'held';
+                return (
+                  <ResultRow
+                    key={`sr-${r.localId}`}
+                    ok={ok}
+                    name={`${t('sr.sync.tag', { no: r.phoneRefno })} · ${r.customerName}`}
+                    text={
+                      r.status === 'posted'
+                        ? t('sr.sync.posted', { refno: r.returnRefno ?? '' })
+                        : r.status === 'held'
+                          ? t('sr.sync.held', { refno: r.returnRefno ?? '', why: r.error ?? '' })
+                          : r.status === 'waiting'
+                            ? t('sr.sync.waitsForShop')
+                            : (r.error ?? '')
+                    }
+                  />
+                );
+              })}
+              {report.returnsRouteMissing ? <StatusLine ok={false} text={t('sr.sync.notOnServer')} /> : null}
               {rcts.length > 0 ? (
                 <Text style={[st.note, { marginTop: spacing.md }]}>{t('sync.receiptsSummary', { sent: rctsSent, refused: rcts.length - rctsSent })}</Text>
               ) : null}
@@ -512,6 +565,24 @@ export default function SyncScreen() {
                 </View>
               ) : null}
               {receiptDataStop ? <StatusLine ok={false} text={receiptDataStop} /> : null}
+              {returnDataGot ? (
+                <View style={st.item}>
+                  <Ionicons name="return-up-back-outline" size={20} color={colors.success} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemOk}>{t('sr.sync.dataDone', { bills: returnDataGot.bills, companies: returnDataGot.companies })}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {returnDataStop ? <StatusLine ok={false} text={returnDataStop} /> : null}
+              {returnsChanged > 0 ? (
+                <View style={st.item}>
+                  <Ionicons name="swap-horizontal-outline" size={20} color={colors.success} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemOk}>{t('sr.sync.statusChanged', { count: returnsChanged })}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {returnStatusStop ? <StatusLine ok={false} text={returnStatusStop} /> : null}
               {banksGot ? (
                 <View style={st.item}>
                   <Ionicons name="business-outline" size={20} color={colors.success} />

@@ -22,7 +22,7 @@ import { num, paiseText, qtyText } from '../orders/order-math.ts';
 import { soLineAmounts, type SoSchemeOutcome } from '../orders/so-math.ts';
 import { taxRate } from '../sales/sale-math.ts';
 import { compileSchemes, evaluate } from './scheme-engine.ts';
-import { branchQualifies, customerQualifies, isSet, itemReach, liveFail, measuresMoney } from './scheme-rules.ts';
+import { branchQualifies, customerQualifies, isSet, itemReach, itemRowFor, liveFail, measuresMoney } from './scheme-rules.ts';
 import { PromoCode, type LiveFail, type PromoDocContext, type PromoLine, type PromoScheme, type SchemeInput, type SchemeTrace, type SkipWhy } from './scheme-types.ts';
 
 /** What the phone knows about an item that scheme scopes read (item_master). */
@@ -55,7 +55,7 @@ export interface SchemeOrderInput {
   lines: readonly SoLine[];
   /** The company's scheme rows (the loader's output); compiled once per array. */
   schemes: readonly SchemeInput[];
-  /** The per-line "Offers on this line" switch, by itemId (one line per item). A missing key = on. */
+  /** The per-line "Offers on this line" switch, by the line's iucId (one line per unit). A missing key = on. */
   offersOn?: Readonly<Record<string, boolean>>;
   /** The order's Apply offers switch. */
   applyOffers: boolean;
@@ -200,8 +200,17 @@ export interface SchemeOrder {
   priced: SoLine[];
   /** Which LIST offers reach each item, and whether each gives something now. */
   badgesFor(itemIds: readonly string[]): Record<string, ItemBadge[]>;
-  /** The offers naming an item: applied, or why not, with the next band. */
-  explain(itemId: string): ItemOffer[];
+  /**
+   * The badges of Add items' unit rows, by iucId: the LIST offers that reach the item in that unit
+   * (an offer naming the item in another unit is left out: it shows on that unit's row), applied
+   * only when they counted that unit's own line.
+   */
+  unitBadges(units: readonly { itemId: string; iucId: string }[]): Record<string, ItemBadge[]>;
+  /**
+   * The offers naming an item: applied, or why not, with the next band. With `iucId`, as seen from
+   * the item's line in that unit (an order may hold the item in two units); else its first line.
+   */
+  explain(itemId: string, iucId?: string): ItemOffer[];
   /** The whole-order offers (item scope ALL) and their gap. */
   orderOffers(): OrderOffer[];
   /** The compiled scheme (for the details sheet). */
@@ -240,8 +249,8 @@ const NO_OUTCOME = (): LineScheme => ({
  * Whether offers may apply to a line: the shop and the item allow them (`promo`, and the item's own
  * flag when known) and the line's own switch is not off. The save writes this as soi_is_promo.
  */
-export function lineTakesOffers(l: Pick<SoLine, 'itemId' | 'promo'>, attrs: ItemAttrs | undefined, offersOn: Readonly<Record<string, boolean>> | undefined): boolean {
-  return l.promo && (attrs?.allowPromo ?? true) && (offersOn?.[l.itemId] ?? true);
+export function lineTakesOffers(l: Pick<SoLine, 'iucId' | 'promo'>, attrs: ItemAttrs | undefined, offersOn: Readonly<Record<string, boolean>> | undefined): boolean {
+  return l.promo && (attrs?.allowPromo ?? true) && (offersOn?.[l.iucId] ?? true);
 }
 
 /** The engine's view of one order line (SalesPromotionBinder::readLines), worked from the phone's own line money. */
@@ -376,7 +385,9 @@ export function evaluateOrder(input: SchemeOrderInput): SchemeOrder {
 
   // --- reading the result -----------------------------------------------------------------
   const gates = new Map<string, LiveFail | 'branch' | 'customer' | null>(schemes.map((s) => [s.id, gateFail(s, ctx)]));
-  const engIndexOfItem = (itemId: string): number => eng.findIndex((l) => l.itemId === itemId);
+  /** The engine line of an item: the one in unit `iucId` when given, else the item's first. */
+  const engIndexOf = (itemId: string, iucId?: string): number =>
+    eng.findIndex((l) => l.itemId === itemId && (iucId === undefined || input.lines[l.row]!.iucId === iucId));
 
   const bandsOf = (s: PromoScheme, t: SchemeTrace | undefined): BandView[] =>
     [...s.slabs]
@@ -418,13 +429,6 @@ export function evaluateOrder(input: SchemeOrderInput): SchemeOrder {
     };
   };
 
-  /** Whether this scheme gave something and counted this item's line. */
-  const appliedOnItem = (s: PromoScheme, itemId: string): boolean => {
-    const t = traceOf.get(s.id);
-    const e = engIndexOfItem(itemId);
-    return !!t && t.status === 'applied' && e >= 0 && t.counted.includes(e);
-  };
-
   const keysOf = (itemId: string) => {
     const a = input.itemAttrs[itemId];
     return {
@@ -434,6 +438,48 @@ export function evaluateOrder(input: SchemeOrderInput): SchemeOrder {
       brandId: a?.brandId ?? '',
       sectionId: a?.sectionId ?? '',
     };
+  };
+
+  /** Whether this scheme gave something and counted this item's line (in unit `iucId` when given). */
+  const appliedOnItem = (s: PromoScheme, itemId: string, iucId?: string): boolean => {
+    const t = traceOf.get(s.id);
+    const e = engIndexOf(itemId, iucId);
+    return !!t && t.status === 'applied' && e >= 0 && t.counted.includes(e);
+  };
+
+  /** An ITEM row of the offer names the item in another unit than this one (the engine skips such a line). */
+  const otherUnit = (s: PromoScheme, keys: ReturnType<typeof keysOf>, iucId: string): boolean => {
+    const probe: PromoLine = {
+      row: 0,
+      ...keys,
+      unitId: input.unitIds[iucId] ?? iucId,
+      netQty: Number.MAX_SAFE_INTEGER,
+      rate: 0,
+      gross: 0,
+      netGross: 0,
+      taxable: 0,
+      schemeFlag: true,
+      isFree: false,
+      hasManualDisc: false,
+    };
+    return itemRowFor(s, probe).why === 'unit';
+  };
+
+  /** The LIST offers that suit this shop, branch and day and name the item, as badges. */
+  const badgesOf = (itemId: string, iucId?: string): ItemBadge[] => {
+    const badges: ItemBadge[] = [];
+    const keys = keysOf(itemId);
+    for (const s of schemes) {
+      if (s.itemScope !== PromoCode.ScopeList) continue; // whole-order offers show in the banner
+      if (gates.get(s.id) !== null) continue; // only offers that suit this shop, branch and day
+      const reach = itemReach(s, keys);
+      if (!reach.row) continue;
+      if (iucId !== undefined && otherUnit(s, keys, iucId)) continue;
+      const applied = appliedOnItem(s, itemId, iucId);
+      const t = applied ? traceOf.get(s.id) : undefined;
+      badges.push({ schemeId: s.id, code: s.code, name: s.name, benefit: s.benefit, applyOn: s.applyOn, applied, bands: bandsOf(s, t), payouts: t?.payouts ?? 0 });
+    }
+    return badges;
   };
 
   return {
@@ -449,27 +495,20 @@ export function evaluateOrder(input: SchemeOrderInput): SchemeOrder {
 
     badgesFor(itemIds) {
       const out: Record<string, ItemBadge[]> = {};
-      for (const itemId of itemIds) {
-        const badges: ItemBadge[] = [];
-        const keys = keysOf(itemId);
-        for (const s of schemes) {
-          if (s.itemScope !== PromoCode.ScopeList) continue; // whole-order offers show in the banner
-          if (gates.get(s.id) !== null) continue; // only offers that suit this shop, branch and day
-          const reach = itemReach(s, keys);
-          if (!reach.row) continue;
-          const applied = appliedOnItem(s, itemId);
-          const t = applied ? traceOf.get(s.id) : undefined;
-          badges.push({ schemeId: s.id, code: s.code, name: s.name, benefit: s.benefit, applyOn: s.applyOn, applied, bands: bandsOf(s, t), payouts: t?.payouts ?? 0 });
-        }
-        out[itemId] = badges;
-      }
+      for (const itemId of itemIds) out[itemId] = badgesOf(itemId);
       return out;
     },
 
-    explain(itemId) {
+    unitBadges(units) {
+      const out: Record<string, ItemBadge[]> = {};
+      for (const u of units) out[u.iucId] = badgesOf(u.itemId, u.iucId);
+      return out;
+    },
+
+    explain(itemId, iucId) {
       const offers: ItemOffer[] = [];
       const keys = keysOf(itemId);
-      const e = engIndexOfItem(itemId);
+      const e = engIndexOf(itemId, iucId);
       for (const s of schemes) {
         if (s.itemScope !== PromoCode.ScopeList) continue;
         const reach = itemReach(s, keys);

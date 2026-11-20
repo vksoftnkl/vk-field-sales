@@ -149,6 +149,8 @@ export default function CustomerDetailScreen() {
     },
     // This shop's receipts on this phone: waiting, sent back, posted (canvas 5b, step 8).
     { key: 'receipts', label: t('customerDetail.receiptList'), icon: 'list-outline', onPress: () => router.push({ pathname: '/receipts', params: { customerId: id } }) },
+    // This shop's returns on this phone: waiting, with the office, sent back, posted (canvas 6b, step 8).
+    { key: 'returns', label: t('customerDetail.returnList'), icon: 'file-tray-stacked-outline', onPress: () => router.push({ pathname: '/returns', params: { customerId: id } }) },
   ];
 
   return (

@@ -31,9 +31,10 @@ export interface CheckIn {
 }
 
 /**
- * One item on the order (canvas 3b): one line per item, in the unit picked on Order item (the
- * same item added again adds to its line). Carries what the screens and the save need, so Review
- * needs no look-up.
+ * One unit of an item on the order (canvas 3b). Since 2026-11-20 Add items lists every unit of an
+ * item as its own row, so an order may hold the same item twice ("Sugar 1kg – Box" and "Sugar 1kg –
+ * Pcs"): a line is known by its unit, `iucId` (lineKey). Carries what the screens and the save
+ * need, so Review needs no look-up.
  */
 export interface SoLine extends SoLineInput {
   itemId: string;
@@ -53,6 +54,9 @@ export interface SoLine extends SoLineInput {
   /** The customer's promotion flag AND the item's: offers may apply to this line (the line's own switch is the draft's offersOn). */
   promo: boolean;
 }
+
+/** What tells one order line from another: its unit (item_unit_conversion.iuc_id belongs to one item). */
+export const lineKey = (l: Pick<SoLine, 'iucId'>): string => l.iucId;
 
 /**
  * How the order was started, which decides the screen that asks before throwing it away:
@@ -83,8 +87,8 @@ export interface OrderDraftState {
   remarks: string;
   checkIn: CheckIn | null;
   /**
-   * The per-line "Offers on this line" switch, by itemId. Only an explicit off is kept (false); a
-   * missing key = on. It can only turn offers off: a line the shop or the item doesn't take offers
+   * The per-line "Offers on this line" switch, by lineKey (the line's iucId). Only an explicit off
+   * is kept (false); a missing key = on. It can only turn offers off: a line the shop or the item doesn't take offers
    * on never gets them.
    */
   offersOn: Record<string, boolean>;
@@ -150,31 +154,49 @@ const orderDraftSlice = createSlice({
     orderLoaded(_state, action: PayloadAction<Omit<OrderDraftState, 'entry'>>) {
       return { ...action.payload, entry: 'edit' };
     },
-    /** Qty typed on an Add items row: adds the line (from `seed`) the first time; '' takes it off. */
+    /** Qty typed on an Add items row (one unit): adds the line (from `seed`) the first time; '' takes it off. */
     qtyTyped(state, action: PayloadAction<{ seed: SoLine; qty: string }>) {
       const { seed, qty } = action.payload;
-      const i = state.lines.findIndex((l) => l.itemId === seed.itemId);
+      const key = lineKey(seed);
+      const i = state.lines.findIndex((l) => lineKey(l) === key);
       if (i >= 0) {
         if (qty === '') {
           state.lines.splice(i, 1);
-          delete state.offersOn[seed.itemId];
+          delete state.offersOn[key];
         } else state.lines[i]!.qty = qty;
       } else if (qty !== '') state.lines.push({ ...seed, qty });
     },
-    /** Save line on Order item. */
-    lineSaved(state, action: PayloadAction<SoLine>) {
-      const i = state.lines.findIndex((l) => l.itemId === action.payload.itemId);
-      if (i >= 0) state.lines[i] = action.payload;
-      else state.lines.push(action.payload);
+    /**
+     * Save line on Order item. `was` is the line's key when Order item opened it: a line moved to
+     * another unit replaces its old self in place (and a line already in that unit, which Order
+     * item never offers), keeping its offers switch.
+     */
+    lineSaved: {
+      reducer(state, action: PayloadAction<{ line: SoLine; was?: string }>) {
+        const { line } = action.payload;
+        const key = lineKey(line);
+        const was = action.payload.was ?? key;
+        if (was !== key) {
+          state.lines = state.lines.filter((l) => lineKey(l) !== key);
+          if (state.offersOn[was] === false) state.offersOn[key] = false;
+          else delete state.offersOn[key];
+          delete state.offersOn[was];
+        }
+        const i = state.lines.findIndex((l) => lineKey(l) === was);
+        if (i >= 0) state.lines[i] = line;
+        else state.lines.push(line);
+      },
+      prepare: (line: SoLine, was?: string) => ({ payload: { line, was } }),
     },
+    /** Remove on Order item: the line with this key (its iucId). */
     lineRemoved(state, action: PayloadAction<string>) {
-      state.lines = state.lines.filter((l) => l.itemId !== action.payload);
+      state.lines = state.lines.filter((l) => lineKey(l) !== action.payload);
       delete state.offersOn[action.payload];
     },
-    /** The "Offers on this line" switch of Order item. */
-    lineOffersSet(state, action: PayloadAction<{ itemId: string; on: boolean }>) {
-      if (action.payload.on) delete state.offersOn[action.payload.itemId];
-      else state.offersOn[action.payload.itemId] = false;
+    /** The "Offers on this line" switch of Order item, for the line with this key. */
+    lineOffersSet(state, action: PayloadAction<{ key: string; on: boolean }>) {
+      if (action.payload.on) delete state.offersOn[action.payload.key];
+      else state.offersOn[action.payload.key] = false;
     },
     /** The "Apply offers" switch of Review. */
     applyOffersSet(state, action: PayloadAction<boolean>) {

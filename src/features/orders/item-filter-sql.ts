@@ -18,13 +18,15 @@ export const itemFilterKey = (f: ItemListFilter): string => `${searchWords(f.sea
 /**
  * The search and filter as SQL on item_master, the same rule as filterOrderItems: every typed
  * word in the code, the English name or the Tamil name; groups / brands [] = all. The words are
- * lower-cased as typed; SQLite's lower() folds A-Z only (Tamil has no case).
+ * lower-cased as typed; SQLite's lower() folds A-Z only (Tamil has no case). A list with one row
+ * per unit passes `unitName`, so "sugar box" finds the Box row of Sugar.
  */
-export function itemFilterSql(f: ItemListFilter): SQL | undefined {
+export function itemFilterSql(f: ItemListFilter, unitName?: SQLiteColumn): SQL | undefined {
   const parts: SQL[] = [];
   if (f.groupIds.length) parts.push(inArray(itemMaster.itemGroupId, [...f.groupIds]));
   if (f.brandIds.length) parts.push(inArray(itemMaster.itemBrandId, [...f.brandIds]));
-  const text = sql`lower(coalesce(${itemMaster.itemCode}, '') || ' ' || ${itemMaster.itemNameEn} || ' ' || coalesce(${itemMaster.itemNameTa}, ''))`;
+  const unit = unitName ? sql` || ' ' || coalesce(${unitName}, '')` : sql``;
+  const text = sql`lower(coalesce(${itemMaster.itemCode}, '') || ' ' || ${itemMaster.itemNameEn} || ' ' || coalesce(${itemMaster.itemNameTa}, '')${unit})`;
   for (const w of searchWords(f.search)) parts.push(sql`instr(${text}, ${w}) > 0`);
   return parts.length ? and(...parts) : undefined;
 }

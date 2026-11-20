@@ -195,6 +195,18 @@ export default function VisitScreen() {
               <Ionicons name="chevron-forward" size={16} color={colors.primary} />
             </Pressable>
           ) : null}
+          {canCollect && companyId ? (
+            // Goods coming back (canvas 6b, step 1): a sales return for the visit's company.
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push({ pathname: '/sales-return/[customerId]', params: { customerId, companyId } })}
+              style={({ pressed }) => [st.collect, pressed && { opacity: 0.85 }]}
+            >
+              <Ionicons name="return-up-back-outline" size={18} color={colors.primary} />
+              <Text style={st.collectText}>{t('sr.visitReturn')}</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+            </Pressable>
+          ) : null}
         </View>
 
         {noCompany ? (

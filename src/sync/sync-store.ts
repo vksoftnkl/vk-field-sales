@@ -29,9 +29,16 @@ import {
   receipts,
   receiptSettings,
   receiptTenders,
+  returnBillLines,
+  returnBills,
+  returnGodowns,
+  returnReasons,
+  returnSettings,
   saleBill,
   saleOrder,
   saleOrderItem,
+  saleReturn,
+  saleReturnItem,
   tenders,
   visits,
 } from '@/db/schema';
@@ -47,9 +54,11 @@ import type { PendingCustomer } from './upload-customers';
 import type { PendingOrder } from './upload-orders';
 import type { LocalBank, ReceiptData } from './download-receipt-data';
 import type { PendingReceipt } from './upload-receipts';
+import type { ReturnData } from './download-return-data';
+import { answerStatus, type PendingReturn } from './upload-returns';
 import type { PendingVisit } from './upload-visits';
 import type { PendingEdit } from './update-customers';
-import type { CreatedOrder, CreatedReceipt, CreatedVisit, CustomerOptions, ItemOptions, MobileMe, ReceiptStatus } from './vk-nex-api';
+import type { CreatedOrder, CreatedReceipt, CreatedReturn, CreatedVisit, CustomerOptions, ItemOptions, MobileMe, ReceiptStatus, ReturnNote, ReturnStatusRow } from './vk-nex-api';
 
 /** What Sync reads from and writes to the phone's database. */
 
@@ -703,4 +712,166 @@ export function saveItemList(d: ItemDownload): void {
     for (let i = 0; i < d.units.length; i += CHUNK) tx.insert(itemUnits).values(d.units.slice(i, i + CHUNK)).run();
   });
   setMeta('itemsSyncedAt', new Date().toISOString());
+}
+
+/**
+ * Sales returns waiting to go to VK Nex (canvas 6b), oldest first, with their lines. A return for
+ * a shop still waiting to upload waits for it. Old page-6 returns (OLD) never go.
+ */
+export function pendingReturns(): PendingReturn[] {
+  const heads = db
+    .select({ header: saleReturn, customerPending: customers.appPendingUpload })
+    .from(saleReturn)
+    .leftJoin(customers, eq(customers.cusId, saleReturn.srCustId))
+    .where(and(eq(saleReturn.appPendingUpload, true), eq(saleReturn.appStatus, 'WAITING')))
+    .orderBy(asc(saleReturn.srCreatedOn))
+    .all();
+  const ids = heads.map((h) => h.header.srId);
+  const lines: (typeof saleReturnItem.$inferSelect)[] = [];
+  for (let i = 0; i < ids.length; i += 500) lines.push(...db.select().from(saleReturnItem).where(inArray(saleReturnItem.sriReturnId, ids.slice(i, i + 500))).all());
+  return heads.map((h) => ({
+    header: h.header,
+    lines: lines.filter((l) => l.sriReturnId === h.header.srId),
+    customerPending: h.customerPending === true,
+  }));
+}
+
+const noteJson = (n: ReturnNote | null | undefined): string | null =>
+  n && (n.code || n.message)
+    ? JSON.stringify({
+        code: n.code ?? null,
+        message: n.message ?? null,
+        field: n.field ?? null,
+        line: n.line ?? null,
+        user: n.user ? { title: n.user.title ?? null, line: n.user.line ?? null, todo: n.user.todo ?? null } : null,
+      })
+    : null;
+
+/**
+ * VK Nex answered a return: posted, held for the office, or sent back (a draft in VK Nex either
+ * way). Its number, figures and how it settled are kept. A posted ADJUST return lowers the open
+ * bills it was set against now (not on a duplicate), until the next full Sync brings VK Nex's.
+ */
+export function markReturnAnswered(localId: string, created: CreatedReturn): void {
+  const status = answerStatus(created);
+  const note = created.refusal ?? created.held ?? null;
+  db.transaction((tx) => {
+    tx.update(saleReturn)
+      .set({
+        appStatus: status,
+        appPendingUpload: false,
+        appSyncError: status === 'SENT_BACK' && note ? [note.code, note.message].filter(Boolean).join(': ') : null,
+        appVkNote: noteJson(note),
+        appVkRefno: created.srReturnRefno ?? null,
+        appVkAmt: created.srReturnAmt === null || created.srReturnAmt === undefined ? null : moneyText(created.srReturnAmt),
+        appVkSettle: created.settlement ? JSON.stringify(created.settlement) : null,
+        appVkTotals: created.totals ? JSON.stringify(created.totals) : null,
+        appVkLines: created.lines ? JSON.stringify(created.lines) : null,
+        appApproval: created.approval && created.approval.status ? JSON.stringify({ status: created.approval.status, note: created.approval.note ?? null }) : null,
+        appSyncedOn: new Date().toISOString(),
+      })
+      .where(eq(saleReturn.srId, localId))
+      .run();
+    if (status === 'POSTED' && !created.duplicate) {
+      for (const a of created.settlement?.adjusted ?? []) {
+        const p = toPaise(String(a.amount));
+        if (p <= 0) continue;
+        tx.update(openBills)
+          .set({ pendingPaise: sql`max(0, ${openBills.pendingPaise} - ${p})` })
+          .where(and(eq(openBills.billId, a.billId), eq(openBills.billAccYear, a.billAccYear)))
+          .run();
+      }
+    }
+  });
+}
+
+/** VK Nex would not even save the return as a draft: it comes back to the salesman with VK Nex's words. */
+export function markReturnRefused(localId: string, error: string): void {
+  const m = /^([A-Z0-9_]+): (.*)$/s.exec(error);
+  db.update(saleReturn)
+    .set({
+      appStatus: 'SENT_BACK',
+      appPendingUpload: false,
+      appSyncError: error,
+      appVkNote: JSON.stringify({ code: m?.[1] ?? null, message: m?.[2] ?? error, field: null, line: null }),
+      appSyncedOn: new Date().toISOString(),
+    })
+    .where(eq(saleReturn.srId, localId))
+    .run();
+}
+
+/** The return's sync note while it is being sent (see RETURN_SEND_TRIED), or put back after. */
+export function markReturnTried(localId: string, error: string | null): void {
+  db.update(saleReturn).set({ appSyncError: error }).where(and(eq(saleReturn.srId, localId), eq(saleReturn.appPendingUpload, true))).run();
+}
+
+/** The companies' return reasons, godowns, rules and bills, each company read in full replacing what it had. */
+export function saveReturnData(d: ReturnData): void {
+  if (d.companyIds.length === 0) return;
+  db.transaction((tx) => {
+    tx.delete(returnReasons).where(inArray(returnReasons.companyId, d.companyIds)).run();
+    for (let i = 0; i < d.reasons.length; i += CHUNK) tx.insert(returnReasons).values(d.reasons.slice(i, i + CHUNK)).onConflictDoNothing().run();
+    tx.delete(returnGodowns).where(inArray(returnGodowns.companyId, d.companyIds)).run();
+    for (let i = 0; i < d.godowns.length; i += CHUNK) tx.insert(returnGodowns).values(d.godowns.slice(i, i + CHUNK)).onConflictDoNothing().run();
+    tx.delete(returnSettings).where(inArray(returnSettings.companyId, d.companyIds)).run();
+    if (d.settings.length) tx.insert(returnSettings).values(d.settings).run();
+    tx.delete(returnBillLines).where(inArray(returnBillLines.companyId, d.companyIds)).run();
+    tx.delete(returnBills).where(inArray(returnBills.companyId, d.companyIds)).run();
+    for (let i = 0; i < d.bills.length; i += CHUNK) tx.insert(returnBills).values(d.bills.slice(i, i + CHUNK)).onConflictDoNothing().run();
+    for (let i = 0; i < d.lines.length; i += CHUNK) tx.insert(returnBillLines).values(d.lines.slice(i, i + CHUNK)).onConflictDoNothing().run();
+  });
+}
+
+/**
+ * GET /mobile/returns/status: this phone's returns as VK Nex has them now (posted after the office
+ * approved, cancelled or amended there). A DRAFT stays held or sent back as the phone had it.
+ * Returns the number that really changed.
+ */
+export function applyReturnStatus(rows: readonly ReturnStatusRow[]): number {
+  let changed = 0;
+  db.transaction((tx) => {
+    for (const r of rows) {
+      const was = tx
+        .select({ status: saleReturn.appStatus, refno: saleReturn.appVkRefno, amt: saleReturn.appVkAmt, approval: saleReturn.appApproval, settle: saleReturn.appVkSettle })
+        .from(saleReturn)
+        .where(and(eq(saleReturn.srId, r.srClientUuid), eq(saleReturn.appPendingUpload, false)))
+        .get();
+      if (!was || was.status === 'OLD') continue;
+      const vk = (r.status ?? '').toUpperCase();
+      // DELETED: the office deleted the draft (one the phone deleted is gone here already).
+      const deleted = vk === 'DELETED';
+      const status = vk === 'POSTED' ? 'POSTED' : vk === 'CANCELLED' || deleted ? 'CANCELLED' : was.status === 'SENT_BACK' ? 'SENT_BACK' : 'HELD';
+      const approval = r.approval && r.approval.status ? JSON.stringify({ status: r.approval.status, note: r.approval.note ?? null }) : was.approval;
+      const amt = r.srReturnAmt === null || r.srReturnAmt === undefined ? was.amt : moneyText(r.srReturnAmt);
+      let settle = was.settle;
+      if (r.adjusted || r.settleStatus) {
+        const before = settle ? (JSON.parse(settle) as Record<string, unknown>) : {};
+        settle = JSON.stringify({ ...before, ...(r.settleStatus ? { settleStatus: r.settleStatus } : {}), ...(r.adjusted ? { adjusted: r.adjusted } : {}) });
+      }
+      if (status !== was.status || (r.srReturnRefno ?? was.refno) !== was.refno || amt !== was.amt || approval !== was.approval) changed += 1;
+      tx.update(saleReturn)
+        .set({
+          appStatus: status,
+          appVkRefno: r.srReturnRefno ?? was.refno,
+          appVkAmt: amt,
+          appApproval: approval,
+          appVkSettle: settle,
+          appCancelledOn: r.cancelledOn ?? (deleted ? (r.updatedOn ?? null) : null),
+          appCancelReason: r.cancelReason ?? null,
+          ...(status === 'POSTED' ? { appVkNote: null, appSyncError: null } : {}),
+          ...(deleted ? { appVkNote: JSON.stringify({ code: 'MOBILE_RETURN_DELETED', message: null, field: null, line: null, user: null }) } : {}),
+        })
+        .where(eq(saleReturn.srId, r.srClientUuid))
+        .run();
+    }
+  });
+  return changed;
+}
+
+/** Returns VK Nex has as drafts from this phone that the salesman deleted there: gone here too. */
+export function forgetReturn(localId: string): void {
+  db.transaction((tx) => {
+    tx.delete(saleReturnItem).where(eq(saleReturnItem.sriReturnId, localId)).run();
+    tx.delete(saleReturn).where(eq(saleReturn.srId, localId)).run();
+  });
 }

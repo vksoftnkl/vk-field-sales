@@ -18,6 +18,7 @@ import { deviceMeta } from './schema';
  *  - me: GET /mobile/me at the last Sync, as JSON (the login's employee and rights); none = an
  *    older VK Nex, and the phone assumes the rights.
  *  - receiptStatusSince: VK Nex's time of the last receipt status read (the next one asks for changes since).
+ *  - returnStatusSince: the same for the sales returns (GET /mobile/returns/status).
  *  - customerFiguresSyncedAt: when Sync last saved the customers' balance and outstanding (ISO
  *    time); the Customer list and Customer detail re-read on it.
  */
@@ -35,6 +36,7 @@ export type MetaKey =
   | 'schemesSyncedOn'
   | 'me'
   | 'receiptStatusSince'
+  | 'returnStatusSince'
   | 'customerFiguresSyncedAt';
 
 export function getMeta(key: MetaKey): string | null {

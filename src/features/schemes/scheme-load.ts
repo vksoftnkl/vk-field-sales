@@ -159,29 +159,3 @@ export function evaluateDraftNow(
   );
   return { order, itemAttrs };
 }
-
-/** The unit a row shows for an item: its override (an iucId), else the item's default unit, else its first. */
-export interface RowUnit {
-  iucId: string;
-  /** The unit id offers compare (the iucId; '' = unknown). */
-  unitId: string;
-  unitName: string;
-}
-
-export function loadRowUnits(companyId: string, itemIds: readonly string[], overrides: Readonly<Record<string, string>> = {}): Record<string, RowUnit> {
-  const rows = inParts(itemIds, (p) =>
-    db
-      .select({ itemId: itemUnits.iucItemId, iucId: itemUnits.iucId, unitId: itemUnits.iucUnitId, unitName: itemUnits.appUnitName, isDefault: itemUnits.iucIsDefaultUnit })
-      .from(itemUnits)
-      .where(and(eq(itemUnits.appCompanyId, companyId), inArray(itemUnits.iucItemId, p)))
-      .all(),
-  );
-  const out: Record<string, RowUnit> = {};
-  for (const id of itemIds) {
-    const mine = rows.filter((r) => r.itemId === id);
-    const pick = mine.find((r) => r.iucId === overrides[id]) ?? mine.find((r) => r.isDefault) ?? mine[0];
-    // An offer's unit is an iucId (see loadUnitIds), so the row's unit for matching is its iucId.
-    if (pick) out[id] = { iucId: pick.iucId, unitId: pick.iucId, unitName: pick.unitName };
-  }
-  return out;
-}

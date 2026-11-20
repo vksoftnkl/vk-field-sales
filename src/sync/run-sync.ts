@@ -12,10 +12,13 @@ import { downloadSchemes } from './download-schemes';
 import { downloadItems } from './download-items';
 import { downloadLedgers } from './download-ledgers';
 import { downloadReceiptData, toLocalBanks } from './download-receipt-data';
+import { downloadReturnData } from './download-return-data';
 import {
   getDeviceUid,
   getServerAddress,
   applyReceiptStatus,
+  applyReturnStatus,
+  forgetReturn,
   ledgerCustomerIds,
   markCustomerRefused,
   markCustomerSynced,
@@ -25,12 +28,16 @@ import {
   markReceiptRefused,
   markReceiptTried,
   markReceiptSynced,
+  markReturnAnswered,
+  markReturnRefused,
+  markReturnTried,
   markVisitRefused,
   markVisitSynced,
   pendingCustomers,
   pendingEdits,
   pendingOrders,
   pendingReceipts,
+  pendingReturns,
   pendingVisits,
   saveBanks,
   saveBranches,
@@ -43,14 +50,16 @@ import {
   saveLedgers,
   saveMe,
   saveReceiptData,
+  saveReturnData,
   type SavedDownload,
 } from './sync-store';
 import { updateCustomers, type UpdateOutcome } from './update-customers';
 import { uploadCustomers, type UploadOutcome } from './upload-customers';
 import { uploadOrders, type OrderOutcome } from './upload-orders';
 import { uploadReceipts, type ReceiptOutcome } from './upload-receipts';
+import { uploadReturns, type ReturnOutcome } from './upload-returns';
 import { salesmanFromMe, uploadVisits, type VisitOutcome } from './upload-visits';
-import { createVkNexClient, isRouteMissing, type ApiError, type CustomerOptions, type ServerCredentials, type SignedInUser } from './vk-nex-api';
+import { createVkNexClient, isRouteMissing, pageHasMore, type ApiError, type CustomerOptions, type ServerCredentials, type SignedInUser } from './vk-nex-api';
 
 export type SyncStep =
   | 'signIn'
@@ -59,6 +68,7 @@ export type SyncStep =
   | 'update'
   | 'orders'
   | 'visits'
+  | 'returns'
   | 'receipts'
   | 'download'
   | 'items'
@@ -67,6 +77,8 @@ export type SyncStep =
   | 'receiptData'
   | 'banks'
   | 'receiptStatus'
+  | 'returnData'
+  | 'returnStatus'
   | 'ledger';
 
 export interface SyncReport {
@@ -78,6 +90,16 @@ export interface SyncReport {
   visits?: VisitOutcome[];
   /** Receipts sent (absent when the run stopped before them). */
   receipts?: ReceiptOutcome[];
+  /** Sales returns sent (canvas 6b): posted, held for the office or sent back. */
+  returns?: ReturnOutcome[];
+  /** VK Nex has no returns route yet (older build on this port). They wait. */
+  returnsRouteMissing?: boolean;
+  /** Return reasons, godowns and the bills a return can come back on (companies read, bills). */
+  returnData?: { companies: number; bills: number };
+  returnDataStoppedBy?: unknown;
+  /** This phone's returns changed in VK Nex (posted after approval, cancelled in the office). */
+  returnStatus?: { changed: number };
+  returnStatusStoppedBy?: unknown;
   /** VK Nex refused receipts from this login (403, e.g. no Post right on Receipt, menu 99). They wait. */
   receiptsRefusedBy?: ApiError;
   /** VK Nex has no receipts route yet (older build on this port). They wait. */
@@ -245,6 +267,20 @@ export function refreshBranches(): Promise<number> {
   return pullingBranches;
 }
 
+/**
+ * Delete on a sent-back return (canvas 6b): VK Nex keeps every return it was sent as a draft, so
+ * the draft goes there first (POST /mobile/returns/delete), then from the phone. Needs the server
+ * (throws as Sync's steps do); a return VK Nex no longer has is just forgotten here.
+ */
+export async function deleteReturnOnServer(srClientUuid: string, companyId: string): Promise<void> {
+  const address = getServerAddress();
+  if (!address) throw new Error('NO_SERVER_ADDRESS');
+  const api = clientFor(address);
+  await api.login();
+  await api.deleteReturn({ srClientUuid, srCompanyId: companyId });
+  forgetReturn(srClientUuid);
+}
+
 let refreshing: Promise<NonNullable<SyncReport['items']> & { schemesStoppedBy?: unknown }> | null = null;
 
 /**
@@ -368,6 +404,21 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
       if (checkIns.stoppedBy) return { ...sent, stoppedBy: checkIns.stoppedBy, stoppedAt: 'visits' };
     }
 
+    // Sales returns (canvas 6b), before receipts: a credit note set against a bill is then already
+    // inside the open bills VK Nex fills a receipt from. A 403 stops the sending steps after it.
+    if (!sent.sendRefusedBy) {
+      onStep('returns', 0, 0);
+      const rets = await uploadReturns(pendingReturns(), {
+        create: (p) => api.createReturn(p),
+        markAnswered: markReturnAnswered,
+        markRefused: markReturnRefused,
+        markTried: markReturnTried,
+        onProgress: (done, total) => onStep('returns', done, total),
+      });
+      sent = { ...sent, returns: rets.outcomes, returnsRouteMissing: !!rets.routeMissing, sendRefusedBy: rets.refusedBy };
+      if (rets.stoppedBy) return { ...sent, stoppedBy: rets.stoppedBy, stoppedAt: 'returns' };
+    }
+
     // Receipts, posted by VK Nex as they arrive. Bills must go before them once the phone sends
     // bills, so that today's bill is open when VK Nex fills the oldest bills.
     if (!sent.sendRefusedBy) {
@@ -469,6 +520,30 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
       sent = { ...sent, receiptDataStoppedBy: e };
     }
 
+    // What sales returns need (canvas 6b): reasons, godowns, rules and the bills a return can come
+    // back on, for each company (its Switch company branch for the current one). An older VK Nex
+    // has no returns route: the phone keeps what it had. Any failure keeps the old data and goes on.
+    try {
+      onStep('returnData', 0, 0);
+      const current = getMeta('companyId');
+      const branch = getMeta('branchId');
+      const got = await downloadReturnData(
+        companiesQuery()
+          .all()
+          .map((c) => ({ companyId: c.id, branchId: c.id === current ? branch : null })),
+        {
+          options: (companyId, branchId) => api.returnOptions(companyId, branchId),
+          billsPage: (companyId, branchId, page) => api.returnBillsPage(companyId, branchId, page),
+          onProgress: (done, total) => onStep('returnData', done, total),
+        },
+        new Date().toISOString(),
+      );
+      saveReturnData(got);
+      sent = { ...sent, returnData: { companies: got.companyIds.length, bills: got.bills.length } };
+    } catch (e) {
+      if (!isRouteMissing(e)) sent = { ...sent, returnDataStoppedBy: e };
+    }
+
     // The bank list for cheques (GET /mobile/banks/list, one list for every company). VK Nex answers
     // only a registered phone. An older VK Nex has no such route: the phone keeps its list (or
     // none: then a cheque's bank is typed). Any failure keeps the old list and goes on.
@@ -515,6 +590,36 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
       sent = { ...sent, receiptStatus: { changed } };
     } catch (e) {
       sent = { ...sent, receiptStatusStoppedBy: e };
+    }
+
+    // This phone's returns as VK Nex has them now (posted when the office approved a held one,
+    // cancelled or amended there). Only changes since the last read; not fatal.
+    try {
+      onStep('returnStatus', 0, 0);
+      const since = getMeta('returnStatusSince');
+      let asOf: string | null = null;
+      let complete = true;
+      let changed = 0;
+      for (const companyId of companiesQuery()
+        .all()
+        .map((c) => c.id)) {
+        let done = false;
+        for (let page = 1; page <= 50; page++) {
+          const p = await api.returnStatus(companyId, since, page);
+          const rows = p.returns ?? [];
+          changed += applyReturnStatus(rows);
+          if (p.asOf && (!asOf || p.asOf < asOf)) asOf = p.asOf;
+          if (!pageHasMore(p, rows.length)) {
+            done = true;
+            break;
+          }
+        }
+        if (!done) complete = false;
+      }
+      if (asOf && complete) setMeta('returnStatusSince', asOf);
+      sent = { ...sent, returnStatus: { changed } };
+    } catch (e) {
+      if (!isRouteMissing(e)) sent = { ...sent, returnStatusStoppedBy: e };
     }
 
     try {

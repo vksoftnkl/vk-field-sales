@@ -197,11 +197,11 @@ export function paidRows<T extends { line: { soiIsFree: boolean } }>(rows: reado
 }
 
 /**
- * The "Offers on this line" switches of a saved order: a paid line saved with offers off while
- * the shop and the item allow them was switched off by the salesman.
+ * The "Offers on this line" switches of a saved order, by line key (the line's iucId): a paid
+ * line saved with offers off while the shop and the item allow them was switched off by the salesman.
  */
-export function offersOnFromSaved(lines: readonly { itemId: string; savedPromo: boolean; allowed: boolean }[]): Record<string, boolean> {
+export function offersOnFromSaved(lines: readonly { iucId: string; savedPromo: boolean; allowed: boolean }[]): Record<string, boolean> {
   const out: Record<string, boolean> = {};
-  for (const l of lines) if (l.allowed && !l.savedPromo) out[l.itemId] = false;
+  for (const l of lines) if (l.allowed && !l.savedPromo) out[l.iucId] = false;
   return out;
 }

@@ -1,4 +1,5 @@
-import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lte, max, min, ne, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lte, max, min, ne, notExists, or, sql } from 'drizzle-orm';
+import { alias, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
 import { db } from '@/db/client';
 import {
@@ -167,6 +168,64 @@ export const soUnitsOfItemsQuery = (companyId: string, itemIds: readonly string[
     .innerJoin(itemMaster, eq(itemMaster.itemId, itemUnits.iucItemId))
     .where(and(eq(itemUnits.appCompanyId, companyId), inArray(itemUnits.iucItemId, [...itemIds])))
     .orderBy(asc(itemMaster.itemNameEn), asc(itemMaster.itemId), desc(itemUnits.iucIsDefaultUnit), asc(itemUnits.iucToBaseFactor), asc(itemUnits.appUnitName));
+
+/**
+ * Add items' rows since 2026-11-20: one per unit, so "Sugar 1kg – Pcs" and "Sugar 1kg – Box" are
+ * two rows, each with its own price, stock and offers. Every priced unit is a row; an item with no
+ * priced unit at all keeps one greyed row (its default unit, else its smallest) so the salesman
+ * sees it and asks the office. An unpriced unit of an item that has a priced one is left out: it
+ * can't be ordered (the old Pick unit sheet didn't offer it either).
+ */
+const soUnitRowWhere = (companyId: string, f: ItemListFilter) => {
+  const p = alias(itemUnits, 'p');
+  const q = alias(itemUnits, 'q');
+  const sameItem = (t: { appCompanyId: AnySQLiteColumn; iucItemId: AnySQLiteColumn }) => and(eq(t.appCompanyId, itemUnits.appCompanyId), eq(t.iucItemId, itemUnits.iucItemId));
+  const noPricedUnit = notExists(db.select({ one: sql`1` }).from(p).where(and(sameItem(p), eq(p.appPriced, true))));
+  const firstUnit = eq(
+    itemUnits.iucId,
+    db
+      .select({ id: q.iucId })
+      .from(q)
+      .where(sameItem(q))
+      .orderBy(desc(q.iucIsDefaultUnit), sql`cast(${q.iucToBaseFactor} as real)`, asc(q.appUnitName), asc(q.iucId))
+      .limit(1),
+  );
+  return and(eq(itemUnits.appCompanyId, companyId), itemFilterSql(f, itemUnits.appUnitName), or(eq(itemUnits.appPriced, true), and(noPricedUnit, firstUnit)));
+};
+
+/** How many unit rows Add items lists for this search and filter. */
+export const soUnitRowCountQuery = (companyId: string, f: ItemListFilter) =>
+  db
+    .select({ n: count() })
+    .from(itemUnits)
+    .innerJoin(itemMaster, eq(itemMaster.itemId, itemUnits.iucItemId))
+    .where(soUnitRowWhere(companyId, f));
+
+/**
+ * Add items as far as it is scrolled: the first `limit` unit rows, by item name, then each item's
+ * units from the smallest (Pcs, Box, Carton), so an item's units sit together and the rows already
+ * shown never move when the next 50 come.
+ */
+export const soUnitRowsUpToQuery = (companyId: string, f: ItemListFilter, limit: number) =>
+  db
+    .select(soUnitColumns)
+    .from(itemUnits)
+    .innerJoin(itemMaster, eq(itemMaster.itemId, itemUnits.iucItemId))
+    .where(soUnitRowWhere(companyId, f))
+    .orderBy(asc(itemMaster.itemNameEn), asc(itemMaster.itemId), sql`cast(${itemUnits.iucToBaseFactor} as real)`, asc(itemUnits.appUnitName), asc(itemUnits.iucId))
+    .limit(limit);
+
+/**
+ * The size of every unit of these items (priced or not), so a row reads "1 Box = 12 Pcs" and
+ * "Stock 4 Box (48 Pcs)" against the item's base unit even when that unit has no row.
+ */
+export const soUnitSizesQuery = (companyId: string, itemIds: readonly string[]) =>
+  db
+    .select({ itemId: itemUnits.iucItemId, iucId: itemUnits.iucId, unitName: itemUnits.appUnitName, factor: itemUnits.iucToBaseFactor })
+    .from(itemUnits)
+    .where(and(eq(itemUnits.appCompanyId, companyId), inArray(itemUnits.iucItemId, [...itemIds])));
+
+export type SoUnitSize = Awaited<ReturnType<ReturnType<typeof soUnitSizesQuery>['all']>>[number];
 
 /** One item's units in a company, for Order item. */
 export const soItemUnitsQuery = (companyId: string, itemId: string) =>
@@ -386,7 +445,7 @@ export function loadOrderDraft(soId: string): Omit<OrderDraftState, 'entry'> | n
   if (!o || !o.appPendingUpload) return null;
   const units = new Map(soUnitsQuery(o.soCompanyId).all().map((u) => [u.iucId, u]));
   const shop = orderCustomerQuery(o.soCustId).get();
-  const switches: { itemId: string; savedPromo: boolean; allowed: boolean }[] = [];
+  const switches: { iucId: string; savedPromo: boolean; allowed: boolean }[] = [];
   // Free lines are worked out again, never loaded.
   const lines: SoLine[] = paidRows(orderLinesQuery(soId).all())
     .map((row) => {
@@ -394,7 +453,7 @@ export function loadOrderDraft(soId: string): Omit<OrderDraftState, 'entry'> | n
       const u = units.get(l.soiItemUnitId);
       // The shop and the item allow offers (the line's own switch is the draft's offersOn).
       const allowed = !!shop && !!u && shop.cusAllowPromotion && u.itemAllowPromo;
-      switches.push({ itemId: l.soiItemId, savedPromo: l.soiIsPromo, allowed });
+      switches.push({ iucId: l.soiItemUnitId, savedPromo: l.soiIsPromo, allowed });
       const mode = (l.appDiscMode as DiscMode | null) ?? (Number(l.soiItemDiscQty) > 0 ? 'perUnit' : 'perc');
       const disc = mode === 'perc' ? l.soiItemDiscPerc : mode === 'perUnit' ? l.soiItemDiscQty : l.soiItemDiscAmt;
       const perUnit = (amt: string, qty: string) => (Number(qty) > 0 ? paiseText(Math.round((toPaise(amt) ?? 0) / Number(qty))) : '0');
@@ -456,7 +515,7 @@ export function repeatLines(soId: string, c: OrderCustomer, companyId: string): 
   for (const { line } of paidRows(orderLinesQuery(soId).all())) {
     const u = units.get(line.soiItemUnitId);
     const start = u?.appPriced ? startingPrice(u, c.cusPriceLevelId) : null;
-    if (!u || !start || lines.some((l) => l.itemId === u.itemId)) {
+    if (!u || !start || lines.some((l) => l.iucId === u.iucId)) {
       skipped += 1;
       continue;
     }
@@ -509,6 +568,7 @@ export const shopOrderLinesQuery = (cusId: string, companyId: string, today = to
       appPendingUpload: saleOrder.appPendingUpload,
       appSyncError: saleOrder.appSyncError,
       itemId: saleOrderItem.soiItemId,
+      iucId: saleOrderItem.soiItemUnitId,
       qty: saleOrderItem.soiOrderQty,
       unitName: saleOrderItem.appUnitName,
     })

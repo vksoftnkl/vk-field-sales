@@ -16,7 +16,7 @@ import { currentBalance } from '@/features/ledger/ledger';
 import { ledgerYearsQuery } from '@/features/ledger/queries';
 import { creditView } from '@/features/orders/credit';
 import { applyOffersSet, deliveryPicked, orderCleared, prioritySet, remarksTyped, type SoLine } from '@/features/orders/order-draft';
-import { itemName } from '@/features/orders/order-items';
+import { itemName, stockLeft } from '@/features/orders/order-items';
 import { num, qtyText, toPaise } from '@/features/orders/order-math';
 import {
   companyQuery,
@@ -203,13 +203,13 @@ export default function ReviewOrderScreen() {
           </Text>
           {draft.lines.length === 0 ? <Text style={st.empty}>{t('order.empty')}</Text> : null}
           {draft.lines.map((l, i) => (
-            <View key={l.itemId} style={{ gap: spacing.sm }}>
+            <View key={l.iucId} style={{ gap: spacing.sm }}>
               <ReviewLine
                 line={order.priced[i] ?? l}
                 scheme={order.lines[i]}
-                back={backOrderQty(num(l.qty), stock.get(l.iucId) ?? 0)}
+                back={backOrderQty(num(l.qty), stockLeft(draft.lines, l, stock.get(l.iucId) ?? 0))}
                 language={i18n.language}
-                onOpen={() => router.push({ pathname: '/order/item', params: { itemId: l.itemId } })}
+                onOpen={() => router.push({ pathname: '/order/item', params: { itemId: l.itemId, iucId: l.iucId } })}
               />
               {order.freeLines.map((f, k) =>
                 f.afterIndex === i ? <FreeLine key={k} f={f} back={freeBack(f, k)} language={i18n.language} /> : null,
