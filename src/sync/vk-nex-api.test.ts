@@ -202,3 +202,19 @@ test('orders and visits carry the device uid in the body', async () => {
   assert.equal(v.duplicate, true);
   assert.deepEqual(s.calls[2]!.body, { cvClientUuid: 'v-1', deviceUid: 'VKSMAN-0123456789AB' });
 });
+
+test('open items ask for the credits too; an older VK Nex that refuses the key is asked for bills only', async () => {
+  const page = { companyId: 'co1', onDate: '2026-11-19', page: 1, pageSize: 200, total: 0, hasMore: false, items: [] };
+  const s = fakeServer((c) => {
+    if (c.url.endsWith('/auth/login')) return { status: 200, body: { access_token: 'tok-1' } };
+    return c.url.includes('withCredits=true')
+      ? { status: 400, body: { message: 'property withCredits should not exist', errors: [{ field: 'withCredits', message: 'property withCredits should not exist', code: 'VALIDATION_WHITELIST' }] } }
+      : { status: 200, body: { success: true, data: page } };
+  });
+  const api = createVkNexClient({ baseUrl: base, appVersion: '1.0.0', credentials: creds, fetch: s.fetch });
+  assert.deepEqual(await api.openBillsPage('co1', 1), page);
+  assert.deepEqual(await api.openBillsPage('co1', 2), page);
+  const asked = s.calls.filter((c) => c.url.includes('/open-bills')).map((c) => c.url.includes('withCredits=true'));
+  // Credits asked once; refused, so bills only from then on.
+  assert.deepEqual(asked, [true, false, false]);
+});

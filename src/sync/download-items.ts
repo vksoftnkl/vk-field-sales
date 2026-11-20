@@ -46,6 +46,8 @@ export function toLocalItem(it: MobileItem): LocalItem {
     itemHsnCode: it.hsnCode,
     appTaxPerc: it.taxPerc,
     appTaxId: it.taxId,
+    itemCategoryId: it.categoryId ?? null,
+    itemSectionId: it.sectionId ?? null,
   };
 }
 
@@ -55,6 +57,7 @@ export function toLocalUnits(companyId: string, it: MobileItem): LocalItemUnit[]
     appCompanyId: companyId,
     iucId: u.iucId,
     iucItemId: it.itemId,
+    iucUnitId: u.unitId || null,
     appUnitName: u.unitName ?? '',
     iucToBaseFactor: String(u.factor),
     iucIsDefaultUnit: u.isDefaultUnit,

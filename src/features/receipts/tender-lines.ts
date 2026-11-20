@@ -1,0 +1,45 @@
+// Pure TypeScript (no React Native imports) so `npm test` can run it in Node.
+
+import type { TenderLine } from './receipt-draft';
+import { TENDER_TYPE } from './receipt-math.ts';
+
+/** A tender as the phone keeps it (tenders table), for a new payment line. */
+export interface TenderLike {
+  tndId: string;
+  tndTypeId: number;
+  tndName: string;
+  appNeedsRef: boolean;
+  appRefLabel: string | null;
+  tndSurchargePerc: string;
+  tndSurchargeAmount: string;
+}
+
+export const lineOf = (tnd: TenderLike, amount: string): TenderLine => ({
+  tndId: tnd.tndId,
+  typeId: tnd.tndTypeId,
+  name: tnd.tndName,
+  needsRef: tnd.appNeedsRef,
+  refLabel: tnd.appRefLabel,
+  amount,
+  refNo: '',
+  bankName: '',
+  instrumentDate: null,
+  surchargePerc: tnd.tndSurchargePerc,
+  surchargeFlat: tnd.tndSurchargeAmount,
+  chequeBranch: '',
+  chequeIfsc: '',
+  chequeDrawer: '',
+});
+
+/** Phones take cash, cheques, UPI, wallets and transfers; cards are not offered (canvas 5b, Add payment mode). */
+export const offeredOnPhone = (t: { tndTypeId: number }): boolean => t.tndTypeId !== TENDER_TYPE.CARD;
+
+/** A cheque dated after the receipt is a post-dated cheque (VK Nex keeps it as a PDC). */
+export const isPostDated = (l: { typeId: number; instrumentDate: string | null }, receiptDate: string): boolean =>
+  l.typeId === TENDER_TYPE.CHEQUE && !!l.instrumentDate && l.instrumentDate > receiptDate;
+
+/** "No. 004512 · Indian Bank, Tirunelveli Jn" style details of a line, without its date (the screen formats that). */
+export function lineDetails(l: Pick<TenderLine, 'refNo' | 'bankName' | 'chequeBranch'>): string[] {
+  const bank = [l.bankName.trim(), l.chequeBranch?.trim()].filter(Boolean).join(', ');
+  return [l.refNo.trim(), bank].filter(Boolean);
+}

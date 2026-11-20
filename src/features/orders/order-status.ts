@@ -6,8 +6,9 @@ import { seriesCode } from '../sales/bill-number.ts';
 /**
  * Where a phone order stands (canvas page 3b, "Status"):
  *  - on the phone: Waiting to send, or Sent back (VK Nex refused it, with its words);
- *  - on VK Nex, as its so_status reads: DRAFT = With office, CONFIRMED, PARTIAL = Part delivered,
- *    COMPLETED = Delivered, CANCELLED, CLOSED, EXPIRED.
+ *  - on VK Nex, as its so_status reads: CONFIRMED (VK Nex confirms a phone order as it saves it,
+ *    user 2026-11-19), DRAFT = With office (VK Nex could not confirm it, e.g. a closed day; the office
+ *    does), PARTIAL = Part delivered, COMPLETED = Delivered, CANCELLED, CLOSED, EXPIRED.
  * VK Nex's answer to the upload is the last status the phone has: there is no status read route
  * yet, so a sent order keeps "With office" until one exists.
  */

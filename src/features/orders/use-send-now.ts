@@ -8,7 +8,7 @@ import { getServerAddress } from '@/sync/sync-store';
 import { isApiError, isNetworkError } from '@/sync/vk-nex-api';
 
 /** Why a send or a refresh did not happen, in the Sync page's words. */
-function useStopText() {
+export function useStopText() {
   const { t } = useTranslation();
   return useCallback(
     (e: unknown): string => {
@@ -73,7 +73,10 @@ export function useRefreshItems() {
     setResult(null);
     try {
       const got = await refreshItems();
-      setResult({ ok: true, text: t('so.refreshed', { count: got.items }) });
+      const brought = t('so.refreshed', { count: got.items });
+      // The prices came but the offers did not: say so (the phone keeps the offers it had).
+      if (got.schemesStoppedBy) setResult({ ok: false, text: `${brought} ${t('offers.notRefreshed')}` });
+      else setResult({ ok: true, text: brought });
     } catch (e) {
       setResult({ ok: false, text: stopText(e) });
     } finally {

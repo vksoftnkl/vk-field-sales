@@ -55,6 +55,8 @@ const header = (id: string, over: Partial<OrderHeader> = {}): OrderHeader => ({
   soIgstAmt: null,
   soTaxAmt: null,
   soRoundOff: null,
+  soSchDisc: null,
+  soBillSchDisc: null,
   appCheckinAt: null,
   appCheckinLat: null,
   appCheckinLng: null,
@@ -100,6 +102,15 @@ const line = (orderId: string, lineNo: number, over: Partial<OrderLine> = {}): O
   appItemName: null,
   appItemNameTa: null,
   appUnitName: null,
+  soiIsFree: false,
+  soiFreeType: null,
+  soiSchemeId: null,
+  soiSchemeName: null,
+  soiSchDiscPerc: null,
+  soiSchDiscQty: null,
+  soiSchDiscAmt: null,
+  soiBillSchPerc: null,
+  soiBillSchAmt: null,
   appDiscMode: null,
   ...over,
 });
@@ -185,6 +196,29 @@ test('each order VK Nex takes is marked synced; a resend answered as duplicate c
     [
       ['a', 'srv-a'],
       ['b', 'srv-b'],
+    ],
+  );
+});
+
+test('VK Nex confirms an order as it saves it; one it could not confirm is kept as a draft, with why', async () => {
+  const f = fakeDeps(async (p) =>
+    p.soClientUuid === 'a'
+      ? created('srv-a', { soStatus: 'CONFIRMED', confirmRefused: null, warnings: [] })
+      : created('srv-b', { soStatus: 'DRAFT', confirmRefused: { code: 'SALES_DAY_CLOSED', field: 'soOrderDate', message: 'The books for 2026-11-19 are closed at this branch' } }),
+  );
+  const r = await uploadOrders([order('a'), order('b')], f.deps);
+  assert.deepEqual(
+    r.outcomes.map((o) => [o.localId, o.status, o.orderStatus, o.keptDraft]),
+    [
+      ['a', 'uploaded', 'CONFIRMED', undefined],
+      ['b', 'uploaded', 'DRAFT', 'SALES_DAY_CLOSED: The books for 2026-11-19 are closed at this branch'],
+    ],
+  );
+  assert.deepEqual(
+    f.synced.map(([id, c]) => [id, c.soStatus]),
+    [
+      ['a', 'CONFIRMED'],
+      ['b', 'DRAFT'],
     ],
   );
 });
@@ -291,6 +325,19 @@ test('3b orders send delivery, priority, phone ref and the GST split; phone-only
   assert.equal('soiTaxPerc' in (old.items as Record<string, unknown>[])[0]!, false);
 });
 
+test("each line sends its unit and factor; a line saved without a factor takes the unit's from Sync", () => {
+  const box = (id: string) => line(id, 1, { soiItemUnitId: 'iuc-box', soiOrderQty: '5', soiNetQty: '5' });
+  const now = toOrderPayload(order('so-u1', { lines: [{ ...box('so-u1'), soiToBaseFactor: '12' }], unitFactors: { 'iuc-box': '24' } }));
+  const item = (p: Record<string, unknown>) => (p.items as Record<string, unknown>[])[0]!;
+  // The factor saved with the line wins: it is the one the quantity was typed against.
+  assert.deepEqual([item(now).soiItemUnitId, item(now).soiOrderQty, item(now).soiToBaseFactor], ['iuc-box', '5', '12']);
+  const old = toOrderPayload(order('so-u2', { lines: [box('so-u2')], unitFactors: { 'iuc-box': '12.000000' } }));
+  assert.equal(item(old).soiToBaseFactor, '12.000000');
+  // A unit Sync no longer has: the key stays out, as before.
+  const gone = toOrderPayload(order('so-u3', { lines: [box('so-u3')], unitFactors: {} }));
+  assert.equal('soiToBaseFactor' in item(gone), false);
+});
+
 test('priority: each dropdown value goes as it is; the old urgent flag is URGENT', () => {
   for (const p of ['LOW', 'NORMAL', 'HIGH', 'URGENT']) {
     const body = toOrderPayload({ header: header(`so-${p}`, { soPriority: p }), lines: [line(`so-${p}`, 1)], customerPending: false, customerPriceLevelId: 1 });
@@ -306,6 +353,28 @@ test('the branch saved with the order is sent; older orders leave it out', () =>
   assert.equal(withBranch.soBranchId, 'br-7');
   const old = toOrderPayload({ header: header('so-nobr'), lines: [line('so-nobr', 1)], customerPending: false, customerPriceLevelId: 1 });
   assert.equal('soBranchId' in old, false);
+});
+
+test('offers: a free line and a paid line send their scheme keys; lines without one leave them out', () => {
+  const o: PendingOrder = {
+    header: header('so-of', { soSchDisc: '24.84', soBillSchDisc: '0.00', soHasPromo: true }),
+    lines: [
+      line('so-of', 1, { soiSchemeId: 'prm-1', soiSchemeName: 'Spice slab', soiSchDiscPerc: '3', soiSchDiscAmt: '11.16' }),
+      line('so-of', 2, { soiIsFree: true, soiFreeType: 'SCHEME', soiSchemeId: 'prm-2', soiSchemeName: 'Buy 10 get 1', soiRate: '0.00', soiIsPromo: false }),
+      line('so-of', 3),
+    ],
+    customerPending: false,
+    customerPriceLevelId: 1,
+  };
+  const p = toOrderPayload(o);
+  assert.equal(p.soSchDisc, '24.84');
+  const [paid, free, plain] = p.items as Record<string, unknown>[];
+  assert.deepEqual([paid!.soiSchemeId, paid!.soiSchemeName, paid!.soiSchDiscPerc, paid!.soiSchDiscAmt], ['prm-1', 'Spice slab', '3', '11.16']);
+  assert.equal('soiIsFree' in paid!, false);
+  assert.deepEqual([free!.soiIsFree, free!.soiFreeType, free!.soiSchemeId, free!.soiRate, free!.soiIsPromo], [true, 'SCHEME', 'prm-2', '0.00', false]);
+  for (const k of ['soiIsFree', 'soiFreeType', 'soiSchemeId', 'soiSchemeName', 'soiSchDiscPerc', 'soiBillSchPerc']) assert.equal(k in plain!, false, k);
+  const old = toOrderPayload({ ...o, header: header('so-old2'), lines: [line('so-old2', 1)] });
+  assert.equal('soSchDisc' in old, false);
 });
 
 test('a term saved on the order is sent as it is', () => {

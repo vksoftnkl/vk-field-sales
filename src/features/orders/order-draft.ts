@@ -50,7 +50,7 @@ export interface SoLine extends SoLineInput {
   minPrice: string | null;
   taxId: string | null;
   hsnCode: string | null;
-  /** The customer's promotion flag and the item's: the office applies the scheme. */
+  /** The customer's promotion flag AND the item's: offers may apply to this line (the line's own switch is the draft's offersOn). */
   promo: boolean;
 }
 
@@ -82,6 +82,14 @@ export interface OrderDraftState {
   priority: SoPriority;
   remarks: string;
   checkIn: CheckIn | null;
+  /**
+   * The per-line "Offers on this line" switch, by itemId. Only an explicit off is kept (false); a
+   * missing key = on. It can only turn offers off: a line the shop or the item doesn't take offers
+   * on never gets them.
+   */
+  offersOn: Record<string, boolean>;
+  /** The order's Apply offers switch; null = not touched: the customer's own allow-promotion flag. */
+  applyOffers: boolean | null;
 }
 
 const initialState: OrderDraftState = {
@@ -95,6 +103,8 @@ const initialState: OrderDraftState = {
   priority: DEFAULT_PRIORITY,
   remarks: '',
   checkIn: null,
+  offersOn: {},
+  applyOffers: null,
 };
 
 /** Opening the Visit for this customer carries on with the draft: a new order with items in it. */
@@ -125,7 +135,10 @@ const orderDraftSlice = createSlice({
      * prices differ, so its lines go; the same company keeps them.
      */
     contextChosen(state, action: PayloadAction<{ companyId: string; branchId: string | null }>) {
-      if (state.companyId !== action.payload.companyId) state.lines = [];
+      if (state.companyId !== action.payload.companyId) {
+        state.lines = [];
+        state.offersOn = {};
+      }
       state.companyId = action.payload.companyId;
       state.branchId = action.payload.branchId;
     },
@@ -142,8 +155,10 @@ const orderDraftSlice = createSlice({
       const { seed, qty } = action.payload;
       const i = state.lines.findIndex((l) => l.itemId === seed.itemId);
       if (i >= 0) {
-        if (qty === '') state.lines.splice(i, 1);
-        else state.lines[i]!.qty = qty;
+        if (qty === '') {
+          state.lines.splice(i, 1);
+          delete state.offersOn[seed.itemId];
+        } else state.lines[i]!.qty = qty;
       } else if (qty !== '') state.lines.push({ ...seed, qty });
     },
     /** Save line on Order item. */
@@ -154,6 +169,16 @@ const orderDraftSlice = createSlice({
     },
     lineRemoved(state, action: PayloadAction<string>) {
       state.lines = state.lines.filter((l) => l.itemId !== action.payload);
+      delete state.offersOn[action.payload];
+    },
+    /** The "Offers on this line" switch of Order item. */
+    lineOffersSet(state, action: PayloadAction<{ itemId: string; on: boolean }>) {
+      if (action.payload.on) delete state.offersOn[action.payload.itemId];
+      else state.offersOn[action.payload.itemId] = false;
+    },
+    /** The "Apply offers" switch of Review. */
+    applyOffersSet(state, action: PayloadAction<boolean>) {
+      state.applyOffers = action.payload;
     },
     deliveryPicked(state, action: PayloadAction<string>) {
       state.deliveryDate = action.payload;
@@ -180,6 +205,8 @@ export const {
   qtyTyped,
   lineSaved,
   lineRemoved,
+  lineOffersSet,
+  applyOffersSet,
   deliveryPicked,
   prioritySet,
   remarksTyped,

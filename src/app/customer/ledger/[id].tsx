@@ -12,6 +12,9 @@ import { CustomDatesDialog } from '@/features/ledger/custom-dates-dialog';
 import { choiceRange, DateRangeSheet, type RangeChoice } from '@/features/ledger/date-range-sheet';
 import { netPaise, statement, type LedgerRow } from '@/features/ledger/ledger';
 import { ledgerRowsQuery, ledgerYearsQuery } from '@/features/ledger/queries';
+import { openReceipt } from '@/features/receipts/open-receipt';
+import { openItemsQuery } from '@/features/receipts/queries';
+import { itemKey } from '@/features/receipts/receipt-plan';
 import { DEFAULT_RANGE, formatDay, formatRangeLong, type DateNames } from '@/lib/date-range';
 import { formatAmount, todayISO } from '@/lib/money';
 import { colors, font, radius, spacing } from '@/theme';
@@ -38,6 +41,20 @@ export default function LedgerScreen() {
   const { data: years, updatedAt } = useLiveQuery(ledgerYearsQuery(id), [id]);
   const { data: rows } = useLiveQuery(ledgerRowsQuery(id), [id]);
   const s = useMemo(() => statement(years, rows as LedgerRow[], range), [years, rows, range.from, range.to]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A bill still open on the phone offers Collect (canvas 5b, step 1): Receipt for its company,
+  // with that bill's adjustment open. Matched by its number; a number open in two companies gets
+  // no link.
+  const { data: openItems } = useLiveQuery(openItemsQuery(id), [id]);
+  const openByNo = useMemo(() => {
+    const m = new Map<string, OpenBill | null>();
+    for (const b of openItems) {
+      if (b.kind !== 'BILL' || b.pendingPaise <= 0) continue;
+      m.set(b.docRefno, m.has(b.docRefno) ? null : { companyId: b.companyId, key: itemKey(b), pendingPaise: b.pendingPaise });
+    }
+    return m;
+  }, [openItems]);
+  const collect = (b: OpenBill) => openReceipt(t, id, b.companyId, b.key);
 
   const c = found[0];
   const name = c ? (c.cusName ?? c.cusShort ?? c.cusCode ?? '') : '';
@@ -97,7 +114,7 @@ export default function LedgerScreen() {
             }
             ListEmptyComponent={<Text style={st.noRows}>{t('ledger.noRows')}</Text>}
             ListFooterComponent={s.to < range.to ? <Text style={st.cut}>{t('ledger.cutAt', { date: formatDay(s.to, names) })}</Text> : undefined}
-            renderItem={({ item }) => <Entry r={item} names={names} />}
+            renderItem={({ item }) => <Entry r={item} names={names} open={item.voucherNo ? (openByNo.get(item.voucherNo) ?? undefined) : undefined} onCollect={collect} />}
           />
           <View style={[st.closing, { paddingBottom: insets.bottom + spacing.lg }]} accessible accessibilityLabel={`${t('ledger.closing')}: ${formatAmount(s.closingPaise)}`}>
             <Text style={st.closingLabel}>{t('ledger.closing')}</Text>
@@ -135,8 +152,17 @@ function Gap() {
   return <View style={{ height: spacing.sm }} />;
 }
 
-/** One voucher: reference and amount (+ raises what the customer owes), date | type, balance after it, details. */
-const Entry = memo(function Entry({ r, names }: { r: LedgerRow; names: DateNames }) {
+interface OpenBill {
+  companyId: string;
+  key: string;
+  pendingPaise: number;
+}
+
+/**
+ * One voucher: reference and amount (+ raises what the customer owes), date | type, balance after
+ * it, details; a bill still open on the phone also shows what is pending and Collect.
+ */
+const Entry = memo(function Entry({ r, names, open, onCollect }: { r: LedgerRow; names: DateNames; open?: OpenBill; onCollect: (b: OpenBill) => void }) {
   const { t } = useTranslation();
   const net = netPaise(r);
   const amount = `${net > 0 ? '+' : net < 0 ? '−' : ''}${formatAmount(Math.abs(net))}`;
@@ -145,25 +171,35 @@ const Entry = memo(function Entry({ r, names }: { r: LedgerRow; names: DateNames
   const kind = r.rowKind === 'CANCELLED' ? t('ledger.cancelled') : r.rowKind === 'REVERSAL' ? t('ledger.reversal') : null;
   const dateType = [formatDay(r.date, names), r.voucherTypeName].filter(Boolean).join(' | ');
   const bal = t('ledger.bal', { amount: formatAmount(r.balancePaise) });
+  const pending = open ? t('ledger.pendingNow', { amount: formatAmount(open.pendingPaise) }) : '';
   return (
-    <View style={st.entry} accessible accessibilityLabel={[ref, amount, dateType, bal, kind, ...details].filter(Boolean).join(', ')}>
-      <View style={st.entryTop}>
-        <Text style={st.entryRef} numberOfLines={1}>
-          {ref}
-        </Text>
-        <Text style={[st.entryAmount, { color: net > 0 ? PLUS : net < 0 ? colors.danger : colors.text }]}>{amount}</Text>
+    <View style={st.entry}>
+      <View style={st.entryBody} accessible accessibilityLabel={[ref, amount, dateType, bal, kind, ...details].filter(Boolean).join(', ')}>
+        <View style={st.entryTop}>
+          <Text style={st.entryRef} numberOfLines={1}>
+            {ref}
+          </Text>
+          <Text style={[st.entryAmount, { color: net > 0 ? PLUS : net < 0 ? colors.danger : colors.text }]}>{amount}</Text>
+        </View>
+        <View style={st.entryMid}>
+          <Text style={st.entryMeta} numberOfLines={1}>
+            {dateType}
+          </Text>
+          <Text style={st.entryMeta}>{bal}</Text>
+        </View>
+        {kind || details.length ? (
+          <Text style={st.entryNote} numberOfLines={2}>
+            {kind ? `${kind} · ` : ''}
+            {details.length ? `(${details.join(' | ')})` : ''}
+          </Text>
+        ) : null}
       </View>
-      <View style={st.entryMid}>
-        <Text style={st.entryMeta} numberOfLines={1}>
-          {dateType}
-        </Text>
-        <Text style={st.entryMeta}>{bal}</Text>
-      </View>
-      {kind || details.length ? (
-        <Text style={st.entryNote} numberOfLines={2}>
-          {kind ? `${kind} · ` : ''}
-          {details.length ? `(${details.join(' | ')})` : ''}
-        </Text>
+      {open ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={`${pending}, ${t('ledger.collect')}`} onPress={() => onCollect(open)} style={({ pressed }) => [st.collect, pressed && { opacity: 0.85 }]}>
+          <Text style={st.collectPending}>{pending}</Text>
+          <Text style={st.collectText}>{t('ledger.collect')}</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+        </Pressable>
       ) : null}
     </View>
   );
@@ -206,6 +242,10 @@ const st = StyleSheet.create({
   entryMid: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
   entryMeta: { fontSize: font.sm, color: colors.textMuted, flexShrink: 1 },
   entryNote: { fontSize: 12, color: colors.textMuted },
+  entryBody: { gap: spacing.xs },
+  collect: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 40, borderTopWidth: 1, borderTopColor: '#F1EDE4', paddingTop: spacing.xs },
+  collectPending: { flex: 1, fontSize: 12.5, color: '#92400E' },
+  collectText: { fontSize: 14, fontWeight: '600', color: colors.primary },
   closing: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: spacing.lg, paddingHorizontal: spacing.xl - 4, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
   closingLabel: { fontSize: font.md, fontWeight: '600', color: colors.text },
   closingAmount: { fontSize: 22, fontWeight: '700', color: colors.primary },

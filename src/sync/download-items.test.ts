@@ -68,6 +68,17 @@ test("units keep the company's prices and stock as exact text; an unpriced unit 
   assert.equal(kg!.appUnitName, '');
 });
 
+test('offers need the unit master id, the category and the section (older VK Nex: none)', () => {
+  const [bag] = toLocalUnits('comp-1', item('rice', [unit('bag')]));
+  assert.equal(bag!.iucUnitId, 'unit-bag');
+  const plain = toLocalItem(item('rice'));
+  assert.equal(plain.itemCategoryId, null);
+  assert.equal(plain.itemSectionId, null);
+  const full = toLocalItem({ ...item('rice'), categoryId: 'cat-1', sectionId: 'sec-2' });
+  assert.equal(full.itemCategoryId, 'cat-1');
+  assert.equal(full.itemSectionId, 'sec-2');
+});
+
 test('every page of every company is read; a shared item is kept once, its units per company', async () => {
   const calls: [string, number][] = [];
   const pages: Record<string, ItemListPage[]> = {

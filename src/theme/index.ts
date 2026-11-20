@@ -31,6 +31,24 @@ export const statusColors = {
   received: { bg: '#EDE9FE', fg: '#5B21B6' },
 } as const;
 
+/**
+ * Offers (mockup 2026-11-19): green = applied now, amber = not reached yet / short, maroon tints =
+ * an offer still to reach (outlined badge, dashed order-offer banner, the Order item card).
+ */
+export const offerColors = {
+  okBg: '#ECFDF5',
+  okBorder: '#A7F3D0',
+  okText: '#047857',
+  freeBg: '#F0FDF4',
+  freeBorder: '#BBF7D0',
+  warn: '#92400E',
+  badgeBorder: '#EBC3C3',
+  bannerBorder: '#DFA3A3',
+  cardBorder: '#E2B1B1',
+  slabBg: '#FAFAF9',
+  mrpBg: '#F5F5F4',
+} as const;
+
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 export const radius = { sm: 6, md: 10, lg: 14 } as const;
 export const font = { sm: 13, md: 15, lg: 17, xl: 22, xxl: 28 } as const;

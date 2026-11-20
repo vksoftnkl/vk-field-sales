@@ -1,10 +1,13 @@
 // Pure TypeScript (no React Native imports) so `npm test` can run it in Node.
-import type { openBills, tenders } from '@/db/schema';
+import type { openBills, receiptSettings, tenders } from '@/db/schema';
+
+import { itemKind } from '../features/receipts/settle.ts';
 
 import type { MobileOpenBill, MobileTender, OpenBillsPage, ReceiptOptions } from './vk-nex-api';
 
 export type LocalTender = typeof tenders.$inferInsert;
 export type LocalOpenBill = typeof openBills.$inferInsert;
+export type LocalReceiptSettings = typeof receiptSettings.$inferInsert;
 
 /** The tender types a receipt from the phone may carry: cash, card, UPI, wallet, cheque, bank. */
 const PHONE_TENDER_TYPES = new Set([1, 2, 3, 4, 5, 6]);
@@ -43,7 +46,30 @@ export function toLocalTenders(companyId: string, opts: ReceiptOptions): LocalTe
       tndSurchargePerc: decimalText(t.surchargePerc),
       tndSurchargeAmount: decimalText(t.surchargeAmount),
       position: i,
+      // Older VK Nex sends no flag: a cheque always needs its bank (VCH_CHEQUE_DETAILS).
+      appRequiresBank: t.requiresBank === true || int(t.typeId) === 5,
     }));
+}
+
+/** The company's receipt rules; an older VK Nex sends none (then: due-date order, nothing mandatory, no PPD). */
+export function toLocalReceiptSettings(companyId: string, opts: ReceiptOptions, syncedOn: string): LocalReceiptSettings {
+  const s = opts.settings ?? {};
+  return {
+    companyId,
+    billSort: s.receiptBillSort ?? null,
+    salesmanMandatory: s.salesmanMandatory === true,
+    pdcPostingMode: s.pdcPostingMode ?? null,
+    ppdEnabled: s.ppdEnabled === true,
+    syncedOn,
+  };
+}
+
+/** VK Nex's PPD schedule → the phone's JSON [{ tillDate, perc }], or null when there is none. */
+export function ppdScheduleJson(rows: MobileOpenBill['ppdSchedule']): string | null {
+  const slabs = (rows ?? [])
+    .map((r) => ({ tillDate: String(r?.tillDate ?? '').slice(0, 10), perc: Number(r?.perc) }))
+    .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.tillDate) && Number.isFinite(r.perc) && r.perc > 0);
+  return slabs.length ? JSON.stringify(slabs) : null;
 }
 
 /** One company's open bills, in VK Nex's order (seq carries it), with what is still pending. */
@@ -63,6 +89,10 @@ export function toLocalOpenBills(companyId: string, rows: readonly MobileOpenBil
       billAmountPaise: rupeesToPaise(b.billAmount),
       pendingPaise: rupeesToPaise(b.pendingAmount),
       syncedOn,
+      kind: itemKind(b.kind),
+      paidPaise: rupeesToPaise(b.paidAmount),
+      pdcHeldPaise: rupeesToPaise(b.pdcHeld),
+      ppdSchedule: ppdScheduleJson(b.ppdSchedule),
     }));
 }
 
@@ -77,6 +107,7 @@ export interface ReceiptDataDeps {
 export interface ReceiptData {
   tenders: LocalTender[];
   bills: LocalOpenBill[];
+  settings: LocalReceiptSettings[];
   /** The companies read in full: their old tenders and bills are replaced. */
   companyIds: string[];
 }
@@ -89,10 +120,12 @@ const MAX_PAGES = 400;
  * refusal, a route VK Nex does not have yet): the caller keeps what the phone had.
  */
 export async function downloadReceiptData(companyIds: readonly string[], deps: ReceiptDataDeps, syncedOn: string): Promise<ReceiptData> {
-  const out: ReceiptData = { tenders: [], bills: [], companyIds: [] };
+  const out: ReceiptData = { tenders: [], bills: [], settings: [], companyIds: [] };
   for (const [i, companyId] of companyIds.entries()) {
     deps.onProgress?.(i, companyIds.length);
-    out.tenders.push(...toLocalTenders(companyId, await deps.options(companyId)));
+    const opts = await deps.options(companyId);
+    out.tenders.push(...toLocalTenders(companyId, opts));
+    out.settings.push(toLocalReceiptSettings(companyId, opts, syncedOn));
     let seq = 0;
     for (let page = 1; page <= MAX_PAGES; page++) {
       const p = await deps.openBillsPage(companyId, page);

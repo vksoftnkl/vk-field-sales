@@ -3,7 +3,7 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router, usePreventRemove } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CalendarDialog } from '@/components/calendar-dialog';
@@ -15,7 +15,7 @@ import { customerDetailQuery } from '@/features/customers/queries';
 import { currentBalance } from '@/features/ledger/ledger';
 import { ledgerYearsQuery } from '@/features/ledger/queries';
 import { creditView } from '@/features/orders/credit';
-import { deliveryPicked, orderCleared, prioritySet, remarksTyped, type SoLine } from '@/features/orders/order-draft';
+import { applyOffersSet, deliveryPicked, orderCleared, prioritySet, remarksTyped, type SoLine } from '@/features/orders/order-draft';
 import { itemName } from '@/features/orders/order-items';
 import { num, qtyText, toPaise } from '@/features/orders/order-math';
 import {
@@ -31,6 +31,10 @@ import {
 } from '@/features/orders/queries';
 import { backOrderQty, soLineAmounts, soTotals } from '@/features/orders/so-math';
 import { priorityNeedsRemark, SO_PRIORITIES, toPriority } from '@/features/orders/so-priority';
+import { rupees } from '@/features/schemes/offer-text';
+import { resolveFreeUnit } from '@/features/schemes/scheme-load';
+import type { LineScheme, OrderFreeLine } from '@/features/schemes/scheme-order';
+import { useOrderSchemes } from '@/features/schemes/use-order-schemes';
 import { formatDay } from '@/lib/date-range';
 import { formatAmount, todayISO } from '@/lib/money';
 import { store, useAppDispatch, useAppSelector } from '@/store';
@@ -69,7 +73,11 @@ export default function ReviewOrderScreen() {
   const [stock] = useState(() => new Map(soUnitsQuery(companyId).all().map((u) => [u.iucId, Number(u.stockQty) || 0])));
   const [orderDate] = useState(() => (draft.editingSoId ? orderQuery(draft.editingSoId).get()?.soOrderDate : undefined) ?? today);
 
-  const totals = soTotals(draft.lines);
+  // The offers on the order, worked out from the draft (what Save writes is worked out the same way).
+  const { order, applyOffers, customer, unresolvedFree } = useOrderSchemes();
+  const totals = soTotals(order.priced);
+  const freeUnits = useMemo(() => order.freeLines.map((f) => resolveFreeUnit(companyId, f)), [order, companyId]);
+  const gaps = useMemo(() => (applyOffers ? order.orderOffers().filter((o) => !o.applied && o.nextBand) : []), [order, applyOffers]);
   const credit = creditView({
     outstandingPaise: currentBalance(years) ?? detail[0]?.outstandingPaise ?? 0,
     limitPaise: toPaise(x?.cusCreditAmtLimit) ?? 0,
@@ -103,6 +111,13 @@ export default function ReviewOrderScreen() {
     ]);
   });
 
+  // A free line short of stock is a back-order (warn, never block), counting the same unit already ordered.
+  const freeBack = (f: OrderFreeLine, k: number): number => {
+    const iuc = freeUnits[k]?.iucId;
+    if (!iuc) return 0;
+    const paid = draft.lines.filter((l) => l.iucId === iuc).reduce((n, l) => n + num(l.qty), 0);
+    return Math.max(0, backOrderQty(paid + f.qty, stock.get(iuc) ?? 0) - backOrderQty(paid, stock.get(iuc) ?? 0));
+  };
   const delivery = draft.deliveryDate && draft.deliveryDate > orderDate ? draft.deliveryDate : orderDate;
   const remarkNeeded = priorityNeedsRemark(draft.priority) && !draft.remarks.trim();
   const priorityOptions: SelectOption[] = useMemo(() => SO_PRIORITIES.map((p) => ({ value: p, label: t(`so.priorities.${p}`) })), [t]);
@@ -162,7 +177,13 @@ export default function ReviewOrderScreen() {
   ]
     .filter(Boolean)
     .join(' ');
-  const itemsQty = t('so.itemsQty', { count: totals.items, qty: qtyText(totals.qty) });
+  const itemsQty = t('so.itemsQty', { count: totals.items, qty: qtyText(totals.qty) }) + (order.freeQty > 0 ? ` + ${t('offers.plusFree', { qty: qtyText(order.freeQty) })}` : '');
+  const appliedWhat = [
+    totals.schemeDiscPaise + totals.billSchemeDiscPaise > 0 ? t('offers.gives.amount', { amount: formatAmount(totals.schemeDiscPaise + totals.billSchemeDiscPaise) }) : '',
+    ...order.freeLines.map((f) => t('offers.freeQtyUnit', { qty: qtyText(f.qty), unit: f.freeUnitName })),
+  ]
+    .filter(Boolean)
+    .join(' + ');
 
   return (
     <View style={st.root}>
@@ -180,19 +201,55 @@ export default function ReviewOrderScreen() {
             {t('so.lines', { count: totals.items })}
           </Text>
           {draft.lines.length === 0 ? <Text style={st.empty}>{t('order.empty')}</Text> : null}
-          {draft.lines.map((l) => (
-            <ReviewLine
-              key={l.itemId}
-              line={l}
-              back={backOrderQty(num(l.qty), stock.get(l.iucId) ?? 0)}
-              language={i18n.language}
-              onOpen={() => router.push({ pathname: '/order/item', params: { itemId: l.itemId } })}
-            />
+          {draft.lines.map((l, i) => (
+            <View key={l.itemId} style={{ gap: 10 }}>
+              <ReviewLine
+                line={order.priced[i] ?? l}
+                scheme={order.lines[i]}
+                back={backOrderQty(num(l.qty), stock.get(l.iucId) ?? 0)}
+                language={i18n.language}
+                onOpen={() => router.push({ pathname: '/order/item', params: { itemId: l.itemId } })}
+              />
+              {order.freeLines.map((f, k) =>
+                f.afterIndex === i ? <FreeLine key={k} f={f} back={freeBack(f, k)} language={i18n.language} /> : null,
+              )}
+            </View>
           ))}
+          {order.freeLines.map((f, k) => (f.afterIndex === null ? <FreeLine key={`end${k}`} f={f} back={freeBack(f, k)} language={i18n.language} /> : null))}
           <Pressable accessibilityRole="button" onPress={addMore} style={({ pressed }) => [st.addMore, pressed && { backgroundColor: colors.surface }]}>
             <Ionicons name="add" size={18} color={colors.primary} />
             <Text style={st.addMoreText}>{t('so.addMore')}</Text>
           </Pressable>
+
+          <View style={st.card} accessibilityLabel={t('offers.apply.title')}>
+            <View style={st.applyRow}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={st.applyTitle}>{t('offers.apply.title')}</Text>
+                <Text style={st.smallLabel}>{customer && !customer.cusAllowPromotion ? t('offers.apply.shopNo') : t('offers.apply.note')}</Text>
+              </View>
+              <Switch
+                value={applyOffers}
+                onValueChange={(v) => void dispatch(applyOffersSet(v))}
+                disabled={!customer?.cusAllowPromotion}
+                accessibilityLabel={t('offers.apply.title')}
+                trackColor={{ true: colors.primary, false: colors.inputBorder }}
+                thumbColor={colors.surface}
+              />
+            </View>
+            {applyOffers ? (
+              order.appliedNames.length > 0 ? (
+                <Text style={st.applied}>{t('offers.apply.summary', { count: order.appliedNames.length, what: appliedWhat })}</Text>
+              ) : (
+                <Text style={st.smallLabel}>{t('offers.apply.none')}</Text>
+              )
+            ) : null}
+            {gaps.map((o) => (
+              <Text key={o.schemeId} style={st.gap}>
+                {t('offers.apply.gap', { name: o.name, more: o.unit === 'money' ? t('offers.moreMoney', { amount: rupees(o.nextBand!.more) }) : t('offers.moreQty', { qty: qtyText(o.nextBand!.more) }) })}
+              </Text>
+            ))}
+            {unresolvedFree.length > 0 ? <Text style={st.gap}>{t('offers.missingFree', { names: unresolvedFree.map((f) => f.freeItemName).join(', ') })}</Text> : null}
+          </View>
 
           <Text style={st.heading} accessibilityRole="header">
             {t('so.orderDetails')}
@@ -231,6 +288,8 @@ export default function ReviewOrderScreen() {
           <View style={st.card} accessibilityLabel={t('so.totals')}>
             <TotalRow label={t('so.grossQty', { qty: qtyText(totals.qty) })} value={formatAmount(totals.grossPaise)} />
             {totals.discPaise > 0 ? <TotalRow label={t('so.itemDiscount')} value={`−${formatAmount(totals.discPaise)}`} /> : null}
+            {totals.schemeDiscPaise > 0 ? <TotalRow label={t('offers.schemeDiscount')} value={`−${formatAmount(totals.schemeDiscPaise)}`} /> : null}
+            {totals.billSchemeDiscPaise > 0 ? <TotalRow label={t('offers.orderOfferTotal')} value={`−${formatAmount(totals.billSchemeDiscPaise)}`} /> : null}
             <TotalRow label={t('so.taxable')} value={formatAmount(totals.taxablePaise)} />
             {totals.igstPaise > 0 ? (
               <TotalRow label={t('so.igst')} value={formatAmount(totals.igstPaise)} />
@@ -249,7 +308,7 @@ export default function ReviewOrderScreen() {
               <Text style={st.grandLabel}>{t('order.orderTotal')}</Text>
               <Text style={st.grandValue}>{formatAmount(totals.totalPaise)}</Text>
             </View>
-            <Text style={st.smallLabel}>{t('so.estimate')}</Text>
+            <Text style={st.smallLabel}>{t('offers.estimate')}</Text>
           </View>
         </ScrollView>
         <View style={[st.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
@@ -304,7 +363,7 @@ export default function ReviewOrderScreen() {
   );
 }
 
-function ReviewLine({ line, back, language, onOpen }: { line: SoLine; back: number; language: string; onOpen: () => void }) {
+function ReviewLine({ line, scheme, back, language, onOpen }: { line: SoLine; scheme: LineScheme | undefined; back: number; language: string; onOpen: () => void }) {
   const { t } = useTranslation();
   const a = soLineAmounts(line);
   const name = itemName({ itemNameEn: line.name, itemNameTa: line.nameTa }, language);
@@ -328,6 +387,23 @@ function ReviewLine({ line, back, language, onOpen }: { line: SoLine; back: numb
       <View style={{ flex: 1, gap: 3, minWidth: 0 }}>
         <Text style={st.lineName}>{name}</Text>
         <Text style={st.lineMeta}>{meta}</Text>
+        {scheme && a.schemePaise + a.billSchemePaise > 0 ? (
+          <Text style={st.lineScheme}>
+            {[
+              a.schemePaise > 0
+                ? Number(scheme.schDiscPerc) > 0
+                  ? t('offers.line.perc', { name: scheme.schemeName ?? '', perc: scheme.schDiscPerc })
+                  : Number(scheme.schDiscQty) > 0
+                    ? t('offers.line.perUnit', { name: scheme.schemeName ?? '', amount: formatAmount(toPaise(scheme.schDiscQty) ?? 0) })
+                    : t('offers.line.plain', { name: scheme.schemeName ?? '' })
+                : null,
+              a.schemePaise > 0 ? `−${formatAmount(a.schemePaise)}` : null,
+              a.billSchemePaise > 0 ? `${t('offers.orderOfferTotal')} −${formatAmount(a.billSchemePaise)}` : null,
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          </Text>
+        ) : null}
         {back > 0 ? (
           <View style={st.lineNote}>
             <Text style={st.lineNoteText}>{t('so.backOrderShort', { qty: qtyText(back), unit: line.unitName })}</Text>
@@ -336,6 +412,31 @@ function ReviewLine({ line, back, language, onOpen }: { line: SoLine; back: numb
       </View>
       <Text style={st.lineAmount}>{formatAmount(a.lineTotalPaise)}</Text>
     </Pressable>
+  );
+}
+
+/** A free line (green, FREE, ₹0.00) under the line that earned it: follows the quantities, not editable or deletable. */
+function FreeLine({ f, back, language }: { f: OrderFreeLine; back: number; language: string }) {
+  const { t } = useTranslation();
+  const name = itemName({ itemNameEn: f.freeItemName, itemNameTa: null }, language);
+  return (
+    <View style={st.freeLine} accessible accessibilityLabel={`${t('offers.free')}: ${f.qtyText} ${f.freeUnitName} ${name}`}>
+      <View style={{ flex: 1, gap: 3, minWidth: 0 }}>
+        <View style={st.freeHead}>
+          <View style={st.freeTag}>
+            <Text style={st.freeTagText}>{t('offers.free')}</Text>
+          </View>
+          <Text style={st.freeName}>{t('offers.freeLine', { qty: f.qtyText, unit: f.freeUnitName, name })}</Text>
+        </View>
+        <Text style={st.freeScheme}>{f.schemeName}</Text>
+        {back > 0 ? (
+          <View style={st.lineNote}>
+            <Text style={st.lineNoteText}>{t('so.backOrderShort', { qty: qtyText(back), unit: f.freeUnitName })}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={st.lineAmount}>{formatAmount(0)}</Text>
+    </View>
   );
 }
 
@@ -383,6 +484,29 @@ const st = StyleSheet.create({
   lineNote: { alignSelf: 'flex-start', backgroundColor: '#FEF3C7', borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 1 },
   lineNoteText: { fontSize: 12, fontWeight: '600', color: '#92400E' },
   lineAmount: { fontSize: font.md, fontWeight: '600', color: colors.text },
+  lineScheme: { fontSize: 12.5, fontWeight: '600', color: '#166534' },
+  freeLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginLeft: spacing.lg,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: radius.md + 2,
+    paddingVertical: 10,
+    paddingLeft: spacing.md + 2,
+    paddingRight: spacing.md,
+  },
+  freeHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  freeTag: { backgroundColor: '#166534', borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
+  freeTagText: { fontSize: 11.5, fontWeight: '700', color: colors.onPrimary },
+  freeName: { flex: 1, fontSize: font.md, fontWeight: '600', color: '#166534' },
+  freeScheme: { fontSize: 12.5, color: '#166534' },
+  applyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  applyTitle: { fontSize: font.md, fontWeight: '600', color: colors.text },
+  applied: { fontSize: 14, fontWeight: '600', color: '#166534' },
+  gap: { fontSize: 13, color: '#92400E' },
   addMore: {
     minHeight: 44,
     flexDirection: 'row',

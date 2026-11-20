@@ -13,8 +13,8 @@ import { metaQuery } from '@/db/meta';
 import { currentContext } from '@/features/company/company';
 import { itemFilterKey } from '@/features/orders/item-filter-sql';
 import { ItemFilterSheet, type ItemFilter } from '@/features/orders/item-filter-sheet';
-import { contextChosen, orderCleared, orderRepeated, qtyTyped, type SoLine } from '@/features/orders/order-draft';
-import { groupUnits, itemName, type ItemUnits } from '@/features/orders/order-items';
+import { contextChosen, lineSaved, orderCleared, orderRepeated, qtyTyped, type SoLine } from '@/features/orders/order-draft';
+import { groupUnits, itemName, pickableUnits, shownUnit, type ItemUnits } from '@/features/orders/order-items';
 import { decimalInput, num, qtyText, startingPrice, toPaise } from '@/features/orders/order-math';
 import { asOfText, isRecentOpen, soState } from '@/features/orders/order-status';
 import {
@@ -33,8 +33,15 @@ import {
   type SoUnitRow,
 } from '@/features/orders/queries';
 import { backOrderQty, soLineAmounts, soTotals } from '@/features/orders/so-math';
+import { UnitSheet, useUnitEquals, useUnitStock } from '@/features/orders/unit-sheet';
+import { soLineInUnit, unitStartPrice } from '@/features/orders/unit-switch';
+import { badgeText, rupees } from '@/features/schemes/offer-text';
+import { OfferSheet } from '@/features/schemes/offer-sheet';
+import type { PromoScheme } from '@/features/schemes/scheme-types';
+import { useItemBadges, type ItemBadgeView } from '@/features/schemes/use-item-badges';
+import { useOrderSchemes } from '@/features/schemes/use-order-schemes';
 import { useRefreshItems } from '@/features/orders/use-send-now';
-import { formatAmount, todayISO } from '@/lib/money';
+import { daysBetween, formatAmount, todayISO } from '@/lib/money';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { colors, font, radius, spacing } from '@/theme';
 
@@ -42,9 +49,11 @@ const GST = (perc: string | null) => String(Number(num(perc).toFixed(3)));
 
 /**
  * Add items (canvas 3b, step 3; was Order entry): one row per item in its default unit, with the
- * rate, GST and MRP, the stock as of the last Sync and the shop's open orders. Type a quantity on
- * the row, or tap it for the unit, price level, rate and discount. Low stock warns (a back-order),
- * never blocks; an item with no price today can't be ordered. Review order opens the review.
+ * rate, GST and MRP, the stock as of the last Sync and the shop's open orders. An item sold in more
+ * than one unit has a unit button under its quantity ("Box ▾") that picks the unit the row's rate,
+ * stock, offers and quantity are in. Type a quantity on the row, or tap it for the unit, price
+ * level, rate and discount. Low stock warns (a back-order), never blocks; an item with no price
+ * today can't be ordered. Review order opens the review.
  */
 export default function AddItemsScreen() {
   const { customerId, companyId } = useLocalSearchParams<{ customerId: string; companyId: string }>();
@@ -59,6 +68,7 @@ export default function AddItemsScreen() {
   const { data: groups } = useLiveQuery(itemGroupsQuery());
   const { data: brands } = useLiveQuery(itemBrandsQuery());
   const { data: synced } = useLiveQuery(metaQuery('itemsSyncedAt'));
+  const { data: schemesSynced } = useLiveQuery(metaQuery('schemesSyncedOn'));
   const { data: shopLines } = useLiveQuery(shopOrderLinesQuery(customerId, companyId, today), [customerId, companyId, today]);
   const c = found[0];
   const draft = useAppSelector((st) => st.orderDraft);
@@ -121,23 +131,56 @@ export default function AddItemsScreen() {
     return m;
   }, [shopLines, draft.editingSoId, today, t]);
 
-  const totals = soTotals(lines);
+  // The unit picked on a row for an item not on the order yet (itemId → iucId); on the order, the
+  // line's unit is the row's. unitItem: the item whose Pick unit sheet is open.
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  const [unitItem, setUnitItem] = useState<ItemUnits<SoUnitRow> | null>(null);
+
+  // The offers on the order (derived from the draft) and the badges of the rows loaded, each worked
+  // out in the unit its row shows.
+  const { order, applyOffers } = useOrderSchemes({ extraItemIds: itemIds });
+  const rowUnits = useMemo(() => Object.fromEntries(shown.map((it) => [it.itemId, shownUnit(it, byItem.get(it.itemId)?.iucId, picked[it.itemId]).iucId])), [shown, byItem, picked]);
+  const badges = useItemBadges(order, companyId, itemIds, rowUnits);
+  const orderOffers = useMemo(() => (applyOffers ? order.orderOffers() : []), [order, applyOffers]);
+  const [sheet, setSheet] = useState<{ schemeId: string; itemId: string | null; unit: string } | null>(null);
+  const sheetScheme = sheet ? (order.scheme(sheet.schemeId) ?? null) : null;
+  const sheetOffer = sheet ? (sheet.itemId ? order.explain(sheet.itemId) : order.orderOffers()).find((o) => o.schemeId === sheet.schemeId) : undefined;
+  const onBadge = useCallback((schemeId: string, itemId: string, unit: string) => setSheet({ schemeId, itemId, unit }), []);
+
+  const totals = soTotals(order.priced);
   const filtered = filter.groupIds.length + filter.brandIds.length > 0;
 
+  // A quantity typed on a row not on the order starts a line in the unit the row shows.
   const onQty = useCallback(
-    (it: ItemUnits<SoUnitRow>, line: SoLine | undefined, qty: string) => {
+    (u: SoUnitRow, line: SoLine | undefined, qty: string) => {
       if (!c) return;
       const typed = decimalInput(qty, 3);
       if (line) return dispatch(qtyTyped({ seed: line, qty: typed }));
-      const start = startingPrice(it.rowUnit, c.cusPriceLevelId);
-      if (start) dispatch(qtyTyped({ seed: soSeedLine(it.rowUnit, c, start), qty: typed }));
+      const start = startingPrice(u, c.cusPriceLevelId);
+      if (start) dispatch(qtyTyped({ seed: soSeedLine(u, c, start), qty: typed }));
     },
     [dispatch, c],
   );
-  const onOpen = useCallback((it: ItemUnits<SoUnitRow>) => router.push({ pathname: '/order/item', params: { itemId: it.itemId } }), []);
+  const onOpen = useCallback((u: SoUnitRow) => router.push({ pathname: '/order/item', params: { itemId: u.itemId, iucId: u.iucId } }), []);
+  const onPickUnit = useCallback((it: ItemUnits<SoUnitRow>) => setUnitItem(it), []);
+  // Another unit: a line on the order moves to it (that unit's rate, MRP, charges and factor; the
+  // quantity stays as typed), and the row keeps showing it.
+  const pickUnit = (it: ItemUnits<SoUnitRow>, u: SoUnitRow) => {
+    const line = byItem.get(it.itemId);
+    if (line && c && line.iucId !== u.iucId) {
+      const next = soLineInUnit(line, u, c);
+      if (next) dispatch(lineSaved(next));
+    }
+    setPicked((p) => ({ ...p, [it.itemId]: u.iucId }));
+  };
+  const unitLine = unitItem ? byItem.get(unitItem.itemId) : undefined;
 
   const subtitle = [c ? customerName(c) : '', company[0]?.name ?? ''].filter(Boolean).join(' · ');
-  const syncedOn = synced[0]?.value;
+  // "Prices, stock and offers as of …": the older of the two Syncs; amber after 3 days.
+  const itemsOn = synced[0]?.value;
+  const offersAt = schemesSynced[0]?.value;
+  const syncedOn = itemsOn && offersAt ? (itemsOn < offersAt ? itemsOn : offersAt) : itemsOn;
+  const stale = !!syncedOn && daysBetween(todayISO(new Date(syncedOn)), today) > 3;
 
   return (
     <View style={st.root}>
@@ -182,7 +225,9 @@ export default function AddItemsScreen() {
         </Pressable>
       </View>
       <View style={st.asOfRow}>
-        <Text style={st.asOf}>{syncedOn ? t('so.stockAsOf', { when: asOfText(syncedOn, names, t('so.today')) }) : t('so.notSyncedItems')}</Text>
+        <Text style={[st.asOf, stale && st.asOfOld]}>
+          {syncedOn ? t(offersAt ? 'offers.asOf' : 'so.stockAsOf', { when: asOfText(syncedOn, names, t('so.today')) }) : t('so.notSyncedItems')}
+        </Text>
         <Text style={st.asOf}>{t('so.allGodowns')}</Text>
       </View>
       {result ? (
@@ -191,6 +236,27 @@ export default function AddItemsScreen() {
           <Ionicons name="close" size={16} color={result.ok ? colors.textMuted : colors.danger} />
         </Pressable>
       ) : null}
+
+      {orderOffers.map((o) => {
+        const more = o.nextBand?.more ?? 0;
+        const gap = o.applied ? '' : o.unit === 'money' ? (more > 0 ? t('offers.moreMoney', { amount: rupees(more) }) : o.minBillShort > 0 ? t('offers.moreMoney', { amount: rupees(o.minBillShort) }) : '') : more > 0 ? t('offers.moreQty', { qty: qtyText(more) }) : '';
+        if (!o.applied && !gap) return null;
+        return (
+          <Pressable
+            key={o.schemeId}
+            accessibilityRole="button"
+            accessibilityHint={t('offers.badgeHint')}
+            onPress={() => setSheet({ schemeId: o.schemeId, itemId: null, unit: '' })}
+            style={[st.banner, o.applied && st.bannerOn]}
+          >
+            <Ionicons name={o.applied ? 'checkmark-circle' : 'pricetag-outline'} size={20} color={o.applied ? '#166534' : colors.primary} />
+            <View style={{ flex: 1, gap: 1 }}>
+              <Text style={[st.bannerTitle, o.applied && { color: '#166534' }]}>{t(o.applied ? 'offers.orderApplied' : 'offers.orderOffer', { name: o.name })}</Text>
+              {gap ? <Text style={st.bannerGap}>{gap}</Text> : null}
+            </View>
+          </Pressable>
+        );
+      })}
 
       <FlatList
         data={shown}
@@ -204,7 +270,20 @@ export default function AddItemsScreen() {
         ListFooterComponent={<LoadMoreFooter shown={loadedItems.length} total={total} />}
         ListEmptyComponent={updatedAt ? <Text style={st.empty}>{searching ? t('order.noMatch') : t('order.noItems')}</Text> : undefined}
         renderItem={({ item }) => (
-          <ItemRow it={item} line={byItem.get(item.itemId)} customer={c} note={onOrder.get(item.itemId)} language={i18n.language} onQty={onQty} onOpen={onOpen} />
+          <ItemRow
+            it={item}
+            line={byItem.get(item.itemId)}
+            customer={c}
+            note={onOrder.get(item.itemId)}
+            pickedIucId={picked[item.itemId]}
+            language={i18n.language}
+            badges={badges[item.itemId]}
+            schemeOf={order.scheme}
+            onQty={onQty}
+            onOpen={onOpen}
+            onPickUnit={onPickUnit}
+            onBadge={onBadge}
+          />
         )}
       />
 
@@ -217,7 +296,10 @@ export default function AddItemsScreen() {
           style={({ pressed }) => [st.proceed, totals.items === 0 && { opacity: 0.5 }, pressed && { opacity: 0.85 }]}
         >
           <View style={{ gap: 1 }}>
-            <Text style={st.proceedNote}>{t('so.itemsQty', { count: totals.items, qty: qtyText(totals.qty) })}</Text>
+            <Text style={st.proceedNote}>
+              {t('so.itemsQty', { count: totals.items, qty: qtyText(totals.qty) })}
+              {order.freeQty > 0 ? ` + ${t('offers.plusFree', { qty: qtyText(order.freeQty) })}` : ''}
+            </Text>
             <Text style={st.proceedTotal}>{formatAmount(totals.totalPaise)}</Text>
           </View>
           <View style={st.proceedRight}>
@@ -227,6 +309,17 @@ export default function AddItemsScreen() {
         </Pressable>
       </View>
 
+      <UnitSheet
+        visible={unitItem !== null}
+        itemName={unitItem ? itemName(unitItem.rowUnit, i18n.language) : ''}
+        units={unitItem ? pickableUnits(unitItem) : []}
+        allUnits={unitItem?.units ?? []}
+        selectedIucId={unitItem ? shownUnit(unitItem, unitLine?.iucId, picked[unitItem.itemId]).iucId : undefined}
+        priceOf={(u) => (c ? (unitStartPrice(u, c, unitLine?.priceLevel)?.price ?? null) : null)}
+        onPick={(u) => unitItem && pickUnit(unitItem, u)}
+        onClose={() => setUnitItem(null)}
+      />
+      <OfferSheet scheme={sheetScheme} offer={sheetOffer} unit={sheet?.unit ?? ''} syncedOn={offersAt ?? null} onClose={() => setSheet(null)} />
       <ItemFilterSheet visible={filterOpen} value={filter} groups={groups} brands={brands} onApply={setFilter} onClose={() => setFilterOpen(false)} />
     </View>
   );
@@ -237,21 +330,36 @@ const ItemRow = memo(function ItemRow({
   line,
   customer,
   note,
+  pickedIucId,
   language,
+  badges,
+  schemeOf,
   onQty,
   onOpen,
+  onPickUnit,
+  onBadge,
 }: {
   it: ItemUnits<SoUnitRow>;
   line: SoLine | undefined;
   customer: OrderCustomer | undefined;
   note: string | undefined;
+  pickedIucId: string | undefined;
   language: string;
-  onQty: (it: ItemUnits<SoUnitRow>, line: SoLine | undefined, qty: string) => void;
-  onOpen: (it: ItemUnits<SoUnitRow>) => void;
+  badges: ItemBadgeView[] | undefined;
+  schemeOf: (id: string) => PromoScheme | undefined;
+  onQty: (u: SoUnitRow, line: SoLine | undefined, qty: string) => void;
+  onOpen: (u: SoUnitRow) => void;
+  onPickUnit: (it: ItemUnits<SoUnitRow>) => void;
+  onBadge: (schemeId: string, itemId: string, unit: string) => void;
 }) {
   const { t } = useTranslation();
-  // The line's unit when it is on the order (Order item may have switched it), else the row's.
-  const u = (line && it.units.find((x) => x.iucId === line.iucId)) ?? it.rowUnit;
+  const unitEquals = useUnitEquals();
+  const unitStock = useUnitStock();
+  // The line's unit when it is on the order (Order item or the unit button may have switched it),
+  // else the unit picked on the row, else the item's default unit.
+  const u = shownUnit(it, line?.iucId, pickedIucId);
+  const many = pickableUnits(it).length > 1;
+  const equals = unitEquals(u, it.units);
   const name = itemName(u, language);
   const off = !it.priced;
   const qty = num(line?.qty);
@@ -275,19 +383,45 @@ const ItemRow = memo(function ItemRow({
     meta = t('so.stockZero', { stock: qtyText(stock) });
     warn = true;
   } else {
-    meta = [t('order.stock', { qty: qtyText(stock) }), discPaise > 0 ? t('so.discApplied', { amount: formatAmount(discPaise) }) : null].filter(Boolean).join(' · ');
+    meta = [unitStock(u, it.units), discPaise > 0 ? t('so.discApplied', { amount: formatAmount(discPaise) }) : null].filter(Boolean).join(' · ');
   }
 
   return (
     <View style={[st.row, on && st.rowOn]}>
-      <Pressable accessibilityRole="button" accessibilityHint={t('order.itemTitle')} disabled={off} onPress={() => onOpen(it)} style={st.rowMain}>
+      <Pressable accessibilityRole="button" accessibilityHint={t('order.itemTitle')} disabled={off} onPress={() => onOpen(u)} style={st.rowMain}>
         <Text style={st.rowName}>{name}</Text>
         <View style={st.rateLine}>
           <Text style={st.rate}>{off ? t('so.noPriceToday') : t('so.rateLine', { price: formatAmount(price), unit: u.unitName, gst: GST(u.taxPerc) })}</Text>
           <View style={st.mrp}>
             <Text style={st.mrpText}>{mrp ? t('order.mrp', { price: formatAmount(mrp) }) : t('so.noMrp')}</Text>
           </View>
+          {equals && !off ? <Text style={st.conv}>{equals}</Text> : null}
         </View>
+        {badges && badges.length > 0 ? (
+          <View style={st.badges}>
+            {badges.map((b) => {
+              const s = schemeOf(b.schemeId);
+              if (!s) return null;
+              const text = badgeText(s, b, b.unitName || u.unitName, t);
+              const on = b.applied && !b.unitMismatch;
+              return (
+                <Pressable
+                  key={b.schemeId}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${text}. ${t('offers.badgeHint')}`}
+                  hitSlop={6}
+                  onPress={() => onBadge(b.schemeId, it.itemId, b.unitName || u.unitName)}
+                  style={[st.badge, on && st.badgeOn]}
+                >
+                  {on ? <Ionicons name="checkmark" size={13} color="#166534" /> : null}
+                  <Text style={[st.badgeText, on && { color: '#166534' }]} numberOfLines={1}>
+                    {text}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
         <Text style={[st.meta, warn && { color: '#92400E' }]}>{meta}</Text>
         {note ? (
           <View style={st.note}>
@@ -298,7 +432,7 @@ const ItemRow = memo(function ItemRow({
       <View style={st.qtyBox}>
         <TextInput
           value={line?.qty ?? ''}
-          onChangeText={(v) => onQty(it, line, v)}
+          onChangeText={(v) => onQty(u, line, v)}
           placeholder={off ? '—' : '0'}
           placeholderTextColor={colors.textMuted}
           keyboardType="decimal-pad"
@@ -308,9 +442,25 @@ const ItemRow = memo(function ItemRow({
           maxLength={9}
           style={[st.qty, off && st.qtyOff]}
         />
-        <Text style={st.unit} numberOfLines={1}>
-          {u.unitName}
-        </Text>
+        {many && !off ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('so.unitChange', { name })}
+            accessibilityValue={{ text: u.unitName }}
+            hitSlop={{ top: 4, bottom: 8, left: 6, right: 6 }}
+            onPress={() => onPickUnit(it)}
+            style={({ pressed }) => [st.unitBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={st.unitBtnText} numberOfLines={1}>
+              {u.unitName}
+            </Text>
+            <Ionicons name="chevron-down" size={12} color={colors.primary} />
+          </Pressable>
+        ) : (
+          <Text style={st.unit} numberOfLines={1}>
+            {u.unitName}
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -346,6 +496,27 @@ const st = StyleSheet.create({
   filterOn: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
   asOfRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: 6 },
   asOf: { fontSize: 12, color: colors.textMuted },
+  asOfOld: { color: '#92400E', fontWeight: '600' },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xs,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: '#E7C4C4',
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  bannerOn: { backgroundColor: '#F0FDF4', borderColor: '#86EFAC' },
+  bannerTitle: { fontSize: font.sm + 1, fontWeight: '600', color: colors.primary },
+  bannerGap: { fontSize: 12.5, color: colors.textLabel },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 3, maxWidth: '100%', borderRadius: 999, borderWidth: 1, borderColor: '#A8A29E', paddingHorizontal: 8, paddingVertical: 2 },
+  badgeOn: { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' },
+  badgeText: { flexShrink: 1, fontSize: 12, fontWeight: '600', color: colors.textLabel },
   result: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -401,6 +572,21 @@ const st = StyleSheet.create({
   },
   qtyOff: { backgroundColor: '#EEECE9' },
   unit: { fontSize: 11.5, color: colors.textMuted },
+  unitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    maxWidth: 64,
+    minHeight: 24,
+    paddingHorizontal: 6,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  unitBtnText: { flexShrink: 1, fontSize: 11.5, fontWeight: '600', color: colors.primary },
+  conv: { fontSize: 11.5, color: colors.textMuted },
   footer: { paddingTop: spacing.sm, paddingHorizontal: spacing.lg, backgroundColor: colors.bg },
   proceed: {
     minHeight: 56,

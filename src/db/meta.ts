@@ -14,8 +14,25 @@ import { deviceMeta } from './schema';
  *  - ledgerSyncedAt: when Sync last saved the ledgers (ISO time); screens showing balances re-read on it.
  *  - deviceUid: this phone's VK Nex device uid ('VKSMAN-…'), made once; registered on VK Nex's Device List.
  *  - itemsSyncedAt: when Sync last saved the items (ISO time).
+ *  - schemesSyncedOn: when Sync last saved the offers (ISO time); Add items says "offers as of".
+ *  - me: GET /mobile/me at the last Sync, as JSON (the login's employee and rights); none = an
+ *    older VK Nex, and the phone assumes the rights.
+ *  - receiptStatusSince: VK Nex's time of the last receipt status read (the next one asks for changes since).
  */
-export type MetaKey = 'lastUserId' | 'lastBeatIds' | 'companyId' | 'branchId' | 'serverScheme' | 'serverHost' | 'serverPort' | 'ledgerSyncedAt' | 'deviceUid' | 'itemsSyncedAt';
+export type MetaKey =
+  | 'lastUserId'
+  | 'lastBeatIds'
+  | 'companyId'
+  | 'branchId'
+  | 'serverScheme'
+  | 'serverHost'
+  | 'serverPort'
+  | 'ledgerSyncedAt'
+  | 'deviceUid'
+  | 'itemsSyncedAt'
+  | 'schemesSyncedOn'
+  | 'me'
+  | 'receiptStatusSince';
 
 export function getMeta(key: MetaKey): string | null {
   const row = db.select().from(deviceMeta).where(eq(deviceMeta.key, key)).get();

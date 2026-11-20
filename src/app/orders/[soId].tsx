@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router, useLocalSearchParams } from 'expo-router';
+import type { TFunction } from 'i18next';
 import { useState, type ComponentProps, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
@@ -42,6 +43,16 @@ const lineAmount = (l: SavedLine['line']): number =>
   l.soiTaxableAmt !== null && l.soiTaxAmt !== null ? (toPaise(l.soiTaxableAmt) ?? 0) + (toPaise(l.soiTaxAmt) ?? 0) : (toPaise(l.soiNetAmt) ?? 0);
 
 /** "MOBILE_BRANCH_NOT_RESOLVED: The company …" → its code and words. */
+/** What a line's offer gave: "Spice slab 3% −₹11.16" for a paid line, the offer's name for a free one; '' when none. */
+function schemeText(l: SavedLine['line'], t: TFunction): string {
+  if (!l.soiSchemeName) return '';
+  if (l.soiIsFree) return l.soiSchemeName;
+  const off = (toPaise(l.soiSchDiscAmt) ?? 0) + (toPaise(l.soiBillSchAmt) ?? 0);
+  if (off <= 0) return '';
+  const rate = Number(l.soiSchDiscPerc) > 0 ? t('offers.line.perc', { name: l.soiSchemeName, perc: String(Number(l.soiSchDiscPerc)) }) : t('offers.line.plain', { name: l.soiSchemeName });
+  return `${rate} −${formatAmount(off)}`;
+}
+
 function splitError(e: string | null): { code: string | null; text: string } {
   const m = /^([A-Z][A-Z0-9_]+):\s*(.*)$/s.exec(e ?? '');
   return m ? { code: m[1]!, text: m[2]! } : { code: null, text: e ?? '' };
@@ -82,9 +93,12 @@ export default function OrderScreen() {
 
   const state = soState(o);
   const when = (iso: string) => asOfText(iso, names, t('so.today'));
-  const qty = lines.reduce((s, l) => s + num(l.line.soiOrderQty), 0);
+  // Free lines (offers) are shown as FREE under the line that earned them and are not counted as items.
+  const paid = lines.filter((l) => !l.line.soiIsFree);
+  const qty = paid.reduce((s, l) => s + num(l.line.soiOrderQty), 0);
+  const freeQty = lines.filter((l) => l.line.soiIsFree).reduce((s, l) => s + num(l.line.soiOrderQty), 0);
   const total = formatAmount(toPaise(o.soOrderAmt) ?? 0);
-  const itemsQty = t('so.itemsQty', { count: lines.length, qty: qtyText(qty) });
+  const itemsQty = t('so.itemsQty', { count: paid.length, qty: qtyText(qty) }) + (freeQty > 0 ? ` + ${t('offers.plusFree', { qty: qtyText(freeQty) })}` : '');
   const companyName = company[0]?.name ?? '';
   const nameOf = (l: SavedLine) => {
     const n = lineName(l);
@@ -93,7 +107,11 @@ export default function OrderScreen() {
   const unitOf = (l: SavedLine) => l.line.appUnitName ?? '';
 
   const share = () => {
-    const rows = lines.map((l) => `• ${nameOf(l)}: ${qtyText(num(l.line.soiOrderQty))} ${unitOf(l)} × ${formatAmount(toPaise(l.line.soiRate) ?? 0)} = ${formatAmount(lineAmount(l.line))}`);
+    const rows = lines.map((l) =>
+      l.line.soiIsFree
+        ? `• ${nameOf(l)}: ${qtyText(num(l.line.soiOrderQty))} ${unitOf(l)} ${t('offers.free')}`
+        : `• ${nameOf(l)}: ${qtyText(num(l.line.soiOrderQty))} ${unitOf(l)} × ${formatAmount(toPaise(l.line.soiRate) ?? 0)} = ${formatAmount(lineAmount(l.line))}`,
+    );
     const message = [
       `${o.soCustName}${companyName ? ` · ${companyName}` : ''}`,
       t('so.shareHead', { ref: orderRef(o), date: formatDay(o.soOrderDate, names) }),
@@ -277,15 +295,28 @@ export default function OrderScreen() {
         <Text style={st.heading} accessibilityRole="header">
           {t('so.linesOrdered')}
         </Text>
-        {lines.map((l) => (
-          <View key={l.line.soiId} style={st.line}>
-            <View style={{ flex: 1, gap: 3, minWidth: 0 }}>
-              <Text style={st.lineName}>{nameOf(l)}</Text>
-              <Text style={st.small}>{t('so.qtyRate', { qty: qtyText(num(l.line.soiOrderQty)), unit: unitOf(l), price: formatAmount(toPaise(l.line.soiRate) ?? 0) })}</Text>
+        {lines.map((l) => {
+          const free = l.line.soiIsFree;
+          return (
+            <View key={l.line.soiId} style={[st.line, free && st.lineFree, free && { marginLeft: spacing.lg }]}>
+              <View style={{ flex: 1, gap: 3, minWidth: 0 }}>
+                <View style={st.nameRow}>
+                  {free ? (
+                    <View style={st.freeTag}>
+                      <Text style={st.freeTagText}>{t('offers.free')}</Text>
+                    </View>
+                  ) : null}
+                  <Text style={[st.lineName, free && { color: '#166534', flex: 1 }]}>{nameOf(l)}</Text>
+                </View>
+                <Text style={st.small}>
+                  {free ? `${qtyText(num(l.line.soiOrderQty))} ${unitOf(l)}`.trim() : t('so.qtyRate', { qty: qtyText(num(l.line.soiOrderQty)), unit: unitOf(l), price: formatAmount(toPaise(l.line.soiRate) ?? 0) })}
+                </Text>
+                {schemeText(l.line, t) ? <Text style={st.scheme}>{schemeText(l.line, t)}</Text> : null}
+              </View>
+              <Text style={st.lineAmount}>{formatAmount(lineAmount(l.line))}</Text>
             </View>
-            <Text style={st.lineAmount}>{formatAmount(lineAmount(l.line))}</Text>
-          </View>
-        ))}
+          );
+        })}
         <Text style={st.small}>{t('so.statusNote', { when: o.appSyncedOn ? when(o.appSyncedOn) : '—' })}</Text>
       </ScrollView>
       <View style={[st.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
@@ -312,6 +343,7 @@ function Lines({
   itemsQty: string;
   total: string;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={[st.card, { padding: 0, gap: 0, overflow: 'hidden' }]} accessibilityLabel={o.soCustName}>
       <View style={st.linesHead}>
@@ -320,7 +352,10 @@ function Lines({
       </View>
       {lines.map((l) => (
         <View key={l.line.soiId} style={st.linesRow}>
-          <Text style={[st.body14, { flex: 1 }]}>{nameOf(l)}</Text>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={st.body14}>{`${l.line.soiIsFree ? `${t('offers.free')} · ` : ''}${nameOf(l)}`}</Text>
+            {schemeText(l.line, t) ? <Text style={st.scheme}>{schemeText(l.line, t)}</Text> : null}
+          </View>
           <Text style={st.body14}>{`${qtyText(num(l.line.soiOrderQty))} ${unitOf(l)}`.trim()}</Text>
         </View>
       ))}
@@ -431,6 +466,11 @@ const st = StyleSheet.create({
     paddingRight: spacing.md,
   },
   lineName: { fontSize: font.md, fontWeight: '600', color: colors.text },
+  lineFree: { backgroundColor: '#F0FDF4', borderColor: '#86EFAC' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  freeTag: { backgroundColor: '#166534', borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
+  freeTagText: { fontSize: 11.5, fontWeight: '700', color: colors.onPrimary },
+  scheme: { fontSize: 12.5, fontWeight: '600', color: '#166534' },
   lineAmount: { fontSize: 14, fontWeight: '600', color: colors.text },
   linesHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingVertical: spacing.md, paddingHorizontal: spacing.md + 2 },
   linesRow: { flexDirection: 'row', gap: spacing.md, paddingVertical: 9, paddingHorizontal: spacing.md + 2, borderTopWidth: 1, borderTopColor: '#F1EDE4' },

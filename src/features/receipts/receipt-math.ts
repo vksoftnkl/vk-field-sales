@@ -113,9 +113,14 @@ export interface TenderLineInput extends TenderInput {
   bankName: string;
   /** YYYY-MM-DD; cheques only. */
   instrumentDate: string | null;
+  /** Cheques: optional, but VK Nex refuses one that is not a real IFSC. */
+  chequeIfsc?: string;
 }
 
-export type TenderProblem = 'noAmount' | 'chequeNo' | 'bankName' | 'chequeDate' | 'cardLast4' | 'refNo';
+export type TenderProblem = 'noAmount' | 'chequeNo' | 'bankName' | 'chequeDate' | 'ifsc' | 'cardLast4' | 'refNo';
+
+/** An IFSC as VK Nex checks it: 4 letters, 0, then 6 letters or digits. */
+export const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
 /**
  * Why VK Nex would refuse this line, or null: an amount on every line; a cheque needs its number,
@@ -128,6 +133,8 @@ export function tenderProblem(t: TenderLineInput): TenderProblem | null {
     if (!t.refNo.trim()) return 'chequeNo';
     if (!t.bankName.trim()) return 'bankName';
     if (!t.instrumentDate) return 'chequeDate';
+    const ifsc = (t.chequeIfsc ?? '').trim().toUpperCase();
+    if (ifsc && !IFSC_PATTERN.test(ifsc)) return 'ifsc';
     return null;
   }
   if (t.typeId === TENDER_TYPE.CARD) return t.needsRef && !/^\d{4}$/.test(t.refNo.trim()) ? 'cardLast4' : null;

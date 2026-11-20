@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<!-- Source of item_schemes_mobile_ui_mockup.png. Render (from /home/vk/Dev/vk-field-sales/mockup):
+     chromium --headless=new --hide-scrollbars --force-device-scale-factor=2 --window-size=1884,1700 \
+       --screenshot=item_schemes_mobile_ui_mockup.png item_schemes_mobile_ui_mockup.html
+     Plan: /home/vk/Shared/Prathap/mobile/plan-item-schemes-offers.md (2026-11-19) -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VKSMAN · Offers and schemes mockup</title>
+<style>
+  @font-face { font-family: Inter; font-weight: 400; src: url('file:///home/vk/Dev/erp/NexERP/src/shared/fonts/inter/Inter-Regular.ttf'); }
+  @font-face { font-family: Inter; font-weight: 500; src: url('file:///home/vk/Dev/erp/NexERP/src/shared/fonts/inter/Inter-Medium.ttf'); }
+  @font-face { font-family: Inter; font-weight: 600; src: url('file:///home/vk/Dev/erp/NexERP/src/shared/fonts/inter/Inter-SemiBold.ttf'); }
+  @font-face { font-family: Inter; font-weight: 700; src: url('file:///home/vk/Dev/erp/NexERP/src/shared/fonts/inter/Inter-Bold.ttf'); }
+  @font-face { font-family: Ionicons; src: url('file:///home/vk/Dev/vk-field-sales/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'); }
+
+  :root {
+    --primary: #8B1D1D; --primarySoft: #F8E8E8; --onPrimary: #fff; --onPrimaryMuted: #F3DADA;
+    --bg: #F5F3F0; --surface: #fff; --text: #1C1917; --label: #44403C; --muted: #57534E;
+    --border: #E7E5E4; --inputBorder: #D6D3D1; --danger: #B91C1C; --success: #15803D;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1884px; height: 1700px; background: #E9EBEF; font-family: Inter, 'Noto Sans', sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
+  .ic { font-family: Ionicons; font-style: normal; font-weight: normal; line-height: 1; display: inline-block; }
+
+  /* ---------- sheet ---------- */
+  .sheet { padding: 40px 60px 0; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; }
+  h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.4px; }
+  .lede { margin-top: 8px; font-size: 16px; color: #44403C; max-width: 1400px; }
+  .stamp { text-align: right; font-size: 13.5px; color: #57534E; line-height: 1.5; margin-top: 10px; }
+  .stamp b { color: var(--primary); }
+  .cols { display: grid; grid-template-columns: repeat(4, 414px); gap: 36px; margin-top: 26px; }
+  .step { display: flex; align-items: center; gap: 10px; height: 34px; margin-bottom: 12px; }
+  .step .n { width: 30px; height: 30px; border-radius: 15px; background: var(--primary); color: #fff; font-weight: 700; font-size: 15px; display: grid; place-items: center; }
+  .step .t { font-size: 19px; font-weight: 700; }
+  .step .h { font-size: 14px; color: #78716C; }
+
+  /* ---------- phone ---------- */
+  .phone { width: 414px; height: 868px; border-radius: 50px; background: #1C1917; padding: 12px; box-shadow: 0 18px 40px rgba(28,25,23,.18); }
+  .screen { position: relative; width: 390px; height: 844px; border-radius: 38px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; }
+  .status { height: 34px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 6px 26px 0 30px; font-size: 14px; font-weight: 600; position: relative; }
+  .status .cam { position: absolute; left: 50%; top: 9px; width: 16px; height: 16px; margin-left: -8px; border-radius: 8px; background: #0c0a09; }
+  .status .sig { display: flex; gap: 6px; font-size: 15px; }
+  .hdr { background: var(--primary); color: #fff; display: flex; align-items: center; padding: 6px 12px 14px 4px; }
+  .hdr .back { width: 44px; height: 44px; display: grid; place-items: center; font-size: 24px; }
+  .hdr .tt { font-size: 19px; font-weight: 600; }
+  .hdr .st { margin-top: 2px; font-size: 13px; color: var(--onPrimaryMuted); }
+  .hdr .grow { flex: 1; }
+  .hdr .act { width: 40px; height: 40px; display: grid; place-items: center; font-size: 22px; }
+  .body { flex: 1; overflow: hidden; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .homebar { position: absolute; bottom: 7px; left: 50%; width: 120px; margin-left: -60px; height: 4px; border-radius: 2px; background: #1C1917; opacity: .55; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
+  .muted { font-size: 13px; color: var(--muted); }
+  .row { display: flex; align-items: center; }
+  .sp { flex: 1; }
+  .label { font-size: 13px; color: var(--label); font-weight: 500; margin-bottom: 6px; }
+  .sect { display: flex; align-items: center; justify-content: space-between; }
+  .sect .cap { font-size: 13px; font-weight: 700; letter-spacing: .6px; color: var(--primary); }
+
+  .totals { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 11px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .tr { display: flex; justify-content: space-between; font-size: 13.5px; }
+  .tr .l { color: var(--label); }
+  .tr .v { font-weight: 600; }
+  .tr.g .l, .tr.g .v { color: #047857; }
+  .grand { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; display: flex; justify-content: space-between; align-items: baseline; }
+  .grand .l { font-size: 16px; font-weight: 700; }
+  .grand .v { font-size: 22px; font-weight: 700; }
+
+  .footer { background: #fff; border-top: 1px solid var(--border); padding: 12px 16px 26px; display: flex; gap: 12px; }
+  .btn { flex: 1; height: 52px; border-radius: 10px; display: grid; place-items: center; font-weight: 700; font-size: 16px; }
+  .btn.p { background: var(--primary); color: #fff; }
+  .btn.d { border: 1.5px solid var(--danger); color: var(--danger); background: #fff; flex: 0 0 120px; }
+
+  /* search + list */
+  .searchRow { display: flex; gap: 8px; }
+  .search { flex: 1; height: 46px; border: 1px solid var(--inputBorder); background: #fff; border-radius: 10px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 15px; color: var(--muted); }
+  .search .ic { font-size: 20px; }
+  .filt { width: 46px; height: 46px; border: 1px solid var(--inputBorder); background: #fff; border-radius: 10px; display: grid; place-items: center; color: var(--primary); font-size: 22px; }
+  .asof { font-size: 12.5px; color: var(--muted); margin-top: -2px; }
+
+  .item { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 10px 10px 10px 14px; display: flex; align-items: center; gap: 10px; }
+  .item.on { background: var(--primarySoft); border-color: var(--primary); }
+  .item .main { flex: 1; min-width: 0; }
+  .item .nm { font-size: 15px; font-weight: 700; }
+  .item .rl { margin-top: 3px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .item .mt { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+  .mrp { background: #F5F5F4; border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font-size: 12px; font-weight: 600; color: var(--label); }
+  .qtyb { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .qty { width: 62px; height: 44px; border: 1.5px solid var(--inputBorder); border-radius: 10px; display: grid; place-items: center; font-size: 17px; font-weight: 600; background: #fff; }
+  .qty.empty { color: #A8A29E; font-weight: 500; }
+  .qtyb .u { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+  .proceed { margin: 0 16px; height: 54px; border-radius: 12px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+  .proceed .a { font-size: 13px; color: var(--onPrimaryMuted); }
+  .proceed .tot { font-size: 16px; font-weight: 700; }
+  .proceed .b { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
+  .footer2 { background: var(--bg); padding: 8px 0 28px; }
+
+  /* offer pieces */
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .bdg { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 700; border: 1px solid #EBC3C3; background: #fff; color: var(--primary); }
+  .bdg .ic { font-size: 13px; }
+  .bdg.ok { border-color: #A7F3D0; background: #ECFDF5; color: #047857; }
+  .okt { color: #047857; font-weight: 600; }
+  .warnt { color: #92400E; font-weight: 600; }
+  .banner { background: #fff; border: 1.5px dashed #DFA3A3; border-radius: 12px; padding: 9px 12px; display: flex; align-items: center; gap: 10px; }
+  .banner .big { font-size: 22px; color: var(--primary); }
+  .banner .t1 { font-size: 13.5px; font-weight: 700; }
+  .banner .t2 { font-size: 12.5px; color: #92400E; font-weight: 600; margin-top: 2px; }
+  .seg { display: flex; border: 1.5px solid var(--inputBorder); border-radius: 10px; overflow: hidden; height: 40px; }
+  .seg span { flex: 1; display: grid; place-items: center; font-size: 14px; font-weight: 600; color: var(--label); background: #fff; border-left: 1px solid var(--inputBorder); }
+  .seg span:first-child { border-left: 0; }
+  .seg span.on { background: var(--primary); color: #fff; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .fld .box { height: 46px; border: 1.5px solid var(--inputBorder); border-radius: 10px; background: #fff; display: flex; align-items: center; padding: 0 12px; font-size: 16px; gap: 8px; }
+  .fld .box.focus { border-color: var(--primary); }
+  .fld .box.ph { color: #A8A29E; }
+  .offer { background: #fff; border: 1.5px solid #E2B1B1; border-radius: 14px; padding: 11px 13px; }
+  .offer .hd { display: flex; align-items: center; gap: 8px; }
+  .offer .hd .ic { font-size: 18px; color: var(--primary); }
+  .offer .ttl { font-size: 15px; font-weight: 700; flex: 1; }
+  .chipok { background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; border-radius: 8px; padding: 2px 8px; font-size: 12px; font-weight: 700; }
+  .slabs { display: flex; gap: 6px; margin-top: 8px; }
+  .slab { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px; text-align: center; font-size: 11.5px; color: var(--label); background: #FAFAF9; }
+  .slab b { display: block; font-size: 14px; color: var(--text); }
+  .slab.cur { border: 1.5px solid var(--success); background: #ECFDF5; }
+  .nudge { margin-top: 8px; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #92400E; }
+  .cond { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+  .cond span { display: inline-flex; align-items: center; gap: 4px; }
+  .cond .ic { font-size: 13px; }
+  .switchrow { display: flex; align-items: center; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border); font-size: 13.5px; font-weight: 600; color: var(--label); }
+  .switch { width: 42px; height: 24px; border-radius: 12px; background: var(--success); position: relative; flex: 0 0 42px; }
+  .switch::after { content: ''; position: absolute; right: 3px; top: 3px; width: 18px; height: 18px; border-radius: 9px; background: #fff; }
+
+  .rline { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; display: flex; gap: 10px; align-items: flex-start; }
+  .rline .main { flex: 1; min-width: 0; }
+  .rline .nm { font-size: 14.5px; font-weight: 700; }
+  .rline .mt { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .rline .am { font-size: 14.5px; font-weight: 700; }
+  .rline.free { background: #F0FDF4; border-color: #BBF7D0; margin-left: 18px; }
+  .freechip { background: var(--success); color: #fff; border-radius: 6px; padding: 1px 6px; font-size: 11px; font-weight: 700; margin-right: 5px; }
+  .schl { font-size: 12.5px; color: #047857; font-weight: 600; margin-top: 3px; display: flex; align-items: center; gap: 4px; }
+  .schl .ic { font-size: 13px; }
+
+  .dim { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background: rgba(28,25,23,.48); }
+  .sheet2 { position: absolute; left: 0; right: 0; bottom: 0; top: 232px; background: #fff; border-radius: 22px 22px 38px 38px; padding: 10px 18px 0; display: flex; flex-direction: column; }
+  .handle { width: 44px; height: 5px; border-radius: 3px; background: #D6D3D1; margin: 0 auto 12px; }
+  .give { background: var(--primarySoft); border-radius: 12px; padding: 11px 12px; display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; }
+  .give .ic { font-size: 24px; color: var(--primary); }
+  .give .g1 { font-size: 14.5px; font-weight: 700; line-height: 1.35; }
+  .give .g2 { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .onord { margin-top: 10px; background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 9px 12px; font-size: 13.5px; }
+  .kv { display: flex; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; gap: 10px; }
+  .kv .k { width: 104px; color: var(--muted); flex-shrink: 0; }
+  .kv .v { flex: 1; font-weight: 500; }
+
+  /* explanation boxes */
+  .how { margin-top: 22px; background: #fff; border-radius: 14px; padding: 16px 20px 18px; min-height: 262px; }
+  .how h3 { font-size: 16px; color: var(--primary); margin-bottom: 8px; }
+  .how ul { padding-left: 20px; }
+  .how li { font-size: 14.5px; line-height: 1.45; margin-bottom: 5px; color: #292524; }
+  .how .new { color: var(--success); font-weight: 600; }
+  .qs { margin-top: 22px; background: #FFFBEB; border: 1px solid #FCD34D; border-radius: 14px; padding: 16px 22px; }
+  .qs h3 { font-size: 16px; color: #92400E; margin-bottom: 8px; }
+  .qs ol { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 40px; padding-left: 22px; }
+  .qs li { font-size: 14px; line-height: 1.42; color: #292524; }
+  .foot { margin-top: 14px; font-size: 13px; color: #57534E; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="top">
+    <div>
+      <h1>VKSMAN · Offers and schemes on orders</h1>
+      <div class="lede">VK Nex’s promotion schemes come to the phone with Sync, show on the items they cover, and apply on the order by themselves, as the desktop Sale Bill applies them. Free goods become their own order lines. All of it works offline.</div>
+    </div>
+    <div class="stamp">Mockup with <b>sample data</b><br>not a screenshot of a running app</div>
+  </div>
+
+  <div class="cols">
+    <!-- ======================= 1 · Add items ======================= -->
+    <div>
+      <div class="step"><div class="n">1</div><div class="t">Add items</div><div class="h">tap a name → 2 · tap an offer → 4</div></div>
+      <div class="phone"><div class="screen">
+        <div class="status"><span>10:18</span><span class="cam"></span><span class="sig"><i class="ic">&#xf208;</i><i class="ic">&#xf631;</i><i class="ic">&#xf187;</i></span></div>
+        <div class="hdr"><div class="back"><i class="ic">&#xf229;</i></div><div class="grow"><div class="tt">Add items</div><div class="st">Sri Murugan Stores · Acme Foods</div></div><div class="act"><i class="ic">&#xf514;</i></div></div>
+        <div class="body">
+          <div class="searchRow"><div class="search"><i class="ic">&#xf55f;</i>Search code, name or Tamil name</div><div class="filt"><i class="ic">&#xf48b;</i></div></div>
+          <div class="asof">Prices, stock and offers as of the last Sync, Wed 19 Nov</div>
+          <div class="banner">
+            <i class="ic big">&#xf4eb;</i>
+            <div class="sp"><div class="t1">Order offer: ₹100 off orders over ₹10,000</div><div class="t2">₹4,696.00 more to go (before GST)</div></div>
+            <i class="ic" style="font-size:18px;color:var(--muted)">&#xf23b;</i>
+          </div>
+          <div class="item on">
+            <div class="main">
+              <div class="nm">Chilli Powder 200 g</div>
+              <div class="rl">₹62.00 / PKT · GST 5% <span class="mrp">MRP ₹70.00</span></div>
+              <div class="badges"><span class="bdg ok"><i class="ic">&#xf21d;</i>Spice slab 3% off</span></div>
+              <div class="mt">Stock 40</div>
+            </div>
+            <div class="qtyb"><div class="qty">6</div><div class="u">PKT</div></div>
+          </div>
+          <div class="item on">
+            <div class="main">
+              <div class="nm">Glucose Biscuit 75 g</div>
+              <div class="rl">₹9.00 / PCS · GST 18% <span class="mrp">MRP ₹10.00</span></div>
+              <div class="badges"><span class="bdg ok"><i class="ic">&#xf338;</i>Buy 10 get 1 · 2 free</span></div>
+              <div class="mt">Stock 480</div>
+            </div>
+            <div class="qtyb"><div class="qty">24</div><div class="u">PCS</div></div>
+          </div>
+          <div class="item on">
+            <div class="main">
+              <div class="nm">Sambar Powder 100 g</div>
+              <div class="rl">₹38.00 / PKT · GST 5% <span class="mrp">MRP ₹45.00</span></div>
+              <div class="badges"><span class="bdg ok"><i class="ic">&#xf21d;</i>Spice slab 3% off</span></div>
+              <div class="mt">Stock 96</div>
+            </div>
+            <div class="qtyb"><div class="qty">12</div><div class="u">PKT</div></div>
+          </div>
+          <div class="item on">
+            <div class="main">
+              <div class="nm">Sunflower Oil 1 L</div>
+              <div class="rl">₹142.00 / PCS · GST 5% <span class="mrp">MRP ₹165.00</span></div>
+              <div class="mt">Stock 120</div>
+            </div>
+            <div class="qtyb"><div class="qty">30</div><div class="u">PCS</div></div>
+          </div>
+          <div class="item">
+            <div class="main">
+              <div class="nm">Tea Powder 250 g</div>
+              <div class="rl">₹118.00 / PKT · GST 5% <span class="mrp">MRP ₹130.00</span></div>
+              <div class="badges"><span class="bdg"><i class="ic">&#xf4eb;</i>₹5 off per PKT from 12 PKT</span></div>
+              <div class="mt">Stock 64</div>
+            </div>
+            <div class="qtyb"><div class="qty empty">0</div><div class="u">PKT</div></div>
+          </div>
+        </div>
+        <div class="footer2"><div class="proceed"><div><div class="a">4 items · 72 qty + 2 free</div><div class="tot">₹5,571.00</div></div><div class="b">Review order <i class="ic">&#xf23b;</i></div></div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="how">
+        <h3>How it works</h3>
+        <ul>
+          <li><span class="new">New badges</span> on the rows of items an offer names (the item, its group, brand, category or section). <b>Green</b> = applied now, <b>outlined</b> = not reached yet.</li>
+          <li>Offers on the <b>whole order</b> (no item list) show once, in the banner, with how much more is needed.</li>
+          <li>Only offers that suit <b>this shop, this branch and today</b> show. Sync brings them; the refresh button brings them with the prices.</li>
+          <li>Tap a badge for the offer’s details (screen 4).</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ======================= 2 · Order item ======================= -->
+    <div>
+      <div class="step"><div class="n">2</div><div class="t">Order item</div><div class="h">Save line → back to 1</div></div>
+      <div class="phone"><div class="screen">
+        <div class="status"><span>10:19</span><span class="cam"></span><span class="sig"><i class="ic">&#xf208;</i><i class="ic">&#xf631;</i><i class="ic">&#xf187;</i></span></div>
+        <div class="hdr"><div class="back"><i class="ic">&#xf229;</i></div><div class="grow"><div class="tt">Order item</div><div class="st">Sambar Powder 100 g · Sri Murugan Stores</div></div></div>
+        <div class="body">
+          <div><div class="label">Unit</div><div class="seg"><span class="on">PKT</span><span>CASE (24 PKT)</span></div></div>
+          <div class="grid2">
+            <div class="fld"><div class="label">Qty (PKT)</div><div class="box focus">12</div></div>
+            <div class="fld"><div class="label">Rate (before GST)</div><div class="box">38.00</div></div>
+          </div>
+          <div class="fld"><div class="label">Your discount (% · ₹ per unit · ₹ on line)</div><div class="box ph">0 %</div></div>
+          <div class="offer">
+            <div class="hd"><i class="ic">&#xf4eb;</i><span class="ttl">Spice powders slab</span><span class="chipok">Applied 3%</span></div>
+            <div class="muted" style="margin-top:4px">Annam Spices items count together: <b style="color:var(--text)">18 PKT</b> on this order</div>
+            <div class="slabs">
+              <div class="slab">6–11 PKT<b>2%</b></div>
+              <div class="slab cur">12–23 PKT<b>3%</b></div>
+              <div class="slab">24+ PKT<b>5%</b></div>
+            </div>
+            <div class="nudge"><i class="ic">&#xf5fb;</i>6 more PKT of Annam Spices → 5% off</div>
+            <div class="cond">
+              <span><i class="ic">&#xf1d6;</i>15/11/2026 – 15/12/2026</span>
+              <span><i class="ic">&#xf4a3;</i>Retail shops only</span>
+              <span><i class="ic">&#xf1c7;</i>All branches</span>
+              <span><i class="ic">&#xf114;</i>Stops if you give your own discount</span>
+            </div>
+            <div class="switchrow"><span class="sp">Offers on this line</span><span class="switch"></span></div>
+          </div>
+          <div class="totals">
+            <div class="tr"><span class="l">12 × ₹38.00</span><span class="v">₹456.00</span></div>
+            <div class="tr g"><span class="l">Spice powders slab 3%</span><span class="v">−₹13.68</span></div>
+            <div class="tr"><span class="l">Taxable</span><span class="v">₹442.32</span></div>
+            <div class="tr"><span class="l">GST 5% (CGST 2.5 + SGST 2.5)</span><span class="v">₹22.12</span></div>
+            <div class="grand"><span class="l">Line total</span><span class="v">₹464.44</span></div>
+          </div>
+        </div>
+        <div class="footer"><div class="btn d">Remove</div><div class="btn p">Save line</div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="how">
+        <h3>How it works</h3>
+        <ul>
+          <li><span class="new">New “Offers on this item” card</span>: what it gives, its bands, the dates, who it is for, and what stops it.</li>
+          <li>The phone works the offer out <b>as you type</b>, the same way the desktop bill does, and says how much more reaches the next band.</li>
+          <li>The salesman can switch offers <b>off for this line</b> (the desktop’s Scheme column). Offer figures can’t be typed over.</li>
+          <li>An offer not reached says why (“order in PCS”, “6 more PKT”, “only Retail shops”).</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ======================= 3 · Review ======================= -->
+    <div>
+      <div class="step"><div class="n">3</div><div class="t">Review order</div><div class="h">Save order → saved, waits for Sync</div></div>
+      <div class="phone"><div class="screen">
+        <div class="status"><span>10:21</span><span class="cam"></span><span class="sig"><i class="ic">&#xf208;</i><i class="ic">&#xf631;</i><i class="ic">&#xf187;</i></span></div>
+        <div class="hdr"><div class="back"><i class="ic">&#xf229;</i></div><div class="grow"><div class="tt">Review order</div><div class="st">Sri Murugan Stores · Acme Foods · Coimbatore</div></div></div>
+        <div class="body" style="gap:8px">
+          <div class="sect"><span class="cap">4 ITEMS · 72 QTY + 2 FREE</span></div>
+          <div class="rline">
+            <div class="main"><div class="nm">Chilli Powder 200 g</div><div class="mt">6 PKT × ₹62.00 · GST 5%</div><div class="schl"><i class="ic">&#xf4eb;</i>Spice powders slab 3% −₹11.16</div></div>
+            <div class="am">₹378.88</div>
+          </div>
+          <div class="rline">
+            <div class="main"><div class="nm">Glucose Biscuit 75 g</div><div class="mt">24 PCS × ₹9.00 · GST 18%</div></div>
+            <div class="am">₹254.88</div>
+          </div>
+          <div class="rline free">
+            <div class="main"><div class="nm"><span class="freechip">FREE</span>2 PCS Glucose Biscuit 75 g</div><div class="schl"><i class="ic">&#xf338;</i>Buy 10 get 1 free</div></div>
+            <div class="am" style="color:#047857">₹0.00</div>
+          </div>
+          <div class="rline">
+            <div class="main"><div class="nm">Sambar Powder 100 g</div><div class="mt">12 PKT × ₹38.00 · GST 5%</div><div class="schl"><i class="ic">&#xf4eb;</i>Spice powders slab 3% −₹13.68</div></div>
+            <div class="am">₹464.44</div>
+          </div>
+          <div class="rline">
+            <div class="main"><div class="nm">Sunflower Oil 1 L</div><div class="mt">30 PCS × ₹142.00 · GST 5%</div></div>
+            <div class="am">₹4,473.00</div>
+          </div>
+          <div class="card" style="padding:10px 14px">
+            <div class="row" style="font-size:14px;font-weight:700"><span class="sp">Apply offers</span><span class="switch"></span></div>
+            <div class="muted" style="margin-top:4px"><span class="okt">2 offers applied: ₹24.84 off + 2 PCS free</span></div>
+            <div class="muted" style="margin-top:3px">Order offer (₹100 off over ₹10,000): <span class="warnt">₹4,696.00 more</span></div>
+          </div>
+          <div class="totals">
+            <div class="tr"><span class="l">Gross (72 qty)</span><span class="v">₹5,304.00</span></div>
+            <div class="tr g"><span class="l">Scheme discount</span><span class="v">−₹24.84</span></div>
+            <div class="tr"><span class="l">Taxable</span><span class="v">₹5,279.16</span></div>
+            <div class="tr"><span class="l">GST (CGST ₹146.02 + SGST ₹146.02)</span><span class="v">₹292.04</span></div>
+            <div class="tr"><span class="l">Round off</span><span class="v">−₹0.20</span></div>
+            <div class="grand"><span class="l">Order total</span><span class="v">₹5,571.00</span></div>
+            <div class="muted" style="font-size:12px">Estimate: the office re-checks offers when it bills.</div>
+          </div>
+        </div>
+        <div class="footer"><div class="btn p">Save order</div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="how">
+        <h3>How it works</h3>
+        <ul>
+          <li>Each line shows its offer and the money it took off. <span class="new">Free goods are their own lines</span> (green, FREE, ₹0.00), under the line that earned them.</li>
+          <li>Free lines can’t be edited or deleted; they follow the quantities. <b>Apply offers</b> off takes every offer off this order (the desktop’s Promotions box).</li>
+          <li>Totals gain a <b>Scheme discount</b> row (and an <b>Order offer</b> row when one applies). Delivery date, priority and remarks stay as they are.</li>
+          <li>Sync sends the offer lines to VK Nex with the order.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ======================= 4 · Offer details ======================= -->
+    <div>
+      <div class="step"><div class="n">4</div><div class="t">Offer details</div><div class="h">tap a badge · Close → back</div></div>
+      <div class="phone"><div class="screen">
+        <div class="status"><span>10:20</span><span class="cam"></span><span class="sig"><i class="ic">&#xf208;</i><i class="ic">&#xf631;</i><i class="ic">&#xf187;</i></span></div>
+        <div class="hdr"><div class="back"><i class="ic">&#xf229;</i></div><div class="grow"><div class="tt">Add items</div><div class="st">Sri Murugan Stores · Acme Foods</div></div><div class="act"><i class="ic">&#xf514;</i></div></div>
+        <div class="body">
+          <div class="searchRow"><div class="search"><i class="ic">&#xf55f;</i>Search code, name or Tamil name</div><div class="filt"><i class="ic">&#xf48b;</i></div></div>
+          <div class="item on"><div class="main"><div class="nm">Glucose Biscuit 75 g</div><div class="rl">₹9.00 / PCS · GST 18%</div></div><div class="qtyb"><div class="qty">24</div></div></div>
+        </div>
+        <div class="dim"></div>
+        <div class="sheet2">
+          <div class="handle"></div>
+          <div class="row"><i class="ic" style="font-size:22px;color:var(--primary);margin-right:8px">&#xf338;</i><div class="sp"><div style="font-size:18px;font-weight:700">Buy 10 get 1 free</div><div class="muted">BISCUIT10+1 · Acme Foods</div></div></div>
+          <div class="give">
+            <i class="ic">&#xf337;</i>
+            <div><div class="g1">Every 10 PCS of Glucose Biscuit 75 g → 1 PCS Glucose Biscuit 75 g free</div><div class="g2">Again for every 10 more · no limit per order</div></div>
+          </div>
+          <div class="onord"><span class="okt">On this order: 24 PCS → 2 PCS free</span><br><span class="warnt">6 more PCS → 3 free</span></div>
+          <div style="margin-top:8px">
+            <div class="kv"><span class="k">Valid</span><span class="v">01/11/2026 – 30/11/2026, every day</span></div>
+            <div class="kv"><span class="k">Counted in</span><span class="v">PCS only (not CASE)</span></div>
+            <div class="kv"><span class="k">Shops</span><span class="v">All shops</span></div>
+            <div class="kv"><span class="k">Branches</span><span class="v">All branches of Acme Foods</span></div>
+            <div class="kv"><span class="k">With others</span><span class="v">Alone on the line (other offers skip it)</span></div>
+            <div class="kv"><span class="k">Own discount</span><span class="v">The offer stops if you give one</span></div>
+          </div>
+          <div class="muted" style="margin-top:10px;font-size:12px">From the last Sync, Wed 19 Nov. The office may change an offer; it checks again when it bills.</div>
+          <div class="btn p" style="margin-top:12px;flex:0 0 52px">Close</div>
+        </div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="how">
+        <h3>How it works</h3>
+        <ul>
+          <li><span class="new">New sheet</span>: everything VK Nex says about the offer, in plain words: what it gives, dates and days, unit, shops, branches, how it mixes with other offers.</li>
+          <li>Slab offers list every band, with the current one marked.</li>
+          <li>Read from the phone’s own copy, so it works with no signal.</li>
+          <li>An offer that ended since the last Sync no longer shows or applies (the phone checks the order date).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="qs">
+    <h3>To decide before building (full wording and recommendations in the plan)</h3>
+    <ol>
+      <li><b>Billing a phone order:</b> keep the offer the phone gave, or check it again on the bill date (today’s desktop way)? <i>Recommended: check again.</i></li>
+      <li><b>Offer stopped after the last Sync:</b> should VK Nex refuse such an order? <i>Recommended: no, accept it; the bill checks.</i></li>
+      <li><b>Shop-group and city offers:</b> the desktop bill can’t match them today. Fix the desktop too, so both agree? <i>Recommended: yes.</i></li>
+      <li><b>Loyalty points:</b> earned only on a posted bill. Show the shop’s points and “earns points” on the phone later, but no points on orders? <i>Recommended: yes.</i></li>
+      <li><b>Salesman control:</b> offers on/off per line and per order only; no typing over offer figures or free qty? <i>Recommended: yes.</i></li>
+      <li><b>Phone bills and returns:</b> same offers on phone bills (later phase); none on returns? <i>Recommended: yes.</i></li>
+      <li><b>Cash-only offers:</b> phone orders are always credit, so cash-only offers never show. OK? <i>Recommended: yes.</i></li>
+      <li><b>Free goods short in stock:</b> keep the free line as a back-order (warn, don’t block), like paid lines? <i>Recommended: yes.</i></li>
+    </ol>
+  </div>
+  <div class="foot">Sample figures add up: GST on top (18% biscuits, 5% the rest), scheme discount before GST, CGST + SGST, rounded to the rupee · offer rules from VK Nex sales.promotion_scheme (+ _branch, _party, _item, _slab) and the Qt promotion engine · created 19/11/2026</div>
+</div>
+</body>
+</html>

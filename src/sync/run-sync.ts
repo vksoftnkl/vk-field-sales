@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 
-import { getMeta } from '@/db/meta';
+import { getMeta, setMeta } from '@/db/meta';
 import { companiesQuery, ensureCurrentCompany } from '@/features/company/company';
 import { todayISO } from '@/lib/money';
 
@@ -8,12 +8,14 @@ import { getServerCredentials } from './credentials';
 import { apiBaseUrl, type ServerAddress } from './server-address';
 import { branchesFromOptions, downloadBranches } from './download-branches';
 import { downloadCustomers } from './download-customers';
+import { downloadSchemes } from './download-schemes';
 import { downloadItems } from './download-items';
 import { downloadLedgers } from './download-ledgers';
 import { downloadReceiptData } from './download-receipt-data';
 import {
   getDeviceUid,
   getServerAddress,
+  applyReceiptStatus,
   ledgerCustomerIds,
   markCustomerRefused,
   markCustomerSynced,
@@ -21,6 +23,7 @@ import {
   markOrderRefused,
   markOrderSynced,
   markReceiptRefused,
+  markReceiptTried,
   markReceiptSynced,
   markVisitRefused,
   markVisitSynced,
@@ -30,11 +33,13 @@ import {
   pendingReceipts,
   pendingVisits,
   saveBranches,
+  saveSchemes,
   saveCustomerOptions,
   saveDownloadedCustomers,
   saveItemList,
   saveItemOptions,
   saveLedgers,
+  saveMe,
   saveReceiptData,
   type SavedDownload,
 } from './sync-store';
@@ -45,7 +50,21 @@ import { uploadReceipts, type ReceiptOutcome } from './upload-receipts';
 import { uploadVisits, type VisitOutcome } from './upload-visits';
 import { createVkNexClient, type ApiError, type CustomerOptions, type ServerCredentials, type SignedInUser } from './vk-nex-api';
 
-export type SyncStep = 'signIn' | 'masters' | 'upload' | 'update' | 'orders' | 'visits' | 'receipts' | 'download' | 'items' | 'branches' | 'receiptData' | 'ledger';
+export type SyncStep =
+  | 'signIn'
+  | 'masters'
+  | 'upload'
+  | 'update'
+  | 'orders'
+  | 'visits'
+  | 'receipts'
+  | 'download'
+  | 'items'
+  | 'branches'
+  | 'schemes'
+  | 'receiptData'
+  | 'receiptStatus'
+  | 'ledger';
 
 export interface SyncReport {
   outcomes: UploadOutcome[];
@@ -75,10 +94,17 @@ export interface SyncReport {
   branches?: { companies: number; branches: number };
   /** Why they did not come; the phone keeps the ones it had. */
   branchesStoppedBy?: unknown;
+  /** Offers (promotion schemes) brought for orders (companies read, schemes). */
+  schemes?: { companies: number; schemes: number };
+  /** Why they did not come; the phone keeps the ones it had. */
+  schemesStoppedBy?: unknown;
   /** Tenders and open bills brought for receipts (companies read, bills). */
   receiptData?: { companies: number; bills: number };
   /** Why they did not come; the phone keeps what it had. */
   receiptDataStoppedBy?: unknown;
+  /** This phone's receipts changed in VK Nex (cancelled in the office, PDC cleared …). */
+  receiptStatus?: { changed: number };
+  receiptStatusStoppedBy?: unknown;
   /** VK Nex's customers brought to the phone; absent when the run stopped before that step. */
   downloaded?: SavedDownload & { skipped: number };
   /** Ledgers brought (this and last financial year): customers read and skipped. */
@@ -175,6 +201,22 @@ async function bringItems(
   return { companies: got.companyIds.length, items: got.items.length, branches: options.branches };
 }
 
+/**
+ * Every company's offers (GET /mobile/schemes/active), each company's set replaced as a whole.
+ * All companies are read first: a failure keeps the offers the phone had.
+ */
+async function bringSchemes(
+  api: ReturnType<typeof clientFor>,
+  companyIds: readonly string[],
+  onStep: (step: SyncStep, done?: number, total?: number) => void,
+): Promise<NonNullable<SyncReport['schemes']>> {
+  onStep('schemes', 0, companyIds.length);
+  const syncedOn = new Date().toISOString();
+  const sets = await downloadSchemes(companyIds, (companyId) => api.activeSchemes(companyId), syncedOn, (done, total) => onStep('schemes', done, total));
+  saveSchemes(sets, syncedOn);
+  return { companies: sets.length, schemes: sets.reduce((n, c) => n + c.schemes.length, 0) };
+}
+
 let pullingBranches: Promise<number> | null = null;
 
 /**
@@ -197,20 +239,35 @@ export function refreshBranches(): Promise<number> {
   return pullingBranches;
 }
 
-let refreshing: Promise<NonNullable<SyncReport['items']>> | null = null;
+let refreshing: Promise<NonNullable<SyncReport['items']> & { schemesStoppedBy?: unknown }> | null = null;
 
 /**
  * Refresh stock and prices (Add items): signs in and brings the items again, nothing else. Throws
  * as Sync's steps do (NO_SERVER_ADDRESS, NetworkError, ApiError); the phone keeps its old list then.
  */
-export function refreshItems(onStep: (step: SyncStep, done?: number, total?: number) => void = () => {}): Promise<NonNullable<SyncReport['items']>> {
+export function refreshItems(
+  onStep: (step: SyncStep, done?: number, total?: number) => void = () => {},
+): Promise<NonNullable<SyncReport['items']> & { schemesStoppedBy?: unknown }> {
   refreshing ??= (async () => {
     const address = getServerAddress();
     if (!address) throw new Error('NO_SERVER_ADDRESS');
     const api = clientFor(address);
     onStep('signIn');
     await api.login();
-    return bringItems(api, onStep);
+    const items = await bringItems(api, onStep);
+    // The offers come with the prices; the items stay refreshed if they fail.
+    try {
+      await bringSchemes(
+        api,
+        companiesQuery()
+          .all()
+          .map((c) => c.id),
+        onStep,
+      );
+      return items;
+    } catch (e) {
+      return { ...items, schemesStoppedBy: e };
+    }
   })().finally(() => {
     refreshing = null;
   });
@@ -239,6 +296,13 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
     try {
       onStep('signIn');
       await api.login();
+      // The login's employee (the receipts' collector) and rights. An older VK Nex has no
+      // /mobile/me: the phone keeps what it had and assumes the rights.
+      try {
+        saveMe(await api.me());
+      } catch {
+        // not fatal
+      }
       step = 'masters';
       onStep('masters');
       options = await api.customerOptions();
@@ -306,6 +370,7 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
         create: (p) => api.createReceipt(p),
         markSynced: markReceiptSynced,
         markRefused: markReceiptRefused,
+        markTried: markReceiptTried,
         onProgress: (done, total) => onStep('receipts', done, total),
       });
       sent = { ...sent, receipts: rcts.outcomes, receiptsRefusedBy: rcts.refusedBy, receiptsRouteMissing: !!rcts.routeMissing };
@@ -362,6 +427,17 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
       }
     }
 
+    // Offers for every company, after the items they name. A failure keeps the phone's old offers
+    // and goes on (an older VK Nex has no offers route yet).
+    try {
+      const ids = companiesQuery()
+        .all()
+        .map((c) => c.id);
+      sent = { ...sent, schemes: await bringSchemes(api, ids, onStep) };
+    } catch (e) {
+      sent = { ...sent, schemesStoppedBy: e };
+    }
+
     // Tenders and open bills for the Receipt screens, after the receipts went (VK Nex's figures
     // then include them). A failure keeps the phone's old ones and goes on to the ledgers.
     try {
@@ -381,6 +457,38 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
       sent = { ...sent, receiptData: { companies: got.companyIds.length, bills: got.bills.length } };
     } catch (e) {
       sent = { ...sent, receiptDataStoppedBy: e };
+    }
+
+    // This phone's receipts as VK Nex has them now: cancelled in the office, a post-dated cheque
+    // cleared or bounced. Only changes since the last read (VK Nex's own clock); not fatal.
+    try {
+      onStep('receiptStatus', 0, 0);
+      const since = getMeta('receiptStatusSince');
+      // The next read starts from the EARLIEST time VK Nex gave in this run (a change to one
+      // company while another was being read is not skipped), and not at all if a company was
+      // left unfinished at the page cap.
+      let asOf: string | null = null;
+      let complete = true;
+      let changed = 0;
+      for (const companyId of companiesQuery()
+        .all()
+        .map((c) => c.id)) {
+        let done = false;
+        for (let page = 1; page <= 50; page++) {
+          const p = await api.receiptStatus(companyId, since, page);
+          changed += applyReceiptStatus(p.items);
+          if (p.asOf && (!asOf || p.asOf < asOf)) asOf = p.asOf;
+          if (!p.hasMore || p.items.length === 0) {
+            done = true;
+            break;
+          }
+        }
+        if (!done) complete = false;
+      }
+      if (asOf && complete) setMeta('receiptStatusSince', asOf);
+      sent = { ...sent, receiptStatus: { changed } };
+    } catch (e) {
+      sent = { ...sent, receiptStatusStoppedBy: e };
     }
 
     try {

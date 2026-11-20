@@ -71,3 +71,58 @@ export function groupUnits<T extends UnitRow>(rows: readonly T[]): ItemUnits<T>[
     return { itemId, units, rowUnit, priced: priced.length > 0 };
   });
 }
+
+/**
+ * A unit's size: VK Nex's iuc_to_base_factor (quantity in this unit × factor = quantity in the
+ * item's base unit). Factors come as text ('12.000000') or numbers.
+ */
+export interface UnitFactor {
+  unitName: string;
+  factor: string | number | null;
+}
+
+const factorOf = (u: UnitFactor): number => {
+  const f = Number(u.factor);
+  return Number.isFinite(f) && f > 0 ? f : 0;
+};
+
+/**
+ * The item's base unit among its units: the one with factor 1 (VK Nex's base unit). When the phone
+ * has no such unit, the smallest one stands in for it, so "1 Box = 12 Pcs" still reads right.
+ */
+export function baseUnitOf<T extends UnitFactor>(units: readonly T[]): T | undefined {
+  const sized = units.filter((u) => factorOf(u) > 0);
+  return sized.find((u) => factorOf(u) === 1) ?? [...sized].sort((a, b) => factorOf(a) - factorOf(b))[0];
+}
+
+/**
+ * How many base units one of `u` holds ("1 Box = 12 Pcs" → { n: 12, base: 'Pcs' }), or null for
+ * the base unit itself, a unit of the same size, or missing factors.
+ */
+export function unitInBase<T extends UnitFactor>(u: T, units: readonly T[]): { n: number; base: string } | null {
+  const base = baseUnitOf(units);
+  const f = factorOf(u);
+  const bf = base ? factorOf(base) : 0;
+  if (!base || !f || !bf || !base.unitName.trim()) return null;
+  const n = Number((f / bf).toFixed(3));
+  return n === 1 ? null : { n, base: base.unitName };
+}
+
+/** A quantity in one unit, in the base unit (stock 4 Box → 48 Pcs). Null as for unitInBase. */
+export function qtyInBase<T extends UnitFactor>(qty: number, u: T, units: readonly T[]): { qty: number; base: string } | null {
+  const conv = unitInBase(u, units);
+  return conv ? { qty: Number((qty * conv.n).toFixed(3)), base: conv.base } : null;
+}
+
+/** The units a salesman may order in: the priced ones (an unpriced unit has no rate today). */
+export const pickableUnits = <T extends UnitRow>(it: ItemUnits<T>): T[] => it.units.filter((u) => u.appPriced);
+
+/**
+ * The unit an Add items row shows: the order line's when the item is on the order, else the one
+ * picked on the row (while it is still priced), else the item's row unit.
+ */
+export function shownUnit<T extends UnitRow>(it: ItemUnits<T>, lineIucId: string | undefined, pickedIucId: string | undefined): T {
+  const onLine = lineIucId ? it.units.find((u) => u.iucId === lineIucId) : undefined;
+  const picked = pickedIucId ? it.units.find((u) => u.iucId === pickedIucId && u.appPriced) : undefined;
+  return onLine ?? picked ?? it.rowUnit;
+}

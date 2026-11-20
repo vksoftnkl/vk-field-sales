@@ -15,10 +15,30 @@ import { roundToRupee, taxRate } from '../sales/sale-math.ts';
  *  - order total = Σ line totals + freight + cooly, rounded to the rupee (round off kept)
  * Freight and cooly go on top, untaxed, as the review screen shows them. Money in whole paise.
  * Totals are an estimate: the office confirms prices and applies schemes.
+ *
+ * Offers (promotion schemes): a line may carry a scheme outcome (`scheme`). Then, as the desktop's
+ * Sale Bill does (SaleBillEntry::applyLineDiscounts), the money is worked ex-tax:
+ *   ex-tax value after the salesman's own discount
+ *   − scheme (the % of it, else ₹ per unit × qty, else the ₹ amount)
+ *   − bill scheme % of what is left
+ *   = taxable, and GST is taken on that remainder, on top (also for an inclusive item).
+ * A line with no outcome (or one that gives nothing) is worked exactly as before.
  */
 
 export type DiscMode = 'perc' | 'perUnit' | 'total';
 export const DISC_MODES: readonly DiscMode[] = ['perc', 'perUnit', 'total'];
+
+/** What the scheme engine decided for one line (rates as the desktop keeps them, rupees). */
+export interface SoSchemeOutcome {
+  /** % of the value after the salesman's discount. */
+  schPerc: number;
+  /** ₹ per unit. */
+  schPerQty: number;
+  /** ₹ on the line (used when neither rate is set). */
+  schAmt: number;
+  /** % of what is left after the scheme. */
+  billSchPerc: number;
+}
 
 export interface SoLineInput {
   qty: string;
@@ -33,6 +53,8 @@ export interface SoLineInput {
   /** Per unit; '0' when the customer or the item doesn't take them. */
   loadPerUnit: string;
   freightPerUnit: string;
+  /** The scheme engine's outcome for this line; absent = no offer. */
+  scheme?: SoSchemeOutcome | null;
 }
 
 export interface SoLineAmounts {
@@ -41,6 +63,10 @@ export interface SoLineAmounts {
   discPaise: number;
   /** gross − discount, as priced. */
   valuePaise: number;
+  /** The scheme's rupees off the ex-tax value after the salesman's discount; 0 with no offer. */
+  schemePaise: number;
+  /** The bill-scheme % taken off what the scheme left; 0 with no offer. */
+  billSchemePaise: number;
   taxablePaise: number;
   taxPaise: number;
   cgstPaise: number;
@@ -63,15 +89,32 @@ export function discountPaise(mode: DiscMode, disc: string, grossPaise: number, 
   return toPaise(disc) ?? 0;
 }
 
+/** Whether an outcome gives any rupees; one that gives none leaves the line worked as without an offer. */
+const hasSchemeMoney = (s: SoSchemeOutcome): boolean => s.schPerc > 0 || s.schPerQty > 0 || s.schAmt !== 0 || s.billSchPerc !== 0;
+
 export function soLineAmounts(l: SoLineInput, interState = false): SoLineAmounts {
   const qty = num(l.qty);
   const grossPaise = Math.round(qty * (toPaise(l.price) ?? 0));
   const discPaise = discountPaise(l.discMode, l.disc, grossPaise, qty);
   const valuePaise = grossPaise - discPaise;
   const rate = taxRate(l.taxPerc);
-  const taxablePaise = l.inclTax && rate > 0 ? Math.round((valuePaise * 100) / (100 + rate)) : valuePaise;
-  // An inclusive rate stays exactly what was typed; on top, GST is taxable × rate.
-  const taxPaise = l.inclTax ? valuePaise - taxablePaise : Math.round((taxablePaise * rate) / 100);
+  const ownTaxablePaise = l.inclTax && rate > 0 ? Math.round((valuePaise * 100) / (100 + rate)) : valuePaise;
+  const sch = l.scheme && hasSchemeMoney(l.scheme) ? l.scheme : null;
+  let schemePaise = 0;
+  let billSchemePaise = 0;
+  let taxablePaise = ownTaxablePaise;
+  let taxPaise: number;
+  if (sch) {
+    // The desktop cascade, ex-tax: scheme (perc, else ₹/unit × qty, else ₹), then bill scheme % of the rest.
+    schemePaise = sch.schPerc > 0 ? Math.round((ownTaxablePaise * sch.schPerc) / 100) : sch.schPerQty > 0 ? Math.round(qty * sch.schPerQty * 100) : Math.round(sch.schAmt * 100);
+    billSchemePaise = Math.round(((ownTaxablePaise - schemePaise) * sch.billSchPerc) / 100);
+    taxablePaise = ownTaxablePaise - schemePaise - billSchemePaise;
+    // GST on the remainder, on top (also for an inclusive item: its tax is no longer inside a typed figure).
+    taxPaise = Math.round((taxablePaise * rate) / 100);
+  } else {
+    // An inclusive rate stays exactly what was typed; on top, GST is taxable × rate.
+    taxPaise = l.inclTax ? valuePaise - taxablePaise : Math.round((taxablePaise * rate) / 100);
+  }
   const cgstPaise = interState ? 0 : Math.round(taxPaise / 2);
   const sgstPaise = interState ? 0 : taxPaise - cgstPaise;
   const lineTotalPaise = taxablePaise + taxPaise;
@@ -82,6 +125,8 @@ export function soLineAmounts(l: SoLineInput, interState = false): SoLineAmounts
     grossPaise,
     discPaise,
     valuePaise,
+    schemePaise,
+    billSchemePaise,
     taxablePaise,
     taxPaise,
     cgstPaise,
@@ -100,6 +145,10 @@ export interface SoTotals {
   qty: number;
   grossPaise: number;
   discPaise: number;
+  /** Σ scheme rupees (the offers on the lines). */
+  schemeDiscPaise: number;
+  /** Σ bill-scheme rupees (the whole-order offers). */
+  billSchemeDiscPaise: number;
   taxablePaise: number;
   cgstPaise: number;
   sgstPaise: number;
@@ -121,6 +170,8 @@ export function soTotals(lines: readonly SoLineInput[], interState = false): SoT
     qty: 0,
     grossPaise: 0,
     discPaise: 0,
+    schemeDiscPaise: 0,
+    billSchemeDiscPaise: 0,
     taxablePaise: 0,
     cgstPaise: 0,
     sgstPaise: 0,
@@ -139,6 +190,8 @@ export function soTotals(lines: readonly SoLineInput[], interState = false): SoT
     t.qty += a.qty;
     t.grossPaise += a.grossPaise;
     t.discPaise += a.discPaise;
+    t.schemeDiscPaise += a.schemePaise;
+    t.billSchemeDiscPaise += a.billSchemePaise;
     t.taxablePaise += a.taxablePaise;
     t.cgstPaise += a.cgstPaise;
     t.sgstPaise += a.sgstPaise;

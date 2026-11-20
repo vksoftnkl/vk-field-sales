@@ -9,9 +9,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDateNames } from '@/components/use-date-names';
 import { getMeta } from '@/db/meta';
 import { addressLine } from '@/features/customers/customer-list';
-import { companiesQuery, ensureCurrentCompany } from '@/features/company/company';
+import { ensureCurrentCompany } from '@/features/company/company';
 import { customerDetailQuery } from '@/features/customers/queries';
 import { currentBalance, recentBills, type LedgerRow } from '@/features/ledger/ledger';
+import { openReceipt } from '@/features/receipts/open-receipt';
 import { ledgerRowsQuery, ledgerYearsQuery } from '@/features/ledger/queries';
 import { formatDay } from '@/lib/date-range';
 import { formatAmount } from '@/lib/money';
@@ -48,12 +49,7 @@ export default function CustomerDetailScreen() {
    */
   const startVisit = () => router.push({ pathname: '/order/visit/[customerId]', params: { customerId: id } });
   /** Receipt: VK Nex takes a receipt for one company, so with several the salesman picks one first. */
-  const startReceipt = () => {
-    const list = companiesQuery().all();
-    if (list.length === 0) return Alert.alert(t('order.noCompaniesTitle'), t('order.noCompaniesText'));
-    if (list.length === 1) return router.push({ pathname: '/receipt/[customerId]', params: { customerId: id, companyId: list[0]!.id } });
-    router.push({ pathname: '/receipt/company/[customerId]', params: { customerId: id } });
-  };
+  const startReceipt = () => openReceipt(t, id);
   /** Sales: bills are made for the company picked on the phone (Choose company), as in the Qt app. */
   const startSale = () => {
     ensureCurrentCompany();
@@ -122,6 +118,7 @@ export default function CustomerDetailScreen() {
     { key: 'order', label: t('customerDetail.order'), icon: 'clipboard-outline', onPress: startVisit },
     { key: 'sales', label: t('customerDetail.sales'), icon: 'cart-outline', primary: true, onPress: startSale },
     { key: 'checkIn', label: t('customerDetail.checkIn'), icon: 'location-outline', onPress: startVisit },
+    // Shown to every login: one without the Post right on Receipt (menu 99) is warned on Dues.
     { key: 'receipt', label: t('customerDetail.receipt'), icon: 'receipt-outline', onPress: startReceipt },
     { key: 'return', label: t('customerDetail.return'), icon: 'return-up-back-outline', onPress: startReturn },
     {
@@ -130,6 +127,8 @@ export default function CustomerDetailScreen() {
       icon: 'document-text-outline',
       onPress: () => router.push({ pathname: '/customer/ledger/[id]', params: { id } }),
     },
+    // This shop's receipts on this phone: waiting, sent back, posted (canvas 5b, step 8).
+    { key: 'receipts', label: t('customerDetail.receiptList'), icon: 'list-outline', onPress: () => router.push({ pathname: '/receipts', params: { customerId: id } }) },
   ];
 
   return (

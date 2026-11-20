@@ -102,6 +102,12 @@ test('payment lines VK Nex would refuse', () => {
   assert.equal(tenderProblem({ ...cheque, refNo: '004417' }), 'bankName');
   assert.equal(tenderProblem({ ...cheque, refNo: '004417', bankName: 'IOB' }), 'chequeDate');
   assert.equal(tenderProblem({ ...cheque, refNo: '004417', bankName: 'IOB', instrumentDate: '2026-11-20' }), null);
+  // IFSC is optional, but a wrong one would have VK Nex send the whole receipt back.
+  const full = { ...cheque, refNo: '004417', bankName: 'IOB', instrumentDate: '2026-11-20' };
+  assert.equal(tenderProblem({ ...full, chequeIfsc: 'IOBA0001234' }), null);
+  assert.equal(tenderProblem({ ...full, chequeIfsc: 'ioba0001234' }), null);
+  assert.equal(tenderProblem({ ...full, chequeIfsc: 'IOBA1001234' }), 'ifsc');
+  assert.equal(tenderProblem({ ...full, chequeIfsc: 'IOB' }), 'ifsc');
   const card = { ...base, typeId: TENDER_TYPE.CARD, needsRef: true };
   assert.equal(tenderProblem({ ...card, refNo: '12' }), 'cardLast4');
   assert.equal(tenderProblem({ ...card, refNo: '1234' }), null);

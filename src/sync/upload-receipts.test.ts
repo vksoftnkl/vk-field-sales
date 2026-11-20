@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { downloadReceiptData, rupeesToPaise, toLocalOpenBills, toLocalTenders } from './download-receipt-data.ts';
-import { RECEIPT_CUSTOMER_NOT_SENT, toReceiptPayload, uploadReceipts, type PendingReceipt } from './upload-receipts.ts';
+import { RECEIPT_CUSTOMER_NOT_SENT, RECEIPT_SEND_TRIED, toReceiptPayload, uploadReceipts, type PendingReceipt } from './upload-receipts.ts';
 import { ApiError, NetworkError, type CreatedReceipt } from './vk-nex-api.ts';
 
 const receipt = (id: string, more: Partial<PendingReceipt> = {}): PendingReceipt => ({
@@ -190,4 +190,80 @@ test('an older VK Nex without the receipts route: every receipt waits, none is m
   const one = await uploadReceipts([receipt('c')], { create: async () => Promise.reject(party), markSynced: () => {}, markRefused: (id) => refused.push(id) });
   assert.equal(one.routeMissing, undefined);
   assert.deepEqual(refused, ['c']);
+});
+
+test('a desktop-rule receipt sends its plan: bills, credits, on account, refs and cheque details', () => {
+  const base = receipt('r9');
+  const p = toReceiptPayload({
+    ...base,
+    header: { ...base.header, avhBranchId: 'br1', avhDocRefno: '1187', avhDocDate: '2026-11-17', appOnAccount: '0.00' } as PendingReceipt['header'],
+    lines: [{ ...base.lines[0]!, tdTenderTypeId: 5, appChequeBranch: 'Tirunelveli Jn', appChequeIfsc: null, appChequeDrawer: '' } as PendingReceipt['lines'][number]],
+    allocations: [
+      { ralId: 'a1', ralReceiptId: 'r9', ralSource: 'PLANNED', ralKind: 'BILL', ralBillId: 'b1', ralBillAccYear: '2026-2027', appDocRefno: 'SB/1', ralAmount: '6700.00', ralCredit: '1750.00', ralDiscount: '0', ralRoundoff: '0' },
+      { ralId: 'a2', ralReceiptId: 'r9', ralSource: 'PLANNED', ralKind: 'BILL', ralBillId: 'b2', ralBillAccYear: '2026-2027', appDocRefno: 'SB/2', ralAmount: '12474.00', ralCredit: '0', ralDiscount: '126.00', ralRoundoff: '0.40' },
+      { ralId: 'a3', ralReceiptId: 'r9', ralSource: 'PLANNED', ralKind: 'BILL', ralBillId: 'b3', ralBillAccYear: '2026-2027', appDocRefno: 'SB/3', ralAmount: '0', ralCredit: '0', ralDiscount: '0', ralRoundoff: '0' },
+      { ralId: 'a4', ralReceiptId: 'r9', ralSource: 'PLANNED', ralKind: 'CREDIT', ralBillId: 'sr31', ralBillAccYear: '2026-2027', appDocRefno: 'SR/31', ralAmount: '1250.00', ralCredit: '0', ralDiscount: '0', ralRoundoff: '0' },
+      { ralId: 'a5', ralReceiptId: 'r9', ralSource: 'POSTED', ralKind: 'BILL', ralBillId: 'b9', ralBillAccYear: '2026-2027', appDocRefno: 'SB/9', ralAmount: '1.00', ralCredit: '0', ralDiscount: '0', ralRoundoff: '0' },
+    ],
+  });
+  assert.equal(p.avhBranchId, 'br1');
+  assert.deepEqual([p.avhDocRefno, p.avhDocDate], ['1187', '2026-11-17']);
+  assert.deepEqual(p.allocations, [
+    { billId: 'b1', billAccYear: '2026-2027', amount: 8450 },
+    { billId: 'b2', billAccYear: '2026-2027', amount: 12474, discount: 126, roundoff: 0.4 },
+  ]);
+  assert.deepEqual(p.creditsApplied, [{ billId: 'sr31', billAccYear: '2026-2027', amount: 1250 }]);
+  assert.equal(p.onAccount, 0);
+  assert.deepEqual((p.tenders as Record<string, unknown>[])[0]!.cheque, { bankBranch: 'Tirunelveli Jn' });
+});
+
+test('an older receipt (no plan) still sends only the money', () => {
+  const p = toReceiptPayload(receipt('r10'));
+  for (const k of ['allocations', 'creditsApplied', 'onAccount', 'avhBranchId', 'avhDocRefno', 'avhDocDate']) assert.equal(k in p, false, k);
+  assert.equal('cheque' in (p.tenders as Record<string, unknown>[])[0]!, false);
+});
+
+test('a bill cleared by a credit alone is sent, money and credit add up in paise', () => {
+  const base = receipt('r11');
+  const p = toReceiptPayload({
+    ...base,
+    header: { ...base.header, appOnAccount: '0.00' } as PendingReceipt['header'],
+    allocations: [
+      { ralId: 'c1', ralReceiptId: 'r11', ralSource: 'PLANNED', ralKind: 'CREDIT', ralBillId: 'sr1', ralBillAccYear: '2026-2027', appDocRefno: 'SR/1', ralAmount: '1250.00', ralCredit: '0', ralDiscount: '0', ralRoundoff: '0' },
+      { ralId: 'c2', ralReceiptId: 'r11', ralSource: 'PLANNED', ralKind: 'BILL', ralBillId: 'b1', ralBillAccYear: '2026-2027', appDocRefno: 'SB/1', ralAmount: '0.00', ralCredit: '1000.00', ralDiscount: '0', ralRoundoff: '0' },
+      { ralId: 'c3', ralReceiptId: 'r11', ralSource: 'PLANNED', ralKind: 'BILL', ralBillId: 'b2', ralBillAccYear: '2026-2027', appDocRefno: 'SB/2', ralAmount: '3000.10', ralCredit: '250.20', ralDiscount: '0', ralRoundoff: '0' },
+    ],
+  });
+  assert.deepEqual(p.allocations, [
+    { billId: 'b1', billAccYear: '2026-2027', amount: 1000 },
+    { billId: 'b2', billAccYear: '2026-2027', amount: 3250.3 },
+  ]);
+});
+
+test('everything kept on account while bills were open sends an empty plan, not the old fill', () => {
+  const base = receipt('r12');
+  const p = toReceiptPayload({ ...base, header: { ...base.header, appOnAccount: '5000.00' } as PendingReceipt['header'], allocations: [] });
+  assert.deepEqual(p.allocations, []);
+  assert.equal('creditsApplied' in p, false);
+  assert.equal(p.onAccount, 5000);
+});
+
+test('a receipt is marked as being sent: a lost answer keeps the mark, no route puts the old note back', async () => {
+  const notes = new Map<string, string | null>();
+  const deps = {
+    markSynced: (id: string) => notes.set(id, null),
+    markRefused: (id: string, e: string) => notes.set(id, e),
+    markTried: (id: string, e: string | null) => notes.set(id, e),
+  };
+  await uploadReceipts([receipt('a')], { ...deps, create: async () => Promise.reject(new NetworkError('down')) });
+  assert.equal(notes.get('a'), RECEIPT_SEND_TRIED);
+
+  const missing = new ApiError(404, 'Cannot POST /api/v1/mobile/receipts/create', [{ field: 'request', code: 'HTTP_404', message: 'Cannot POST' }]);
+  const back = receipt('b');
+  back.header.appSyncError = 'ACC_COLLECTOR_REQUIRED: needs the salesman';
+  await uploadReceipts([back], { ...deps, create: async () => Promise.reject(missing) });
+  assert.equal(notes.get('b'), 'ACC_COLLECTOR_REQUIRED: needs the salesman');
+
+  await uploadReceipts([receipt('c')], { ...deps, create: async () => created() });
+  assert.equal(notes.get('c'), null);
 });

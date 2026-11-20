@@ -16,6 +16,12 @@ export interface PendingOrder {
   customerPending: boolean;
   /** The customer's price level, for an order saved without one. */
   customerPriceLevelId: number | null;
+  /**
+   * iuc_id → iuc_to_base_factor (from the units Sync keeps) for lines saved without a factor (before
+   * migration 0015). VK Nex stores a missing factor as 0, which its challans read as 1: a Box line
+   * would be delivered as one base unit.
+   */
+  unitFactors?: Readonly<Record<string, string>>;
 }
 
 /** VK Nex's so_remarks is varchar(500). */
@@ -81,6 +87,9 @@ export function toOrderPayload(o: PendingOrder): Record<string, unknown> {
       soIgstAmt: h.soIgstAmt,
       soTaxAmt: h.soTaxAmt,
       soRoundOff: h.soRoundOff,
+      // Offers (migration 0018): null on older orders, so their keys stay out as before.
+      soSchDisc: h.soSchDisc,
+      soBillSchDisc: h.soBillSchDisc,
     }),
     soHasLoad: h.soHasLoad,
     soHasFreight: h.soHasFreight,
@@ -105,7 +114,7 @@ export function toOrderPayload(o: PendingOrder): Record<string, unknown> {
           soiLoadQty: l.soiLoadQty,
           soiLoadAmt: l.soiLoadAmt,
           soiNetAmt: l.soiNetAmt,
-          soiToBaseFactor: l.soiToBaseFactor,
+          soiToBaseFactor: l.soiToBaseFactor ?? o.unitFactors?.[l.soiItemUnitId] ?? null,
           soiHsnCode: l.soiHsnCode,
           soiTaxId: l.soiTaxId,
           soiIsTaxIncl: l.soiIsTaxIncl,
@@ -119,6 +128,17 @@ export function toOrderPayload(o: PendingOrder): Record<string, unknown> {
           soiSgstAmt: l.soiSgstAmt,
           soiIgstPerc: l.soiIgstPerc,
           soiIgstAmt: l.soiIgstAmt,
+          // Offers: a free line (type SCHEME, rate 0) and a paid line's scheme money. Null on lines
+          // with no offer and on older orders, so the keys stay out; soiIsFree only when true.
+          soiIsFree: l.soiIsFree ? true : null,
+          soiFreeType: l.soiFreeType,
+          soiSchemeId: l.soiSchemeId,
+          soiSchemeName: l.soiSchemeName,
+          soiSchDiscPerc: l.soiSchDiscPerc,
+          soiSchDiscQty: l.soiSchDiscQty,
+          soiSchDiscAmt: l.soiSchDiscAmt,
+          soiBillSchPerc: l.soiBillSchPerc,
+          soiBillSchAmt: l.soiBillSchAmt,
         }),
         soiIsPromo: l.soiIsPromo,
       })),
@@ -137,6 +157,8 @@ export interface OrderOutcome {
   orderStatus?: string;
   /** VK Nex deleted the order since it was first sent. */
   deletedOnServer?: boolean;
+  /** VK Nex took the order but could not confirm it, so it is a draft for the office: its code and words. */
+  keptDraft?: string;
   error?: string;
 }
 
@@ -197,6 +219,7 @@ export async function uploadOrders(pending: readonly PendingOrder[], deps: Order
         orderRefno: created.soOrderRefno,
         orderStatus: created.soStatus,
         deletedOnServer: created.soIsDeleted,
+        ...(created.confirmRefused ? { keptDraft: `${created.confirmRefused.code}: ${created.confirmRefused.message}` } : {}),
       });
     } catch (e) {
       if (isDeviceRefusal(e)) return { outcomes, refusedBy: e };

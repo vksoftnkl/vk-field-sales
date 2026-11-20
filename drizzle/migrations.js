@@ -19,6 +19,8 @@ import m0014 from './0014_remove_test_salesmen.sql';
 import m0015 from './0015_sale_order_workflow.sql';
 import m0016 from './0016_branches.sql';
 import m0017 from './0017_branch_default.sql';
+import m0018 from './0018_promotion_schemes.sql';
+import m0019 from './0019_receipt_workflow.sql';
 
   export default {
     journal,
@@ -40,7 +42,9 @@ m0013,
 m0014,
 m0015,
 m0016,
-m0017
+m0017,
+m0018,
+m0019
     }
   }
   

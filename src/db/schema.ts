@@ -65,6 +65,8 @@ export const beats = sqliteTable('beats', {
   name: text('name').notNull(),
   /** Route order set in VK Nex; lists sort by it before the name. */
   position: integer('position').notNull().default(0),
+  /** VK Nex area_master.arm_city_id: offers for a city reach the shops of its beats (migration 0018). */
+  cityId: text('city_id'),
 });
 
 /** Customer types (retail, wholesale, …), like the Qt app's customer_types. */
@@ -331,6 +333,9 @@ export const itemMaster = sqliteTable(
     appTaxPerc: text('app_tax_perc'),
     /** VK Nex's tax_rate_master id of that tax. */
     appTaxId: text('app_tax_id'),
+    /** Offers can name an item's category or section (migration 0018). */
+    itemCategoryId: text('item_category_id'),
+    itemSectionId: text('item_section_id'),
   },
   (t) => [index('ix_item_group').on(t.itemGroupId), index('ix_item_brand').on(t.itemBrandId)],
 );
@@ -347,6 +352,8 @@ export const itemUnits = sqliteTable(
     appCompanyId: text('app_company_id').notNull(),
     iucId: text('iuc_id').notNull(),
     iucItemId: text('iuc_item_id').notNull(),
+    /** VK Nex's unit_master id (an offer for "10 PCS" names the unit, not this row; migration 0018). */
+    iucUnitId: text('iuc_unit_id'),
     appUnitName: text('app_unit_name').notNull(),
     iucToBaseFactor: numeric('iuc_to_base_factor').notNull(),
     iucIsDefaultUnit: integer('iuc_is_default_unit', { mode: 'boolean' }).notNull().default(false),
@@ -438,6 +445,9 @@ export const saleOrder = sqliteTable(
     soIgstAmt: numeric('so_igst_amt'),
     soTaxAmt: numeric('so_tax_amt'),
     soRoundOff: numeric('so_round_off'),
+    /** Offers on the order (migration 0018): item-level scheme money and the whole-order offer. Null on older orders. */
+    soSchDisc: numeric('so_sch_disc'),
+    soBillSchDisc: numeric('so_bill_sch_disc'),
     /** Phone only: the visit check-in (time and GPS) the order was taken at. Not sent yet. */
     appCheckinAt: text('app_checkin_at'),
     appCheckinLat: real('app_checkin_lat'),
@@ -500,6 +510,20 @@ export const saleOrderItem = sqliteTable(
     soiSgstAmt: numeric('soi_sgst_amt'),
     soiIgstPerc: numeric('soi_igst_perc'),
     soiIgstAmt: numeric('soi_igst_amt'),
+    /**
+     * Offers (migration 0018), as VK Nex's sale_order_item: a free line is its own line
+     * (soi_is_free, type 'SCHEME', rate 0) after the line that earned it; a paid line carries the
+     * first scheme's id, the names joined by " + ", and the scheme money as a rate or an amount.
+     */
+    soiIsFree: integer('soi_is_free', { mode: 'boolean' }).notNull().default(false),
+    soiFreeType: text('soi_free_type'),
+    soiSchemeId: text('soi_scheme_id'),
+    soiSchemeName: text('soi_scheme_name'),
+    soiSchDiscPerc: numeric('soi_sch_disc_perc'),
+    soiSchDiscQty: numeric('soi_sch_disc_qty'),
+    soiSchDiscAmt: numeric('soi_sch_disc_amt'),
+    soiBillSchPerc: numeric('soi_bill_sch_perc'),
+    soiBillSchAmt: numeric('soi_bill_sch_amt'),
     /** Phone only: names as ordered, so My orders reads the same after a Sync changes the items. */
     appItemName: text('app_item_name'),
     appItemNameTa: text('app_item_name_ta'),
@@ -753,9 +777,24 @@ export const openBills = sqliteTable(
     docDate: text('doc_date').notNull(),
     dueDate: text('due_date'),
     billAmountPaise: integer('bill_amount_paise').notNull(),
+    /** Still pending; on a credit row, what it still holds. */
     pendingPaise: integer('pending_paise').notNull(),
     /** When Sync read it (ISO time). */
     syncedOn: text('synced_on').notNull(),
+    /**
+     * Since migration 0019 (the desktop-rule receipt): 'BILL', or a credit the customer holds that
+     * a receipt spends first, as on the desktop: 'ADVANCE' | 'SALES_RETURN' | 'OPENING_CR' |
+     * 'JOURNAL_CR'.
+     */
+    kind: text('kind').notNull().default('BILL'),
+    /** Paid on the bill so far, and held on it by post-dated cheques not yet cleared. */
+    paidPaise: integer('paid_paise').notNull().default(0),
+    pdcHeldPaise: integer('pdc_held_paise').notNull().default(0),
+    /**
+     * VK Nex's early-payment (PPD) discount slabs still ahead, as JSON [{ tillDate, perc }]
+     * (YYYY-MM-DD, percent of what is pending). The receipt date picks the slab; null = none.
+     */
+    ppdSchedule: text('ppd_schedule'),
   },
   (t) => [primaryKey({ columns: [t.billId, t.billAccYear] }), index('ix_open_bills_party').on(t.partyId, t.companyId, t.seq)],
 );
@@ -783,9 +822,27 @@ export const tenders = sqliteTable(
     tndSurchargePerc: numeric('tnd_surcharge_perc').notNull().default('0'),
     tndSurchargeAmount: numeric('tnd_surcharge_amount').notNull().default('0'),
     position: integer('position').notNull().default(0),
+    /** A cheque: VK Nex refuses it without the bank (migration 0019). */
+    appRequiresBank: integer('app_requires_bank', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.companyId, t.tndId] })],
 );
+
+/**
+ * A company's receipt rules as GET /mobile/receipts/options gave them at Sync (migration 0019), so
+ * the phone follows the desktop: the bill order, whether a receipt needs the collector, how
+ * post-dated cheques post, and whether early-payment discounts apply.
+ */
+export const receiptSettings = sqliteTable('receipt_settings', {
+  companyId: text('company_id').primaryKey(),
+  /** 'DUE_DATE' | 'BILL_DATE'. */
+  billSort: text('bill_sort'),
+  salesmanMandatory: integer('salesman_mandatory', { mode: 'boolean' }).notNull().default(false),
+  /** VK Nex's pdc_posting_mode; 'ON_CLEARING' keeps a post-dated cheque off the bills. */
+  pdcPostingMode: text('pdc_posting_mode'),
+  ppdEnabled: integer('ppd_enabled', { mode: 'boolean' }).notNull().default(false),
+  syncedOn: text('synced_on').notNull(),
+});
 
 /**
  * Receipts taken on the phone: a copy of VK Nex's accounts.acc_voucher_header, only the columns
@@ -821,6 +878,22 @@ export const receipts = sqliteTable(
     avhVoucherRefno: text('avh_voucher_refno'),
     avhVoucherStatus: text('avh_voucher_status'),
     appSyncedOn: text('app_synced_on'),
+    // Since the desktop-rule receipt (migration 0019); null on older receipts, whose keys stay out.
+    /** The branch from Switch company. */
+    avhBranchId: text('avh_branch_id'),
+    /** The shop's own receipt no. and date (VK Nex's "their ref"). */
+    avhDocRefno: text('avh_doc_refno'),
+    avhDocDate: text('avh_doc_date'),
+    /** What the phone planned to leave on account (VK Nex's figure wins). */
+    appOnAccount: numeric('app_on_account'),
+    /** The collector VK Nex put on it (employee_master id), from its answer. */
+    avhEmployeeId: text('avh_employee_id'),
+    /** From GET /mobile/receipts/status: cancelled in the office (ISO time, reason). */
+    appCancelledOn: text('app_cancelled_on'),
+    appCancelReason: text('app_cancel_reason'),
+    /** VK Nex's adjusted[] (what it changed at Sync) and pdcVouchers / pdc states, as JSON. */
+    appAdjusted: text('app_adjusted'),
+    appPdc: text('app_pdc'),
   },
   (t) => [
     index('ix_rct_party').on(t.avhPartyId, t.avhCompanyId),
@@ -850,8 +923,41 @@ export const receiptTenders = sqliteTable(
     tdBankName: text('td_bank_name'),
     /** Cheque date (YYYY-MM-DD); after the receipt date it is post-dated. */
     tdInstrumentDate: text('td_instrument_date'),
+    /** Cheque branch, IFSC and drawer, sent as VK Nex's cheque { bankBranch, ifsc, drawerName } (0019). */
+    appChequeBranch: text('app_cheque_branch'),
+    appChequeIfsc: text('app_cheque_ifsc'),
+    appChequeDrawer: text('app_cheque_drawer'),
   },
   (t) => [index('ix_td_receipt').on(t.tdSrcDocId)],
+);
+
+/**
+ * How a phone receipt settles the customer's open items (migration 0019), VK Nex's
+ * allocations[] / creditsApplied[]. 'PLANNED' rows are what the salesman saved (sent at Sync);
+ * 'POSTED' rows are what VK Nex really did, from its answer (they differ when a bill was paid in
+ * the office meanwhile). Older receipts have none: VK Nex filled the oldest bills itself.
+ */
+export const receiptAllocations = sqliteTable(
+  'receipt_allocations',
+  {
+    ralId: text('ral_id').primaryKey(),
+    /** The receipt (receipts.avh_client_uuid). */
+    ralReceiptId: text('ral_receipt_id').notNull(),
+    /** 'PLANNED' | 'POSTED'. */
+    ralSource: text('ral_source').notNull(),
+    /** 'BILL' (cash on a bill) | 'CREDIT' (a credit spent). */
+    ralKind: text('ral_kind').notNull(),
+    ralBillId: text('ral_bill_id').notNull(),
+    ralBillAccYear: text('ral_bill_acc_year').notNull(),
+    appDocRefno: text('app_doc_refno'),
+    /** BILL: cash received on it; CREDIT: the amount spent. Rupees as exact text. */
+    ralAmount: numeric('ral_amount').notNull(),
+    /** BILL only (phone): the part of the credits that landed on this bill, for the bill's balance. */
+    ralCredit: numeric('ral_credit').notNull().default('0'),
+    ralDiscount: numeric('ral_discount').notNull().default('0'),
+    ralRoundoff: numeric('ral_roundoff').notNull().default('0'),
+  },
+  (t) => [index('ix_ral_receipt').on(t.ralReceiptId, t.ralSource)],
 );
 
 /**
@@ -887,3 +993,128 @@ export const visits = sqliteTable(
 );
 
 export type Customer = typeof customers.$inferSelect;
+
+/**
+ * VK Nex's promotion schemes (sales.promotion_scheme and its children), from Sync
+ * (GET /mobile/schemes/active, migration 0018): only the ones the engine applies by itself
+ * (APPROVED, active, auto-apply, no coupon, not ended). A company's set is replaced as a whole;
+ * the phone checks dates, branch, shop and items offline. Columns copy VK Nex's names.
+ */
+export const promotionScheme = sqliteTable(
+  'promotion_scheme',
+  {
+    prmId: text('prm_id').primaryKey(),
+    prmCompId: text('prm_comp_id').notNull(),
+    prmBranchId: text('prm_branch_id'),
+    prmCode: text('prm_code').notNull(),
+    prmName: text('prm_name').notNull(),
+    prmStatus: text('prm_status').notNull().default('APPROVED'),
+    prmApplyOn: text('prm_apply_on').notNull(),
+    prmBenefit: text('prm_benefit').notNull(),
+    prmPriority: integer('prm_priority').notNull().default(1),
+    prmStackMode: text('prm_stack_mode').notNull().default('EXCLUSIVE'),
+    prmAutoApply: integer('prm_auto_apply', { mode: 'boolean' }).notNull().default(true),
+    prmAllowWithManualDisc: integer('prm_allow_with_manual_disc', { mode: 'boolean' }).notNull().default(false),
+    prmCalcOnAmountType: text('prm_calc_on_amount_type').notNull().default('NET_AMOUNT'),
+    prmIncludeTax: integer('prm_include_tax', { mode: 'boolean' }).notNull().default(false),
+    prmBillType: text('prm_bill_type').notNull().default('ALL'),
+    prmMinBillAmount: numeric('prm_min_bill_amount').notNull().default('0'),
+    prmMinQty: numeric('prm_min_qty').notNull().default('0'),
+    prmBranchScope: text('prm_branch_scope').notNull().default('ALL'),
+    prmCustScope: text('prm_cust_scope').notNull().default('ALL'),
+    prmItemScope: text('prm_item_scope').notNull().default('ALL'),
+    prmPriceLevelId: integer('prm_price_level_id'),
+    prmMaxBenefitPerBill: numeric('prm_max_benefit_per_bill').notNull().default('0'),
+    prmCouponBatchId: text('prm_coupon_batch_id'),
+    prmStartDate: text('prm_start_date').notNull(),
+    prmEndDate: text('prm_end_date').notNull(),
+    prmValidFromTime: text('prm_valid_from_time'),
+    prmValidToTime: text('prm_valid_to_time'),
+    prmValidWeekdays: text('prm_valid_weekdays'),
+    prmRemarks: text('prm_remarks'),
+    prmModifiedOn: text('prm_modified_on'),
+    /** When this phone saved it (ISO). */
+    appSyncedOn: text('app_synced_on').notNull(),
+  },
+  (t) => [index('ix_prm_comp').on(t.prmCompId, t.prmPriority)],
+);
+
+export const promotionSchemeBranch = sqliteTable(
+  'promotion_scheme_branch',
+  {
+    prbId: text('prb_id').primaryKey(),
+    prbPrmId: text('prb_prm_id').notNull(),
+    prbBranchId: text('prb_branch_id').notNull(),
+    prbBranchName: text('prb_branch_name'),
+    prbIsExclude: integer('prb_is_exclude', { mode: 'boolean' }).notNull().default(false),
+  },
+  (t) => [index('ix_prb_prm').on(t.prbPrmId)],
+);
+
+export const promotionSchemeParty = sqliteTable(
+  'promotion_scheme_party',
+  {
+    prpId: text('prp_id').primaryKey(),
+    prpPrmId: text('prp_prm_id').notNull(),
+    /** CUSTOMER | CUSTOMER_GROUP | AREA | CITY */
+    prpKind: text('prp_kind').notNull(),
+    prpScopeId: text('prp_scope_id').notNull(),
+    prpScopeName: text('prp_scope_name'),
+    prpIsExclude: integer('prp_is_exclude', { mode: 'boolean' }).notNull().default(false),
+    prpMatchPriority: integer('prp_match_priority').notNull().default(1),
+  },
+  (t) => [index('ix_prp_prm').on(t.prpPrmId)],
+);
+
+export const promotionSchemeItem = sqliteTable(
+  'promotion_scheme_item',
+  {
+    priId: text('pri_id').primaryKey(),
+    priPrmId: text('pri_prm_id').notNull(),
+    /** ITEM | ITEM_GROUP | ITEM_CATEGORY | ITEM_BRAND | ITEM_SECTION */
+    priKind: text('pri_kind').notNull(),
+    priScopeId: text('pri_scope_id').notNull(),
+    priScopeName: text('pri_scope_name'),
+    /** unit_master id; set only on ITEM rows. */
+    priUnitId: text('pri_unit_id'),
+    priUnitName: text('pri_unit_name'),
+    priIsExclude: integer('pri_is_exclude', { mode: 'boolean' }).notNull().default(false),
+    priDiscPerc: numeric('pri_disc_perc').notNull().default('0'),
+    priDiscQty: numeric('pri_disc_qty').notNull().default('0'),
+    priDiscAmt: numeric('pri_disc_amt').notNull().default('0'),
+    priMinQty: numeric('pri_min_qty').notNull().default('0'),
+    priFactor: numeric('pri_factor').notNull().default('1'),
+    priMaxBenefit: numeric('pri_max_benefit').notNull().default('0'),
+    priMatchPriority: integer('pri_match_priority').notNull().default(1),
+  },
+  (t) => [index('ix_pri_prm').on(t.priPrmId), index('ix_pri_scope').on(t.priKind, t.priScopeId)],
+);
+
+export const promotionSchemeSlab = sqliteTable(
+  'promotion_scheme_slab',
+  {
+    prsId: text('prs_id').primaryKey(),
+    prsPrmId: text('prs_prm_id').notNull(),
+    prsSlno: integer('prs_slno').notNull().default(1),
+    prsBenefit: text('prs_benefit').notNull(),
+    prsExceeds: numeric('prs_exceeds').notNull().default('0'),
+    /** null = open-ended. */
+    prsUpto: numeric('prs_upto'),
+    prsEach: numeric('prs_each').notNull().default('1'),
+    prsIsRepeat: integer('prs_is_repeat', { mode: 'boolean' }).notNull().default(false),
+    prsMaxRepeats: integer('prs_max_repeats').notNull().default(0),
+    prsFreeItemId: text('prs_free_item_id'),
+    prsFreeItemName: text('prs_free_item_name'),
+    prsFreeUnitId: text('prs_free_unit_id'),
+    prsFreeUnitName: text('prs_free_unit_name'),
+    prsFreeUnitFactor: numeric('prs_free_unit_factor'),
+    prsFreeQty: numeric('prs_free_qty').notNull().default('0'),
+    prsFreeStockCheck: integer('prs_free_stock_check', { mode: 'boolean' }).notNull().default(true),
+    prsDiscPerc: numeric('prs_disc_perc').notNull().default('0'),
+    prsDiscQty: numeric('prs_disc_qty').notNull().default('0'),
+    prsDiscAmt: numeric('prs_disc_amt').notNull().default('0'),
+    prsFixedPrice: numeric('prs_fixed_price'),
+    prsMaxBenefitAmt: numeric('prs_max_benefit_amt').notNull().default('0'),
+  },
+  (t) => [index('ix_prs_prm').on(t.prsPrmId)],
+);

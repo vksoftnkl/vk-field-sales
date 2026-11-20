@@ -1,21 +1,27 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/screen-header';
 import { TextField } from '@/components/ui';
 import { useDateNames } from '@/components/use-date-names';
 import { metaQuery } from '@/db/meta';
-import { lineRemoved, lineSaved, type SoLine } from '@/features/orders/order-draft';
-import { itemName } from '@/features/orders/order-items';
+import { lineOffersSet, lineRemoved, lineSaved, type SoLine } from '@/features/orders/order-draft';
+import { itemName, unitInBase } from '@/features/orders/order-items';
 import { decimalInput, num, priceForLevel, pricedLevels, qtyText, startingPrice, toPaise } from '@/features/orders/order-math';
 import { asOfText } from '@/features/orders/order-status';
-import { lastRates, orderCustomerQuery, priceLevelsQuery, soItemUnitsQuery, soSeedLine, type OrderCustomer, type SoUnitRow } from '@/features/orders/queries';
-import { backOrderQty, DISC_MODES, soLineAmounts, soLineProblem, unitsPerDefault, type DiscMode } from '@/features/orders/so-math';
+import { lastRates, orderCustomerQuery, priceLevelsQuery, soItemUnitsQuery, soSeedLine, type SoUnitRow } from '@/features/orders/queries';
+import { backOrderQty, DISC_MODES, soLineAmounts, soLineProblem, type DiscMode } from '@/features/orders/so-math';
+import { useUnitQty } from '@/features/orders/unit-sheet';
+import { soLineInUnit } from '@/features/orders/unit-switch';
+import { isShownOffer } from '@/features/schemes/offer-text';
+import { OfferBody } from '@/features/schemes/offer-body';
+import { OfferSheet } from '@/features/schemes/offer-sheet';
+import { useOrderSchemes } from '@/features/schemes/use-order-schemes';
 import { formatDay } from '@/lib/date-range';
 import { formatAmount } from '@/lib/money';
 import { useAppDispatch, useAppSelector } from '@/store';
@@ -24,23 +30,16 @@ import { colors, font, radius, spacing } from '@/theme';
 const LETTERS = ['', 'A', 'B', 'C', 'D'];
 const pct = (perc: string | null) => String(Number(num(perc).toFixed(3)));
 
-/** The line again in another unit: that unit's price at the same level, its charges and limits. */
-function inUnit(form: SoLine, u: SoUnitRow, c: OrderCustomer): SoLine | null {
-  const same = form.priceLevel ? priceForLevel(u, form.priceLevel) : null;
-  const start = same && form.priceLevel ? { level: form.priceLevel, price: same } : startingPrice(u, c.cusPriceLevelId);
-  if (!start) return null;
-  return { ...soSeedLine(u, c, start), qty: form.qty, discMode: form.discMode, disc: form.disc };
-}
-
 /**
- * Order item (canvas 3b, step 4): the unit (the item's unit list), price level A–D, quantity and
+ * Order item (canvas 3b, step 4): the unit (the item's priced units, each with its size in the
+ * base unit, "Box · 12 Pcs"; a new line starts in the unit its Add items row showed), price level A–D, quantity and
  * rate, the item discount as %, ₹ per unit or ₹ for the line, and the line's taxable, GST split and
  * total. A rate below the minimum price or above the MRP is refused here, because VK Nex doesn't
  * check them on phone orders. Last rates come from this phone's bills and orders for the shop.
  * No cost price: VK Nex sends none to phones. Promotion is the customer's and item's flags.
  */
 export default function OrderItemScreen() {
-  const { itemId } = useLocalSearchParams<{ itemId: string }>();
+  const { itemId, iucId } = useLocalSearchParams<{ itemId: string; iucId?: string }>();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const names = useDateNames();
@@ -57,14 +56,28 @@ export default function OrderItemScreen() {
   const priced = units.filter((u) => u.appPriced);
   const [form, setForm] = useState<SoLine | null>(() => {
     if (existing) return existing;
-    const u = priced.find((x) => x.isDefault) ?? priced[0];
+    const u = priced.find((x) => x.iucId === iucId) ?? priced.find((x) => x.isDefault) ?? priced[0];
     if (!u || !customer) return null;
     const start = startingPrice(u, customer.cusPriceLevelId);
     return start ? soSeedLine(u, customer, start) : null;
   });
   const [submitted, setSubmitted] = useState(false);
   const [showRates, setShowRates] = useState(false);
+  // The line's own offers switch, kept with the form until Save line.
+  const [offersOnLine, setOffersOnLine] = useState(() => draft.offersOn[itemId] !== false);
+  const [sheetId, setSheetId] = useState<string | null>(null);
+  const { data: schemesSynced } = useLiveQuery(metaQuery('schemesSyncedOn'));
 
+  // The offers worked out as you type: the order's lines with this one as it is in the form.
+  const evalLines = useMemo(() => {
+    if (!form) return draft.lines;
+    return draft.lines.some((l) => l.itemId === itemId) ? draft.lines.map((l) => (l.itemId === itemId ? form : l)) : [...draft.lines, form];
+  }, [draft.lines, form, itemId]);
+  const evalOn = useMemo(() => ({ ...draft.offersOn, [itemId]: offersOnLine }), [draft.offersOn, itemId, offersOnLine]);
+  const { order, applyOffers } = useOrderSchemes({ lines: evalLines, offersOn: evalOn, extraItemIds: [itemId] });
+  const lineIndex = evalLines.findIndex((l) => l.itemId === itemId);
+
+  const unitQty = useUnitQty();
   const unit = form ? units.find((u) => u.iucId === form.iucId) : undefined;
   if (!form || !customer) {
     return (
@@ -76,15 +89,19 @@ export default function OrderItemScreen() {
   }
 
   const set = (patch: Partial<SoLine>) => setForm({ ...form, ...patch });
-  const a = soLineAmounts(form);
+  const a = soLineAmounts(order.priced[lineIndex] ?? form);
+  const ls = order.lines[lineIndex];
+  const offers = order.explain(itemId).filter(isShownOffer);
+  const sheetScheme = sheetId ? (order.scheme(sheetId) ?? null) : null;
   const problem = soLineProblem(form, { minPrice: form.minPrice, mrp: form.mrp });
   const levels = unit ? pricedLevels(unit) : [];
   const levelLabel = (l: number) => levelNames.find((n) => n.id === l)?.name ?? t('order.level', { letter: LETTERS[l] });
   const own = customer.cusPriceLevelId;
   const name = itemName({ itemNameEn: form.name, itemNameTa: form.nameTa }, i18n.language);
-  const defaultUnit = units.find((u) => u.isDefault) ?? units[0];
   const stock = Number(unit?.stockQty) || 0;
   const back = backOrderQty(num(form.qty), stock);
+  // Stock in the line's unit and in the base unit: "4 Box (48 Pcs)".
+  const stockText = unit ? unitQty(stock, unit, units) : qtyText(stock);
   const rate = num(form.taxPerc);
   const minPaise = toPaise(form.minPrice) ?? 0;
   const mrpPaise = toPaise(form.mrp) ?? 0;
@@ -94,6 +111,7 @@ export default function OrderItemScreen() {
     setSubmitted(true);
     if (problem) return;
     dispatch(lineSaved(form));
+    dispatch(lineOffersSet({ itemId, on: offersOnLine }));
     router.back();
   };
   const remove = () => {
@@ -101,7 +119,7 @@ export default function OrderItemScreen() {
     router.back();
   };
   const pickUnit = (u: SoUnitRow) => {
-    const next = inUnit(form, u, customer);
+    const next = soLineInUnit(form, u, customer);
     if (next) setForm(next);
   };
 
@@ -123,8 +141,9 @@ export default function OrderItemScreen() {
               <View style={st.segment} accessibilityRole="radiogroup" accessibilityLabel={t('so.unit')}>
                 {priced.map((u) => {
                   const on = u.iucId === form.iucId;
-                  const per = unitsPerDefault(u.factor, defaultUnit?.factor ?? '1');
-                  const text = u.iucId === defaultUnit?.iucId || per === 1 ? u.unitName : t('so.unitOf', { unit: u.unitName, n: qtyText(per), base: defaultUnit?.unitName ?? '' });
+                  // "Box · 12 Pcs": its size in the base unit (the base unit itself is just its name).
+                  const conv = unitInBase(u, units);
+                  const text = conv ? t('so.unitOf', { unit: u.unitName, n: qtyText(conv.n), base: conv.base }) : u.unitName;
                   return (
                     <Pressable key={u.iucId} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => pickUnit(u)} style={[st.seg, on && st.segOn]}>
                       <Text style={[st.segText, on && st.segTextOn]} numberOfLines={1}>
@@ -178,10 +197,10 @@ export default function OrderItemScreen() {
               />
               <Text style={[st.hint, back > 0 && { color: '#92400E' }]}>
                 {back > 0
-                  ? t('so.backOrderHint', { stock: qtyText(stock), qty: qtyText(back) })
+                  ? t('so.backOrderHint', { stock: stockText, qty: qtyText(back) })
                   : syncedOn
-                    ? t('so.stockHint', { stock: qtyText(stock), when: asOfText(syncedOn, names, t('so.today')) })
-                    : t('order.stock', { qty: qtyText(stock) })}
+                    ? t('so.stockHint', { stock: stockText, when: asOfText(syncedOn, names, t('so.today')) })
+                    : t('order.stock', { qty: stockText })}
               </Text>
             </View>
             <View style={st.cell}>
@@ -228,9 +247,65 @@ export default function OrderItemScreen() {
             {discError ? <Text style={st.error}>{discError}</Text> : null}
           </View>
 
+          {offers.length > 0 ? (
+            <View style={st.offerCard} accessibilityLabel={t('offers.card.title')}>
+              <Text style={st.offerTitle} accessibilityRole="header">
+                {t('offers.card.title')}
+              </Text>
+              {offers.map((o) => {
+                const sc = order.scheme(o.schemeId);
+                if (!sc) return null;
+                return (
+                  <View key={o.schemeId} style={st.offer}>
+                    <View style={st.offerHead}>
+                      <Text style={st.offerName}>{sc.name}</Text>
+                      <View style={[st.chip, o.applied ? st.chipOn : st.chipOff]}>
+                        <Text style={[st.chipText, o.applied && { color: '#166534' }]}>{t(o.applied ? 'offers.card.applied' : 'offers.card.notApplied')}</Text>
+                      </View>
+                    </View>
+                    <OfferBody scheme={sc} offer={o} unit={form.unitName} />
+                    <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setSheetId(o.schemeId)} style={st.detailsLink}>
+                      <Text style={st.detailsText}>{t('offers.card.details')}</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+              {form.promo ? (
+                <View style={st.switchRow}>
+                  <View style={{ flex: 1, gap: 1 }}>
+                    <Text style={st.switchLabel}>{t('offers.card.switch')}</Text>
+                    <Text style={st.hint}>{applyOffers ? t('offers.card.switchNote') : t('offers.apply.off')}</Text>
+                  </View>
+                  <Switch
+                    value={offersOnLine}
+                    onValueChange={setOffersOnLine}
+                    accessibilityLabel={t('offers.card.switch')}
+                    trackColor={{ true: colors.primary, false: colors.inputBorder }}
+                    thumbColor={colors.surface}
+                  />
+                </View>
+              ) : (
+                <Text style={st.hint}>{t('offers.card.cannot')}</Text>
+              )}
+            </View>
+          ) : null}
+
           <View style={st.card} accessibilityLabel={t('so.lineAmount')}>
             <Row label={t('so.grossLine', { qty: qtyText(a.qty), price: formatAmount(toPaise(form.price) ?? 0) })} value={formatAmount(a.grossPaise)} />
             {a.discPaise > 0 ? <Row label={discLabel} value={`−${formatAmount(a.discPaise)}`} /> : null}
+            {a.schemePaise > 0 && ls ? (
+              <Row
+                label={
+                  Number(ls.schDiscPerc) > 0
+                    ? t('offers.line.perc', { name: ls.schemeName ?? '', perc: ls.schDiscPerc })
+                    : Number(ls.schDiscQty) > 0
+                      ? t('offers.line.perUnit', { name: ls.schemeName ?? '', amount: formatAmount(toPaise(ls.schDiscQty) ?? 0) })
+                      : t('offers.line.plain', { name: ls.schemeName ?? '' })
+                }
+                value={`−${formatAmount(a.schemePaise)}`}
+              />
+            ) : null}
+            {a.billSchemePaise > 0 ? <Row label={t('offers.orderOfferTotal')} value={`−${formatAmount(a.billSchemePaise)}`} /> : null}
             <Row label={t('so.taxable')} value={formatAmount(a.taxablePaise)} />
             <Row label={rate > 0 ? t('so.gstSplit', { gst: pct(form.taxPerc), half: String(Number((rate / 2).toFixed(3))) }) : t('so.noGst')} value={formatAmount(a.taxPaise)} />
             <View style={st.totalRow} accessible accessibilityLabel={`${t('so.lineTotal')}: ${formatAmount(a.lineTotalPaise)}`}>
@@ -259,6 +334,7 @@ export default function OrderItemScreen() {
               ))
             : null}
         </ScrollView>
+        <OfferSheet scheme={sheetScheme} offer={sheetId ? offers.find((o) => o.schemeId === sheetId) : undefined} unit={form.unitName} syncedOn={schemesSynced[0]?.value ?? null} onClose={() => setSheetId(null)} />
         <View style={[st.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
           {existing ? (
             <Pressable accessibilityRole="button" onPress={remove} style={({ pressed }) => [st.btn, st.btnRemove, pressed && { opacity: 0.85 }]}>
@@ -313,6 +389,19 @@ const st = StyleSheet.create({
     textAlign: 'right',
   },
   error: { fontSize: font.sm, color: colors.danger },
+  offerCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: '#86EFAC', borderRadius: radius.lg, paddingVertical: spacing.md, paddingHorizontal: spacing.md + 2, gap: spacing.md },
+  offerTitle: { fontSize: font.md, fontWeight: '600', color: colors.text },
+  offer: { gap: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: '#F1EDE4' },
+  offerHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  offerName: { flex: 1, fontSize: font.md, fontWeight: '600', color: colors.primary },
+  chip: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 2 },
+  chipOn: { backgroundColor: '#DCFCE7' },
+  chipOff: { backgroundColor: colors.border },
+  chipText: { fontSize: 12, fontWeight: '600', color: colors.textLabel },
+  detailsLink: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
+  detailsText: { fontSize: 13.5, fontWeight: '600', color: colors.primary },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 48 },
+  switchLabel: { fontSize: font.md, fontWeight: '600', color: colors.text },
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: spacing.md, paddingHorizontal: spacing.md + 2, gap: 6 },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
   rowLabel: { flex: 1, fontSize: 14, color: colors.textMuted },

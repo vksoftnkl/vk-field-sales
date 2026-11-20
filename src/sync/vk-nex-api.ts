@@ -63,7 +63,8 @@ export interface SignedInUser {
 }
 
 export interface CustomerOptions {
-  areas: { id: string; name: string; cityName: string | null }[];
+  /** cityId since 2026-11-19 (offers for a city); absent on an older VK Nex. */
+  areas: { id: string; name: string; cityName: string | null; cityId?: string | null }[];
   groups: { id: string; name: string }[];
   priceLevels: { id: number; name: string }[];
   states: { code: string; name: string }[];
@@ -204,7 +205,95 @@ export interface MobileItem {
   taxId: string | null;
   /** '5.000'; '0.000' when the company is not GST applicable. */
   taxPerc: string;
+  /** Since 2026-11-19 (offers can name them); absent on an older VK Nex. */
+  categoryId?: string | null;
+  sectionId?: string | null;
   units: MobileItemUnit[];
+}
+
+/**
+ * GET /mobile/schemes/active: one company's offers the phone applies by itself (APPROVED, active,
+ * auto-apply, no coupon, not ended), with their branch, shop, item and band rows. Keys as VK Nex's
+ * columns; money and quantities as exact text, counts and priorities as numbers.
+ */
+export interface MobileScheme {
+  prm_id: string;
+  prm_comp_id: string;
+  prm_branch_id: string | null;
+  prm_code: string;
+  prm_name: string;
+  prm_status: string;
+  prm_apply_on: string;
+  prm_benefit: string;
+  prm_priority: number;
+  prm_stack_mode: string;
+  prm_auto_apply: boolean;
+  prm_allow_with_manual_disc: boolean;
+  prm_calc_on_amount_type: string;
+  prm_include_tax: boolean;
+  prm_bill_type: string;
+  prm_min_bill_amount: string;
+  prm_min_qty: string;
+  prm_branch_scope: string;
+  prm_cust_scope: string;
+  prm_item_scope: string;
+  prm_price_level_id: number | null;
+  prm_max_benefit_per_bill: string;
+  prm_coupon_batch_id: string | null;
+  prm_start_date: string;
+  prm_end_date: string;
+  prm_valid_from_time: string | null;
+  prm_valid_to_time: string | null;
+  prm_valid_weekdays: string | null;
+  prm_remarks: string | null;
+  prm_modified_on: string | null;
+  branches: { prb_id: string; prb_branch_id: string; prb_branch_name: string | null; prb_is_exclude: boolean }[];
+  parties: { prp_id: string; prp_kind: string; prp_scope_id: string; prp_scope_name: string | null; prp_is_exclude: boolean; prp_match_priority: number }[];
+  items: {
+    pri_id: string;
+    pri_kind: string;
+    pri_scope_id: string;
+    pri_scope_name: string | null;
+    pri_unit_id: string | null;
+    pri_unit_name: string | null;
+    pri_is_exclude: boolean;
+    pri_disc_perc: string;
+    pri_disc_qty: string;
+    pri_disc_amt: string;
+    pri_min_qty: string;
+    pri_factor: string;
+    pri_max_benefit: string;
+    pri_match_priority: number;
+  }[];
+  slabs: {
+    prs_id: string;
+    prs_slno: number;
+    prs_benefit: string;
+    prs_exceeds: string;
+    prs_upto: string | null;
+    prs_each: string;
+    prs_is_repeat: boolean;
+    prs_max_repeats: number;
+    prs_free_item_id: string | null;
+    prs_free_item_name: string | null;
+    prs_free_unit_id: string | null;
+    prs_free_unit_name: string | null;
+    prs_free_unit_factor: string | null;
+    prs_free_qty: string;
+    prs_free_stock_check: boolean;
+    prs_disc_perc: string;
+    prs_disc_qty: string;
+    prs_disc_amt: string;
+    prs_fixed_price: string | null;
+    prs_max_benefit_amt: string;
+  }[];
+}
+
+export interface ActiveSchemes {
+  companyId: string;
+  /** VK Nex's date (IST) the "not ended" filter used. */
+  asOf: string;
+  schemes: MobileScheme[];
 }
 
 export interface ItemListPage {
@@ -219,13 +308,21 @@ export interface ItemListPage {
 export interface CreatedOrder {
   soId: string;
   soOrderRefno: string;
-  /** Now: 'DRAFT' when just saved; a resend reads the stored one. */
+  /**
+   * Now: 'CONFIRMED' (VK Nex confirms a phone order as it saves it, since 2026-11-19), or 'DRAFT'
+   * when it could not (confirmRefused says why; an older VK Nex always answers 'DRAFT'). A resend
+   * reads the stored one.
+   */
   soStatus: string;
   soAccYear: string;
   /** This soClientUuid was saved before; nothing was written this time. */
   duplicate: boolean;
   /** A resend of an order the office has deleted since. */
   soIsDeleted: boolean;
+  /** Why VK Nex kept the order as a draft for the office (a closed day, a wrong salesman…); null when confirmed and on a resend. */
+  confirmRefused?: { code: string; field?: string | null; message: string } | null;
+  /** Lines VK Nex could not keep stock for when it confirmed (SALES_RESERVE_SHORT). */
+  warnings?: { code: string; line: number; short: number; message: string }[];
 }
 
 /** VK Nex's answer to POST /mobile/visits/create. */
@@ -256,12 +353,24 @@ export interface MobileTender {
   /** Surcharge the customer pays on top (text, '1.00' % and '0.00' flat); it goes inside tdAmount. */
   surchargePerc?: string | number | null;
   surchargeAmount?: string | number | null;
+  /** A cheque: VK Nex refuses it without the bank (since the desktop-rule receipt). */
+  requiresBank?: boolean | null;
+}
+
+/** The company's receipt rules (since the desktop-rule receipt; absent from older VK Nex). */
+export interface ReceiptSettings {
+  /** 'DUE_DATE' | 'BILL_DATE'. */
+  receiptBillSort?: string | null;
+  salesmanMandatory?: boolean | null;
+  pdcPostingMode?: string | null;
+  ppdEnabled?: boolean | null;
 }
 
 export interface ReceiptOptions {
   companyId?: string;
   branchId: string | null;
   tenders: MobileTender[];
+  settings?: ReceiptSettings | null;
 }
 
 /** One open bill of a company's customer, in VK Nex's /receipts/open-items order. Amounts in rupees. */
@@ -274,7 +383,15 @@ export interface MobileOpenBill {
   docDate?: string | null;
   dueDate?: string | null;
   billAmount: number | string;
+  /** On a credit row: what it still holds. */
   pendingAmount: number | string;
+  // Since the desktop-rule receipt (absent from older VK Nex: then every row is a bill).
+  /** 'BILL' | 'ADVANCE' | 'SALES_RETURN' | 'OPENING_CR' | 'JOURNAL_CR'. */
+  kind?: string | null;
+  paidAmount?: number | string | null;
+  pdcHeld?: number | string | null;
+  /** Early-payment slabs still ahead: perc % of pending for receipts dated up to tillDate. */
+  ppdSchedule?: { tillDate: string; perc: number | string; amount?: number | string | null }[] | null;
 }
 
 export interface OpenBillsPage {
@@ -295,6 +412,55 @@ export interface CreatedReceipt {
   /** What VK Nex kept on account (text). */
   onAccount?: string | null;
   avhIsDeleted?: boolean;
+  // Since the desktop-rule receipt: what VK Nex really did (it re-runs its engine at Sync).
+  allocations?: PostedAllocation[] | null;
+  creditsApplied?: { billId: string; billAccYear: string; docRefno?: string | null; amount: string | number }[] | null;
+  /** Each post-dated cheque's own voucher. */
+  pdcVouchers?: { voucherId: string; voucherRefno?: string | null; chequeDate: string; amount: string | number }[] | null;
+  /** Where VK Nex changed the phone's plan (a bill paid in the office meanwhile, …). */
+  adjusted?: { billId: string; billAccYear: string; docRefno?: string | null; planned: string | number; applied: string | number; reason: string }[] | null;
+  /** The collector VK Nex put on the receipt (employee_master id). */
+  employeeId?: string | null;
+}
+
+/** One bill a posted receipt settled. Amounts in rupees (text). */
+export interface PostedAllocation {
+  billId: string;
+  billAccYear: string;
+  docRefno?: string | null;
+  amount: string | number;
+  discount?: string | number | null;
+  roundoff?: string | number | null;
+  pendingAmount?: string | number | null;
+}
+
+/** GET /mobile/me: the signed-in login, its employee and its rights on the menus phones use. */
+export interface MobileMe {
+  userId: string;
+  loginName?: string | null;
+  employeeId?: string | null;
+  employeeName?: string | null;
+  /** By menu id ('11' sale order, '12' sale bill, '99' receipt). */
+  rights?: Record<string, { view?: boolean; create?: boolean; post?: boolean; cancel?: boolean; print?: boolean }> | null;
+}
+
+/** One of this phone's receipts as VK Nex has it now (GET /mobile/receipts/status). */
+export interface ReceiptStatus {
+  avhClientUuid: string;
+  avhVoucherId: string;
+  avhVoucherRefno?: string | null;
+  avhVoucherStatus: string;
+  cancelledOn?: string | null;
+  cancelReason?: string | null;
+  pdc?: { voucherId: string; voucherRefno?: string | null; chequeDate: string; amount: string | number; status: string }[] | null;
+  updatedOn?: string | null;
+}
+
+export interface ReceiptStatusPage {
+  items: ReceiptStatus[];
+  hasMore: boolean;
+  /** VK Nex's time of this read: the next read asks for changes since it. */
+  asOf?: string | null;
 }
 
 /** The middle part of a JWT, read (not checked: VK Nex checks it on every request). */
@@ -391,6 +557,8 @@ export function createVkNexClient(opts: VkNexClientOptions) {
   let token: string | null = null;
   /** dev_id of the registered device VK Nex matched at sign-in; null = not registered (or blocked). */
   let deviceId: string | null = null;
+  /** This VK Nex refused withCredits on open-bills (older than the desktop-rule receipt): bills only. */
+  let openBillsNoCredits = false;
 
   async function call<T>(method: Method, path: string, body?: unknown, auth = true): Promise<T> {
     const headers: Record<string, string> = {
@@ -511,6 +679,11 @@ export function createVkNexClient(opts: VkNexClientOptions) {
         `/mobile/items/list?companyId=${encodeURIComponent(companyId)}&page=${page}&pageSize=${pageSize}${device}`,
       ).then((r) => r.data);
     },
+    /** A company's offers for the phone (Sync, and Refresh on Add items). */
+    activeSchemes: (companyId: string) => {
+      const device = deviceId && opts.deviceUid ? `&deviceUid=${encodeURIComponent(opts.deviceUid)}` : '';
+      return authed<Envelope<ActiveSchemes>>('GET', `/mobile/schemes/active?companyId=${encodeURIComponent(companyId)}${device}`).then((r) => r.data);
+    },
     /** One order with its lines. Safe to resend: the same soClientUuid answers the order saved before. */
     createOrder: (payload: Record<string, unknown>) =>
       authed<Envelope<CreatedOrder>>('POST', '/mobile/orders/create', { ...payload, deviceUid: opts.deviceUid }).then((r) => r.data),
@@ -519,15 +692,37 @@ export function createVkNexClient(opts: VkNexClientOptions) {
       const device = deviceId && opts.deviceUid ? `&deviceUid=${encodeURIComponent(opts.deviceUid)}` : '';
       return authed<Envelope<ReceiptOptions>>('GET', `/mobile/receipts/options?companyId=${encodeURIComponent(companyId)}${device}`).then((r) => r.data);
     },
-    /** One page of a company's open bills, every customer, in the order VK Nex fills them. */
-    openBillsPage: (companyId: string, page: number, pageSize = 200) =>
-      authed<Envelope<OpenBillsPage>>(
-        'GET',
-        `/mobile/receipts/open-bills?companyId=${encodeURIComponent(companyId)}&page=${page}&pageSize=${pageSize}`,
-      ).then((r) => r.data),
+    /**
+     * One page of a company's open items, every customer, in the order VK Nex fills them: bills,
+     * and the credits customers hold (withCredits, since the desktop-rule receipt). An older VK
+     * Nex refuses the unknown key with a 400; then it is asked for bills only from then on.
+     */
+    openBillsPage: async (companyId: string, page: number, pageSize = 200): Promise<OpenBillsPage> => {
+      const path = `/mobile/receipts/open-bills?companyId=${encodeURIComponent(companyId)}&page=${page}&pageSize=${pageSize}`;
+      if (!openBillsNoCredits) {
+        try {
+          return (await authed<Envelope<OpenBillsPage>>('GET', `${path}&withCredits=true`)).data;
+        } catch (e) {
+          if (!(e instanceof ApiError && e.status === 400)) throw e;
+          openBillsNoCredits = true;
+        }
+      }
+      return (await authed<Envelope<OpenBillsPage>>('GET', path)).data;
+    },
     /** One receipt, saved and posted. Safe to resend: the same avhClientUuid answers the receipt saved before. */
     createReceipt: (payload: Record<string, unknown>) =>
       authed<Envelope<CreatedReceipt>>('POST', '/mobile/receipts/create', { ...payload, deviceUid: opts.deviceUid }).then((r) => r.data),
+    /** The signed-in login: its employee (the receipts' collector) and its rights. */
+    me: () => authed<Envelope<MobileMe>>('GET', '/mobile/me').then((r) => r.data),
+    /** This phone's receipts changed in VK Nex since a time (posted, cancelled, PDC cleared…). */
+    receiptStatus: (companyId: string, since: string | null, page: number, pageSize = 200) => {
+      const device = opts.deviceUid ? `&deviceUid=${encodeURIComponent(opts.deviceUid)}` : '';
+      const from = since ? `&since=${encodeURIComponent(since)}` : '';
+      return authed<Envelope<ReceiptStatusPage>>(
+        'GET',
+        `/mobile/receipts/status?companyId=${encodeURIComponent(companyId)}&page=${page}&pageSize=${pageSize}${from}${device}`,
+      ).then((r) => r.data);
+    },
     /** One check-in. Safe to resend, as orders. */
     createVisit: (payload: Record<string, unknown>) =>
       authed<Envelope<CreatedVisit>>('POST', '/mobile/visits/create', { ...payload, deviceUid: opts.deviceUid }).then((r) => r.data),

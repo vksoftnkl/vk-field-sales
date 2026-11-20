@@ -22,7 +22,8 @@ function initials(name: string): string {
 
 /**
  * Side menu from the ☰ button, like the Qt app's DrawerMenu: who is logged in and for which
- * company, then Home, Switch company, My orders, Reports, Sync data, Settings and Log out.
+ * company, then Home, Switch company, My orders, Reports, Sync data, Settings and Log out. (A
+ * shop's receipts are on Customer detail.)
  * Reports and Settings are not built yet and say so.
  */
 export function AppMenu({

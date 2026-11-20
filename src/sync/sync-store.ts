@@ -1,10 +1,15 @@
-import { and, asc, eq, inArray, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { getMeta, setMeta } from '@/db/meta';
 import {
   beats,
   branches,
+  promotionScheme,
+  promotionSchemeBranch,
+  promotionSchemeItem,
+  promotionSchemeParty,
+  promotionSchemeSlab,
   companies,
   customerBills,
   customers,
@@ -18,7 +23,9 @@ import {
   ledgerRows,
   ledgerYears,
   openBills,
+  receiptAllocations,
   receipts,
+  receiptSettings,
   receiptTenders,
   saleBill,
   saleOrder,
@@ -29,6 +36,7 @@ import {
 
 import { makeDeviceUid } from './device-uid';
 import type { BranchRow } from './download-branches';
+import type { CompanySchemes } from './download-schemes';
 import type { DownloadedCustomer } from './download-customers';
 import type { ItemDownload } from './download-items';
 import type { LedgerDownload } from './download-ledgers';
@@ -39,7 +47,7 @@ import type { ReceiptData } from './download-receipt-data';
 import type { PendingReceipt } from './upload-receipts';
 import type { PendingVisit } from './upload-visits';
 import type { PendingEdit } from './update-customers';
-import type { CreatedOrder, CreatedReceipt, CreatedVisit, CustomerOptions, ItemOptions } from './vk-nex-api';
+import type { CreatedOrder, CreatedReceipt, CreatedVisit, CustomerOptions, ItemOptions, MobileMe, ReceiptStatus } from './vk-nex-api';
 
 /** What Sync reads from and writes to the phone's database. */
 
@@ -210,9 +218,11 @@ export function markCustomerRefused(localId: string, error: string): void {
 export function saveCustomerOptions(o: CustomerOptions): void {
   db.transaction((tx) => {
     o.areas.forEach((a, i) => {
+      // cityId comes from VK Nex since 2026-11-19 (offers for a city); an older VK Nex keeps the old one.
+      const city = a.cityId === undefined ? {} : { cityId: a.cityId ?? null };
       tx.insert(beats)
-        .values({ id: a.id, name: a.name, position: i + 1 })
-        .onConflictDoUpdate({ target: beats.id, set: { name: a.name, position: i + 1 } })
+        .values({ id: a.id, name: a.name, position: i + 1, ...city })
+        .onConflictDoUpdate({ target: beats.id, set: { name: a.name, position: i + 1, ...city } })
         .run();
     });
     o.groups.forEach((g, i) => {
@@ -330,11 +340,20 @@ export function pendingOrders(): PendingOrder[] {
   for (let i = 0; i < ids.length; i += 500) {
     lines.push(...db.select().from(saleOrderItem).where(inArray(saleOrderItem.soiOrderId, ids.slice(i, i + 500))).all());
   }
+  // Lines saved before migration 0015 carry no factor: send the unit's, as Sync keeps it (an
+  // iuc row's factor is the item's, the same in every company).
+  const unitIds = [...new Set(lines.filter((l) => l.soiToBaseFactor === null).map((l) => l.soiItemUnitId))];
+  const unitFactors: Record<string, string> = {};
+  for (let i = 0; i < unitIds.length; i += 500) {
+    const found = db.select({ iucId: itemUnits.iucId, factor: itemUnits.iucToBaseFactor }).from(itemUnits).where(inArray(itemUnits.iucId, unitIds.slice(i, i + 500))).all();
+    for (const u of found) unitFactors[u.iucId] = u.factor;
+  }
   return heads.map((h) => ({
     header: h.header,
     lines: lines.filter((l) => l.soiOrderId === h.header.soId),
     customerPending: h.customerPending === true,
     customerPriceLevelId: h.customerPriceLevelId ?? null,
+    unitFactors,
   }));
 }
 
@@ -369,33 +388,153 @@ export function pendingReceipts(): PendingReceipt[] {
     .all();
   const ids = heads.map((h) => h.header.avhClientUuid);
   const lines: (typeof receiptTenders.$inferSelect)[] = [];
+  const allocs: (typeof receiptAllocations.$inferSelect)[] = [];
   for (let i = 0; i < ids.length; i += 500) {
-    lines.push(...db.select().from(receiptTenders).where(inArray(receiptTenders.tdSrcDocId, ids.slice(i, i + 500))).all());
+    const part = ids.slice(i, i + 500);
+    lines.push(...db.select().from(receiptTenders).where(inArray(receiptTenders.tdSrcDocId, part)).all());
+    allocs.push(...db.select().from(receiptAllocations).where(and(inArray(receiptAllocations.ralReceiptId, part), eq(receiptAllocations.ralSource, 'PLANNED'))).all());
   }
   return heads.map((h) => ({
     header: h.header,
     lines: lines.filter((l) => l.tdSrcDocId === h.header.avhClientUuid),
+    allocations: allocs.filter((a) => a.ralReceiptId === h.header.avhClientUuid),
     customerPending: h.customerPending === true,
   }));
 }
 
+const moneyText = (v: string | number | null | undefined): string => {
+  const x = Number(v ?? 0);
+  return Number.isFinite(x) ? x.toFixed(2) : '0.00';
+};
+
 /** VK Nex has the receipt (posted now, or before under the same client uuid): keep its id, number and status. */
 export function markReceiptSynced(localId: string, created: CreatedReceipt): void {
-  db.update(receipts)
-    .set({
-      avhVoucherId: created.avhVoucherId,
-      avhVoucherRefno: created.avhVoucherRefno,
-      avhVoucherStatus: created.avhVoucherStatus,
-      appSyncedOn: new Date().toISOString(),
-      appPendingUpload: false,
-      appSyncError: null,
-    })
-    .where(eq(receipts.avhClientUuid, localId))
-    .run();
+  // What VK Nex really did (an older VK Nex answers without it): replaces any earlier POSTED rows.
+  const posted = [
+    ...(created.allocations ?? []).map((a) => ({
+      ralKind: 'BILL',
+      ralBillId: a.billId,
+      ralBillAccYear: a.billAccYear,
+      appDocRefno: a.docRefno ?? null,
+      ralAmount: moneyText(a.amount),
+      ralDiscount: moneyText(a.discount),
+      ralRoundoff: moneyText(a.roundoff),
+    })),
+    ...(created.creditsApplied ?? []).map((c) => ({
+      ralKind: 'CREDIT',
+      ralBillId: c.billId,
+      ralBillAccYear: c.billAccYear,
+      appDocRefno: c.docRefno ?? null,
+      ralAmount: moneyText(c.amount),
+      ralDiscount: '0',
+      ralRoundoff: '0',
+    })),
+  ];
+  db.transaction((tx) => {
+    tx.update(receipts)
+      .set({
+        avhVoucherId: created.avhVoucherId,
+        avhVoucherRefno: created.avhVoucherRefno,
+        avhVoucherStatus: created.avhVoucherStatus,
+        appSyncedOn: new Date().toISOString(),
+        appPendingUpload: false,
+        appSyncError: null,
+        ...(created.employeeId !== undefined ? { avhEmployeeId: created.employeeId } : {}),
+        // VK Nex's figure wins over the phone's plan (receipts saved before 0019 keep none).
+        ...(created.onAccount !== undefined && created.onAccount !== null && (created.allocations || created.creditsApplied) ? { appOnAccount: moneyText(created.onAccount) } : {}),
+        ...(created.adjusted ? { appAdjusted: created.adjusted.length ? JSON.stringify(created.adjusted) : null } : {}),
+        ...(created.pdcVouchers ? { appPdc: created.pdcVouchers.length ? JSON.stringify(created.pdcVouchers) : null } : {}),
+      })
+      .where(eq(receipts.avhClientUuid, localId))
+      .run();
+    if (created.allocations || created.creditsApplied) {
+      tx.delete(receiptAllocations).where(and(eq(receiptAllocations.ralReceiptId, localId), eq(receiptAllocations.ralSource, 'POSTED'))).run();
+      if (posted.length) {
+        tx.insert(receiptAllocations)
+          .values(posted.map((p, i) => ({ ...p, ralId: `${localId}:P${i}`, ralReceiptId: localId, ralSource: 'POSTED', ralCredit: '0' })))
+          .run();
+      }
+    }
+    // The receipt no longer counts as unsent, so the open items it settled come down now, as VK
+    // Nex has them, until the next full Sync brings its figures (Send now skips that step). Not on
+    // a duplicate: VK Nex took it on an earlier try, and those figures may have come since.
+    if (!created.duplicate) {
+      const settled = posted.length
+        ? posted.map((p) => ({ billId: p.ralBillId, accYear: p.ralBillAccYear, paise: toPaise(p.ralAmount) + toPaise(p.ralDiscount) + toPaise(p.ralRoundoff) }))
+        : tx
+            .select()
+            .from(receiptAllocations)
+            .where(and(eq(receiptAllocations.ralReceiptId, localId), eq(receiptAllocations.ralSource, 'PLANNED')))
+            .all()
+            .map((a) => ({
+              billId: a.ralBillId,
+              accYear: a.ralBillAccYear,
+              paise: toPaise(a.ralAmount) + (a.ralKind === 'BILL' ? toPaise(a.ralCredit) + toPaise(a.ralDiscount) + toPaise(a.ralRoundoff) : 0),
+            }));
+      for (const s of settled) {
+        if (s.paise <= 0) continue;
+        tx.update(openBills)
+          .set({ pendingPaise: sql`max(0, ${openBills.pendingPaise} - ${s.paise})` })
+          .where(and(eq(openBills.billId, s.billId), eq(openBills.billAccYear, s.accYear)))
+          .run();
+      }
+    }
+  });
+}
+
+/** Rupees as exact text → whole paise. */
+const toPaise = (v: string | null | undefined): number => {
+  const x = Number(v ?? 0);
+  return Number.isFinite(x) ? Math.round(x * 100) : 0;
+};
+
+/**
+ * GET /mobile/receipts/status: this phone's receipts as VK Nex has them now (cancelled in the
+ * office, a post-dated cheque cleared or bounced). Receipts the phone doesn't have, or hasn't
+ * sent, are skipped. Returns how many really changed (status, cancellation or a cheque's state),
+ * not how many VK Nex listed.
+ */
+export function applyReceiptStatus(rows: readonly ReceiptStatus[]): number {
+  let changed = 0;
+  db.transaction((tx) => {
+    for (const r of rows) {
+      const was = tx
+        .select({ status: receipts.avhVoucherStatus, cancelledOn: receipts.appCancelledOn, pdc: receipts.appPdc })
+        .from(receipts)
+        .where(and(eq(receipts.avhClientUuid, r.avhClientUuid), eq(receipts.appPendingUpload, false)))
+        .get();
+      if (!was) continue;
+      const pdc = r.pdc ? (r.pdc.length ? JSON.stringify(r.pdc) : null) : was.pdc;
+      const pdcStates = (json: string | null) => (json ? (JSON.parse(json) as { status?: string }[]).map((p) => p.status ?? '').join(',') : '');
+      if ((was.status ?? '') !== (r.avhVoucherStatus ?? '') || (was.cancelledOn ?? null) !== (r.cancelledOn ?? null) || pdcStates(was.pdc) !== pdcStates(pdc)) changed += 1;
+      tx.update(receipts)
+        .set({
+          avhVoucherId: r.avhVoucherId,
+          avhVoucherRefno: r.avhVoucherRefno ?? null,
+          avhVoucherStatus: r.avhVoucherStatus,
+          appCancelledOn: r.cancelledOn ?? null,
+          appCancelReason: r.cancelReason ?? null,
+          appPdc: pdc,
+        })
+        .where(eq(receipts.avhClientUuid, r.avhClientUuid))
+        .run();
+    }
+  });
+  return changed;
+}
+
+/** GET /mobile/me at Sync: the login's employee (the receipts' collector) and rights. */
+export function saveMe(me: MobileMe): void {
+  setMeta('me', JSON.stringify(me));
 }
 
 export function markReceiptRefused(localId: string, error: string): void {
   db.update(receipts).set({ appSyncError: error }).where(eq(receipts.avhClientUuid, localId)).run();
+}
+
+/** The receipt's sync note while it is being sent (see RECEIPT_SEND_TRIED), or put back after. */
+export function markReceiptTried(localId: string, error: string | null): void {
+  db.update(receipts).set({ appSyncError: error }).where(and(eq(receipts.avhClientUuid, localId), eq(receipts.appPendingUpload, true))).run();
 }
 
 /**
@@ -409,6 +548,8 @@ export function saveReceiptData(d: ReceiptData): void {
     for (let i = 0; i < d.tenders.length; i += CHUNK) tx.insert(tenders).values(d.tenders.slice(i, i + CHUNK)).run();
     tx.delete(openBills).where(inArray(openBills.companyId, d.companyIds)).run();
     for (let i = 0; i < d.bills.length; i += CHUNK) tx.insert(openBills).values(d.bills.slice(i, i + CHUNK)).onConflictDoNothing().run();
+    tx.delete(receiptSettings).where(inArray(receiptSettings.companyId, d.companyIds)).run();
+    if (d.settings.length) tx.insert(receiptSettings).values(d.settings).run();
   });
 }
 
@@ -495,6 +636,33 @@ export function saveBranches(d: { companyIds: readonly string[]; rows: readonly 
     tx.delete(branches).run();
     for (let i = 0; i < d.rows.length; i += CHUNK) tx.insert(branches).values(d.rows.slice(i, i + CHUNK)).run();
   });
+}
+
+/**
+ * Each company's offers, replaced as a whole in one transaction (never half a set): its schemes
+ * and their branch, shop, item and band rows go, then what VK Nex sent comes in. Companies not
+ * read keep theirs.
+ */
+export function saveSchemes(sets: readonly CompanySchemes[], syncedOn: string): void {
+  db.transaction((tx) => {
+    for (const c of sets) {
+      const old = tx.select({ id: promotionScheme.prmId }).from(promotionScheme).where(eq(promotionScheme.prmCompId, c.companyId)).all().map((r) => r.id);
+      for (let i = 0; i < old.length; i += CHUNK) {
+        const ids = old.slice(i, i + CHUNK);
+        tx.delete(promotionSchemeBranch).where(inArray(promotionSchemeBranch.prbPrmId, ids)).run();
+        tx.delete(promotionSchemeParty).where(inArray(promotionSchemeParty.prpPrmId, ids)).run();
+        tx.delete(promotionSchemeItem).where(inArray(promotionSchemeItem.priPrmId, ids)).run();
+        tx.delete(promotionSchemeSlab).where(inArray(promotionSchemeSlab.prsPrmId, ids)).run();
+      }
+      tx.delete(promotionScheme).where(eq(promotionScheme.prmCompId, c.companyId)).run();
+      for (let i = 0; i < c.schemes.length; i += CHUNK) tx.insert(promotionScheme).values(c.schemes.slice(i, i + CHUNK)).run();
+      for (let i = 0; i < c.branches.length; i += CHUNK) tx.insert(promotionSchemeBranch).values(c.branches.slice(i, i + CHUNK)).run();
+      for (let i = 0; i < c.parties.length; i += CHUNK) tx.insert(promotionSchemeParty).values(c.parties.slice(i, i + CHUNK)).run();
+      for (let i = 0; i < c.items.length; i += CHUNK) tx.insert(promotionSchemeItem).values(c.items.slice(i, i + CHUNK)).run();
+      for (let i = 0; i < c.slabs.length; i += CHUNK) tx.insert(promotionSchemeSlab).values(c.slabs.slice(i, i + CHUNK)).run();
+    }
+  });
+  setMeta('schemesSyncedOn', syncedOn);
 }
 
 /** Items with every company's prices and stock, replaced in one transaction (never half a price list). */

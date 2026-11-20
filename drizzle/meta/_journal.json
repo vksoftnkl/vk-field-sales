@@ -127,6 +127,20 @@
       "when": 1795006441256,
       "tag": "0017_branch_default",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1795066066658,
+      "tag": "0018_promotion_schemes",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1795072348988,
+      "tag": "0019_receipt_workflow",
+      "breakpoints": true
     }
   ]
 }

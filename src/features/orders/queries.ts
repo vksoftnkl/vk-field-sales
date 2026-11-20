@@ -21,13 +21,15 @@ import { addDays } from '@/lib/date-range';
 import { todayISO } from '@/lib/money';
 import { uuidv7 } from '@/lib/uuid';
 
+import { applyOffersOf } from '../schemes/scheme-draft';
+import { evaluateDraftNow, resolveFreeUnit } from '../schemes/scheme-load';
 import { itemFilterSql, type ItemListFilter } from './item-filter-sql';
 import type { CheckIn, OrderDraftState, SoLine } from './order-draft';
 import { paiseText, qtyText, startingPrice, toPaise } from './order-math';
+import { buildOrderRows, offersOnFromSaved, paidRows } from './order-rows';
 import { nextRefSeq, phoneRef, validUntil, VALID_DAYS } from './order-status';
-import { soLineAmounts, soTotals, type DiscMode } from './so-math';
+import { soLineAmounts, type DiscMode } from './so-math';
 import { SO_ORDER_TYPE, toPriority } from './so-priority';
-import { taxRate } from '../sales/sale-math';
 
 /** What the order screens, Receipt and Check in need about the shop. */
 export const orderCustomerQuery = (cusId: string) =>
@@ -43,8 +45,13 @@ export const orderCustomerQuery = (cusId: string) =>
       cusAllowPromotion: customers.cusAllowPromotion,
       cusCreditAllowed: customers.cusCreditAllowed,
       appOrderStatus: customers.appOrderStatus,
+      // For offers: the shop's group, its beat and the beat's city.
+      cusGroupId: customers.cusGroupId,
+      cusAreaId: customers.cusAreaId,
+      cityId: beats.cityId,
     })
     .from(customers)
+    .leftJoin(beats, eq(beats.id, customers.cusAreaId))
     .where(eq(customers.cusId, cusId));
 
 export type OrderCustomer = Awaited<ReturnType<ReturnType<typeof orderCustomerQuery>['all']>>[number];
@@ -207,55 +214,7 @@ export function soSeedLine(u: SoUnitRow, c: OrderCustomer, price: { level: numbe
 export const REMARKS_MAX = 500;
 
 /** The draft fields Save order writes. */
-export type OrderToSave = Pick<OrderDraftState, 'customerId' | 'companyId' | 'branchId' | 'editingSoId' | 'lines' | 'deliveryDate' | 'priority' | 'remarks' | 'checkIn'>;
-
-/** '5.000' → '2.5' (CGST and SGST each take half). */
-const halfRate = (perc: string | null): string => String(Number((taxRate(perc) / 2).toFixed(4)));
-
-function lineRow(soId: string, l: SoLine, lineNo: number) {
-  const a = soLineAmounts(l);
-  const rate = taxRate(l.taxPerc);
-  return {
-    soiId: uuidv7(),
-    soiOrderId: soId,
-    soiLineNo: lineNo,
-    soiItemId: l.itemId,
-    soiItemUnitId: l.iucId,
-    soiPriceLevel: l.priceLevel,
-    soiIsPromo: l.promo,
-    soiOrderQty: qtyText(a.qty),
-    soiNetQty: qtyText(a.qty),
-    soiRate: paiseText(toPaise(l.price) ?? 0),
-    soiMaxPrice: l.mrp ?? '0',
-    soiMinPrice: l.minPrice,
-    soiItemDiscPerc: l.discMode === 'perc' ? l.disc.trim() || '0' : '0',
-    soiItemDiscQty: l.discMode === 'perUnit' ? l.disc.trim() || '0' : '0',
-    soiItemDiscAmt: paiseText(a.discPaise),
-    soiGrossAmt: paiseText(a.grossPaise),
-    soiFreightQty: a.freightPaise > 0 ? qtyText(a.qty) : '0',
-    soiFreightAmt: paiseText(a.freightPaise),
-    soiLoadQty: a.loadPaise > 0 ? qtyText(a.qty) : '0',
-    soiLoadAmt: paiseText(a.loadPaise),
-    soiNetAmt: paiseText(a.netPaise),
-    soiToBaseFactor: l.factor,
-    soiHsnCode: l.hsnCode,
-    soiTaxId: l.taxId,
-    soiIsTaxIncl: l.inclTax,
-    soiTaxableAmt: paiseText(a.taxablePaise),
-    soiTaxPerc: String(rate),
-    soiTaxAmt: paiseText(a.taxPaise),
-    soiCgstPerc: halfRate(l.taxPerc),
-    soiCgstAmt: paiseText(a.cgstPaise),
-    soiSgstPerc: halfRate(l.taxPerc),
-    soiSgstAmt: paiseText(a.sgstPaise),
-    soiIgstPerc: '0',
-    soiIgstAmt: paiseText(a.igstPaise),
-    appItemName: l.name,
-    appItemNameTa: l.nameTa,
-    appUnitName: l.unitName,
-    appDiscMode: l.discMode,
-  };
-}
+export type OrderToSave = Pick<OrderDraftState, 'customerId' | 'companyId' | 'branchId' | 'editingSoId' | 'lines' | 'deliveryDate' | 'priority' | 'remarks' | 'checkIn' | 'offersOn' | 'applyOffers'>;
 
 /**
  * Save order: the order and its lines in one transaction, waiting for the next Sync (which sends it
@@ -266,10 +225,10 @@ function lineRow(soId: string, l: SoLine, lineNo: number) {
 export function saveOrder(d: OrderToSave, c: OrderCustomer, userId: string, deviceUid: string): { soId: string; ref: string } {
   const lines = d.lines.filter((l) => soLineAmounts(l).qty > 0);
   if (!lines.length || !d.customerId || !d.companyId) throw new Error('ORDER_EMPTY');
+  const companyId = d.companyId;
   // A new order always has Switch company's branch (Take order asks first); only an order saved
   // before branches came may be edited without one.
   if (!d.branchId && !d.editingSoId) throw new Error('ORDER_NO_BRANCH');
-  const t = soTotals(lines);
   const now = new Date().toISOString();
   const today = todayISO();
 
@@ -294,6 +253,19 @@ export function saveOrder(d: OrderToSave, c: OrderCustomer, userId: string, devi
             .map((r) => r.ref),
         ),
       );
+    // The offers worked out again now, on the order's own date, so what is saved is what Review showed.
+    const { order, itemAttrs } = evaluateDraftNow({ ...d, lines }, c, orderDate);
+    const built = buildOrderRows({
+      soId,
+      lines,
+      order,
+      itemAttrs,
+      offersOn: d.offersOn,
+      applyOffers: applyOffersOf(d, c),
+      resolveFree: (f) => resolveFreeUnit(companyId, f),
+      newId: uuidv7,
+    });
+    const t = built.totals;
     const delivery = d.deliveryDate && d.deliveryDate > orderDate ? d.deliveryDate : orderDate;
     const header = {
       soCompanyId: d.companyId!,
@@ -305,7 +277,8 @@ export function saveOrder(d: OrderToSave, c: OrderCustomer, userId: string, devi
       soCustName: customerName(c),
       soHasLoad: c.cusLoadingCharge,
       soHasFreight: c.cusFreightCharge,
-      soHasPromo: c.cusAllowPromotion,
+      // The order's Apply offers switch (its own value, else the shop's allow-promotion flag).
+      soHasPromo: applyOffersOf(d, c),
       soUserId: userId,
       soTotItems: t.items,
       soTotBags: qtyText(t.qty),
@@ -319,6 +292,8 @@ export function saveOrder(d: OrderToSave, c: OrderCustomer, userId: string, devi
       soFreightAmt: paiseText(t.freightPaise),
       soLoadAmt: paiseText(t.loadPaise),
       soRoundOff: paiseText(t.roundOffPaise),
+      soSchDisc: built.schDisc,
+      soBillSchDisc: built.billSchDisc,
       soOrderAmt: paiseText(t.totalPaise),
       // Always on credit, whatever the customer's credit flag (user's rule, 2026-11-18).
       soOrderType: SO_ORDER_TYPE,
@@ -349,9 +324,7 @@ export function saveOrder(d: OrderToSave, c: OrderCustomer, userId: string, devi
         })
         .run();
     }
-    tx.insert(saleOrderItem)
-      .values(lines.map((l, i) => lineRow(soId, l, i + 1)))
-      .run();
+    tx.insert(saleOrderItem).values(built.rows).run();
     tx.update(customers).set({ appOrderStatus: 'ordered' }).where(eq(customers.cusId, c.cusId)).run();
     return { soId, ref };
   });
@@ -412,11 +385,16 @@ export function loadOrderDraft(soId: string): Omit<OrderDraftState, 'entry'> | n
   const o = orderQuery(soId).get();
   if (!o || !o.appPendingUpload) return null;
   const units = new Map(soUnitsQuery(o.soCompanyId).all().map((u) => [u.iucId, u]));
-  const lines: SoLine[] = orderLinesQuery(soId)
-    .all()
+  const shop = orderCustomerQuery(o.soCustId).get();
+  const switches: { itemId: string; savedPromo: boolean; allowed: boolean }[] = [];
+  // Free lines are worked out again, never loaded.
+  const lines: SoLine[] = paidRows(orderLinesQuery(soId).all())
     .map((row) => {
       const l = row.line;
       const u = units.get(l.soiItemUnitId);
+      // The shop and the item allow offers (the line's own switch is the draft's offersOn).
+      const allowed = !!shop && !!u && shop.cusAllowPromotion && u.itemAllowPromo;
+      switches.push({ itemId: l.soiItemId, savedPromo: l.soiIsPromo, allowed });
       const mode = (l.appDiscMode as DiscMode | null) ?? (Number(l.soiItemDiscQty) > 0 ? 'perUnit' : 'perc');
       const disc = mode === 'perc' ? l.soiItemDiscPerc : mode === 'perUnit' ? l.soiItemDiscQty : l.soiItemDiscAmt;
       const perUnit = (amt: string, qty: string) => (Number(qty) > 0 ? paiseText(Math.round((toPaise(amt) ?? 0) / Number(qty))) : '0');
@@ -441,7 +419,7 @@ export function loadOrderDraft(soId: string): Omit<OrderDraftState, 'entry'> | n
         freightPerUnit: perUnit(l.soiFreightAmt, l.soiFreightQty),
         mrp: Number(l.soiMaxPrice) > 0 ? l.soiMaxPrice : (u?.ipmMaxPrice ?? null),
         minPrice: l.soiMinPrice ?? u?.ipmMinPrice ?? null,
-        promo: l.soiIsPromo,
+        promo: u && shop ? allowed : l.soiIsPromo,
       };
     });
   return {
@@ -456,6 +434,10 @@ export function loadOrderDraft(soId: string): Omit<OrderDraftState, 'entry'> | n
     // Orders saved before the vehicle number was dropped keep it in the remarks.
     remarks: [o.soRemarks ?? '', o.appVehicleNo ? `Vehicle ${o.appVehicleNo}` : ''].filter(Boolean).join(' · '),
     checkIn: o.appCheckinAt ? { at: o.appCheckinAt, fix: null } : null,
+    // Offers: the Apply offers switch as saved (older orders: untouched = the shop's flag), and each line the salesman switched off.
+    applyOffers: o.soHasPromo ?? null,
+    // Saved with Apply offers off, every line went with soiIsPromo = false: that is not a per-line choice.
+    offersOn: o.soHasPromo === false ? {} : offersOnFromSaved(switches),
   };
 }
 
@@ -470,7 +452,8 @@ export function repeatLines(soId: string, c: OrderCustomer, companyId: string): 
   const units = new Map(soUnitsQuery(companyId).all().map((u) => [u.iucId, u]));
   const lines: SoLine[] = [];
   let skipped = 0;
-  for (const { line } of orderLinesQuery(soId).all()) {
+  // Free lines are not copied (the offers are worked out again) and are not "skipped" either.
+  for (const { line } of paidRows(orderLinesQuery(soId).all())) {
     const u = units.get(line.soiItemUnitId);
     const start = u?.appPriced ? startingPrice(u, c.cusPriceLevelId) : null;
     if (!u || !start || lines.some((l) => l.itemId === u.itemId)) {
@@ -531,7 +514,7 @@ export const shopOrderLinesQuery = (cusId: string, companyId: string, today = to
     })
     .from(saleOrder)
     .innerJoin(saleOrderItem, eq(saleOrderItem.soiOrderId, saleOrder.soId))
-    .where(and(eq(saleOrder.soCustId, cusId), eq(saleOrder.soCompanyId, companyId), gte(saleOrder.soOrderDate, addDays(today, -VALID_DAYS))))
+    .where(and(eq(saleOrder.soCustId, cusId), eq(saleOrder.soCompanyId, companyId), gte(saleOrder.soOrderDate, addDays(today, -VALID_DAYS)), eq(saleOrderItem.soiIsFree, false)))
     .orderBy(desc(saleOrder.soOrderDatetime));
 
 /**

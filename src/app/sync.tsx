@@ -10,6 +10,7 @@ import { forgetRefusedLoginPassword } from '@/auth/auth-service';
 import { Button, PasswordField, TextField } from '@/components/ui';
 import { toPaise } from '@/features/orders/order-math';
 import { waitingReceiptsQuery } from '@/features/receipts/queries';
+import { receiptSendTried } from '@/features/receipts/receipt-status';
 import { waitingReturnsQuery } from '@/features/returns/queries';
 import { waitingBillsQuery } from '@/features/sales/queries';
 import { formatAmount } from '@/lib/money';
@@ -106,10 +107,14 @@ export default function SyncScreen() {
         return total ? t('sync.stepReceipts', { n, total }) : t('sync.stepReceiptsNone');
       case 'receiptData':
         return total ? t('sync.stepReceiptData', { n, total }) : t('sync.stepReceiptDataNone');
+      case 'receiptStatus':
+        return t('sync.stepReceiptStatus');
       case 'items':
         return total ? t('sync.stepItems', { n, total }) : t('sync.stepItemsNone');
       case 'branches':
         return t('sync.stepBranches');
+      case 'schemes':
+        return total ? t('sync.stepSchemes', { n: Math.min(n + 1, total), total }) : t('sync.stepSchemesNone');
       case 'download':
         return total ? t('sync.stepDownload', { n, total }) : t('sync.stepDownloadList');
       case 'ledger':
@@ -190,6 +195,12 @@ export default function SyncScreen() {
         ? t('sync.receiptDataNotOnServer')
         : t('sync.receiptDataFailed', { message: errorText(report.receiptDataStoppedBy) })
     : null;
+  // An older VK Nex has no status route: nothing to say then.
+  const statusChanged = report?.receiptStatus?.changed ?? 0;
+  const statusStop =
+    report?.receiptStatusStoppedBy && !isRouteMissing(report.receiptStatusStoppedBy) && !isNetworkError(report.receiptStatusStoppedBy)
+      ? t('sync.receiptStatusFailed', { message: errorText(report.receiptStatusStoppedBy) })
+      : null;
   const items = report?.items;
   const itemsStop = report?.itemsStoppedBy
     ? isNetworkError(report.itemsStoppedBy)
@@ -201,6 +212,14 @@ export default function SyncScreen() {
     ? isNetworkError(report.branchesStoppedBy)
       ? noAnswer(address)
       : t('sync.branchesFailed', { message: errorText(report.branchesStoppedBy) })
+    : null;
+  const schemesGot = report?.schemes;
+  const schemesStop = report?.schemesStoppedBy
+    ? isNetworkError(report.schemesStoppedBy)
+      ? noAnswer(address)
+      : isRouteMissing(report.schemesStoppedBy)
+        ? t('sync.schemesNotOnServer')
+        : t('sync.schemesFailed', { message: errorText(report.schemesStoppedBy) })
     : null;
   const deviceStop = report?.sendRefusedBy ? t('sync.deviceRefused', { message: errorText(report.sendRefusedBy) }) : null;
   const receiptsStop = report?.receiptsRouteMissing
@@ -223,8 +242,12 @@ export default function SyncScreen() {
       !!itemsStop ||
       !!branchesGot ||
       !!branchesStop ||
+      !!schemesGot ||
+      !!schemesStop ||
       !!receiptData ||
       !!receiptDataStop ||
+      statusChanged > 0 ||
+      !!statusStop ||
       !!deviceStop ||
       !!receiptsStop);
 
@@ -316,7 +339,7 @@ export default function SyncScreen() {
                 key={`r-${r.id}`}
                 name={r.customerName}
                 tag={t('sync.tagReceipt', { no: r.refNo, amount: formatAmount(toPaise(r.amount) ?? 0) })}
-                error={r.appSyncError}
+                error={receiptSendTried(r.appSyncError) ? null : r.appSyncError}
               />
             ))}
           </Card>
@@ -396,7 +419,7 @@ export default function SyncScreen() {
                         ? t(o.status === 'uploaded' ? 'sync.orderUploaded' : 'sync.orderAlreadySaved', { refno: o.orderRefno ?? '', status: o.orderStatus ?? '' })
                         : (o.error ?? '')
                     }
-                    note={o.deletedOnServer ? t('sync.orderDeletedOnServer') : undefined}
+                    note={o.deletedOnServer ? t('sync.orderDeletedOnServer') : o.keptDraft ? t('sync.orderKeptDraft', { reason: o.keptDraft }) : undefined}
                   />
                 );
               })}
@@ -465,6 +488,15 @@ export default function SyncScreen() {
                 </View>
               ) : null}
               {branchesStop ? <StatusLine ok={false} text={branchesStop} /> : null}
+              {schemesGot ? (
+                <View style={st.item}>
+                  <Ionicons name="pricetag-outline" size={20} color={colors.success} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemOk}>{t('sync.schemesReceived', { schemes: schemesGot.schemes, companies: schemesGot.companies })}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {schemesStop ? <StatusLine ok={false} text={schemesStop} /> : null}
               {receiptData ? (
                 <View style={st.item}>
                   <Ionicons name="receipt-outline" size={20} color={colors.success} />
@@ -474,6 +506,15 @@ export default function SyncScreen() {
                 </View>
               ) : null}
               {receiptDataStop ? <StatusLine ok={false} text={receiptDataStop} /> : null}
+              {statusChanged > 0 ? (
+                <View style={st.item}>
+                  <Ionicons name="swap-horizontal-outline" size={20} color={colors.success} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemOk}>{t('sync.receiptStatusChanged', { count: statusChanged })}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {statusStop ? <StatusLine ok={false} text={statusStop} /> : null}
               {ledger ? (
                 <View style={st.item}>
                   <Ionicons name="document-text-outline" size={20} color={colors.success} />

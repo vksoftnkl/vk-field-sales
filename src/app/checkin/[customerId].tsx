@@ -6,19 +6,25 @@ import { useTranslation } from 'react-i18next';
 import { Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CalendarDialog } from '@/components/calendar-dialog';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button, TextField } from '@/components/ui';
+import { useDateNames } from '@/components/use-date-names';
 import { currentCompanyQuery } from '@/features/company/company';
 import { LocationCard, useLocate } from '@/features/orders/check-in-location';
 import { COLLECTION_REASONS, customerName, orderCustomerQuery, saveVisit, VISIT_REASONS, type VisitReason } from '@/features/orders/queries';
+import { ENGLISH_NAMES, formatDay } from '@/lib/date-range';
+import { todayISO } from '@/lib/money';
 import { useAppSelector } from '@/store';
 import { colors, font, radius, spacing } from '@/theme';
 
 /**
  * Check in · no order (the Qt app's OrderCheckin.qml), or · no collection (ReceiptCheckin.qml,
  * opened with kind=collection from Receipt): why nothing was taken, remarks, and where the
- * salesman was (the Qt app switched GPS on but never kept the place). Saved on the phone; the
- * next Sync sends it to VK Nex.
+ * salesman was (the Qt app switched GPS on but never kept the place). No collection also takes
+ * the date the shop promised to pay (canvas 5b, 1b); VK Nex visits have no field for it, so it
+ * goes at the start of the remarks, in English for the office. Saved on the phone; the next Sync
+ * sends it to VK Nex.
  */
 export default function CheckInScreen() {
   const { customerId, kind, companyId: forCompany } = useLocalSearchParams<{ customerId: string; kind?: string; companyId?: string }>();
@@ -34,6 +40,9 @@ export default function CheckInScreen() {
   const { loc, locate } = useLocate();
   const [reason, setReason] = useState<VisitReason | null>(null);
   const [remarks, setRemarks] = useState('');
+  const [promised, setPromised] = useState<string | null>(null);
+  const [calendar, setCalendar] = useState(false);
+  const names = useDateNames();
   const [submitted, setSubmitted] = useState(false);
   const saved = useRef(false);
 
@@ -43,7 +52,9 @@ export default function CheckInScreen() {
     try {
       // The receipt's company, else the one chosen in Choose company (else Sync picks it at upload).
       const companyId = forCompany ?? currentCompanyQuery().get()?.id ?? null;
-      saveVisit({ customerId, companyId, reason, remarks, fix: loc.kind === 'fix' ? loc.fix : null, kind: collection ? 'collection' : 'order' }, userId);
+      const promise = collection && promised ? i18n.t('checkIn.promisedRemark', { lng: 'en', date: formatDay(promised, ENGLISH_NAMES) }) : '';
+      const text = [promise, remarks.trim()].filter(Boolean).join(' · ');
+      saveVisit({ customerId, companyId, reason, remarks: text, fix: loc.kind === 'fix' ? loc.fix : null, kind: collection ? 'collection' : 'order' }, userId);
       saved.current = true;
       // A no-collection visit ends the receipt too: back to the customer.
       if (collection) router.dismissTo({ pathname: '/customer/[id]', params: { id: customerId } });
@@ -88,12 +99,43 @@ export default function CheckInScreen() {
             {submitted && !reason ? <Text style={st.error}>{t('checkIn.reasonRequired')}</Text> : null}
           </View>
 
-          <TextField label={t('checkIn.remarks')} value={remarks} onChangeText={setRemarks} placeholder={t('order.optional')} multiline maxLength={500} style={st.remarks} />
+          {collection ? (
+            <View style={{ gap: 6 }}>
+              <Text style={st.label}>{t('checkIn.promisedDate')}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${t('checkIn.promisedDate')}: ${promised ? formatDay(promised, names) : t('order.optional')}`}
+                onPress={() => setCalendar(true)}
+                style={st.dateBtn}
+              >
+                <Text style={[st.dateText, !promised && { color: colors.textMuted }]}>{promised ? formatDay(promised, names) : t('order.optional')}</Text>
+                {promised ? (
+                  <Pressable accessibilityRole="button" accessibilityLabel={t('common.clear')} hitSlop={8} onPress={() => setPromised(null)}>
+                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                  </Pressable>
+                ) : (
+                  <Ionicons name="calendar-outline" size={18} color={colors.textMuted} />
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+          <TextField label={t('checkIn.remarks')} value={remarks} onChangeText={setRemarks} placeholder={t('order.optional')} multiline maxLength={collection ? 460 : 500} style={st.remarks} />
+          {collection ? <Text style={st.note}>{t('checkIn.promisedNote')}</Text> : null}
         </ScrollView>
         <View style={[st.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
           <Button title={t('checkIn.save')} onPress={save} loading={loc.kind === 'locating'} style={{ height: 52 }} />
         </View>
       </KeyboardAvoidingView>
+      <CalendarDialog
+        visible={calendar}
+        value={promised}
+        today={todayISO()}
+        onCancel={() => setCalendar(false)}
+        onPick={(iso) => {
+          setPromised(iso);
+          setCalendar(false);
+        }}
+      />
     </View>
   );
 }
@@ -119,5 +161,19 @@ const st = StyleSheet.create({
   reasonOther: { fontSize: font.sm, color: colors.textMuted },
   error: { fontSize: font.sm, color: colors.danger },
   remarks: { minHeight: 72, textAlignVertical: 'top', paddingTop: spacing.md },
+  label: { fontSize: font.sm, fontWeight: '500', color: colors.textLabel },
+  dateBtn: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: radius.md + 2,
+    paddingHorizontal: spacing.md + 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+  },
+  dateText: { fontSize: font.md, color: colors.text },
+  note: { fontSize: 12.5, color: colors.textMuted },
   footer: { paddingTop: spacing.md, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
 });

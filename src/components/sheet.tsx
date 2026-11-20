@@ -18,6 +18,7 @@ export function BottomSheet({
   onClose,
   title,
   subtitle,
+  icon,
   headerAction,
   footer,
   children,
@@ -26,6 +27,8 @@ export function BottomSheet({
   onClose: () => void;
   title: string;
   subtitle?: string;
+  /** Shown left of the title, with the subtitle under the title beside it (Offer details). */
+  icon?: ReactNode;
   /** Small text button at the right of the title, e.g. "Select all". */
   headerAction?: { title: string; onPress: () => void };
   footer?: ReactNode;
@@ -41,16 +44,20 @@ export function BottomSheet({
         <View style={[st.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
           <View style={st.handle} />
           <View style={st.head}>
-            <Text style={st.title} accessibilityRole="header">
-              {title}
-            </Text>
+            {icon ? <View style={st.icon}>{icon}</View> : null}
+            <View style={{ flex: 1 }}>
+              <Text style={st.title} accessibilityRole="header">
+                {title}
+              </Text>
+              {icon && subtitle ? <Text style={st.iconSubtitle}>{subtitle}</Text> : null}
+            </View>
             {headerAction ? (
               <Pressable accessibilityRole="button" hitSlop={8} onPress={headerAction.onPress} style={st.headAction}>
                 <Text style={st.headActionText}>{headerAction.title}</Text>
               </Pressable>
             ) : null}
           </View>
-          {subtitle ? <Text style={st.subtitle}>{subtitle}</Text> : null}
+          {subtitle && !icon ? <Text style={st.subtitle}>{subtitle}</Text> : null}
           {/* Long lists (many beats) scroll inside the sheet; the buttons stay in view. */}
           <ScrollView style={st.scroll} contentContainerStyle={st.body} bounces={false}>
             {children}
@@ -228,7 +235,9 @@ const st = StyleSheet.create({
     marginTop: spacing.sm,
     paddingHorizontal: spacing.lg + 4,
   },
-  title: { flex: 1, fontSize: font.lg + 1, fontWeight: '700', color: colors.text },
+  title: { fontSize: font.lg + 1, fontWeight: '700', color: colors.text },
+  icon: { marginRight: spacing.sm + 2 },
+  iconSubtitle: { marginTop: 1, fontSize: font.sm, color: colors.textMuted },
   headAction: { minHeight: 44, justifyContent: 'center', paddingLeft: spacing.md },
   headActionText: { fontSize: font.sm + 1, fontWeight: '700', color: colors.primary },
   subtitle: { fontSize: font.sm, color: colors.textMuted, paddingHorizontal: spacing.lg + 4, marginBottom: spacing.xs },

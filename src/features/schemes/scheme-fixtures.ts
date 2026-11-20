@@ -1,0 +1,123 @@
+// Builders for the scheme tests (not shipped screens): a scheme row, its children, a context, an engine line.
+import type { PromoDocContext, PromoLine, SchemeBranchInput, SchemeInput, SchemeItemInput, SchemePartyInput, SchemeSlabInput } from './scheme-types.ts';
+
+export const schemeRow = (over: Partial<SchemeInput> = {}): SchemeInput => ({
+  prmId: 'S1',
+  prmCompId: 'C1',
+  prmBranchId: null,
+  prmCode: 'S1',
+  prmName: 'Scheme one',
+  prmStatus: 'APPROVED',
+  prmApplyOn: 'ITEM_QTY',
+  prmBenefit: 'DISC_PERC',
+  prmPriority: 1,
+  prmStackMode: 'EXCLUSIVE',
+  prmAutoApply: true,
+  prmAllowWithManualDisc: false,
+  prmCalcOnAmountType: 'NET_AMOUNT',
+  prmIncludeTax: false,
+  prmBillType: 'ALL',
+  prmMinBillAmount: '0.00',
+  prmMinQty: '0.000',
+  prmBranchScope: 'ALL',
+  prmCustScope: 'ALL',
+  prmItemScope: 'ALL',
+  prmPriceLevelId: null,
+  prmMaxBenefitPerBill: '0.00',
+  prmCouponBatchId: null,
+  prmStartDate: '2026-01-01',
+  prmEndDate: '2026-12-31',
+  prmValidFromTime: null,
+  prmValidToTime: null,
+  prmValidWeekdays: null,
+  branches: [],
+  parties: [],
+  items: [],
+  slabs: [],
+  ...over,
+});
+
+export const slabRow = (over: Partial<SchemeSlabInput> = {}): SchemeSlabInput => ({
+  prsId: 'B1',
+  prsExceeds: '0.000',
+  prsUpto: null,
+  prsEach: '1.000',
+  prsIsRepeat: false,
+  prsMaxRepeats: 0,
+  prsFreeItemId: null,
+  prsFreeUnitId: null,
+  prsFreeQty: '0.000',
+  prsFreeStockCheck: true,
+  prsDiscPerc: '0.0000',
+  prsDiscQty: '0.0000',
+  prsDiscAmt: '0.00',
+  prsFixedPrice: null,
+  prsMaxBenefitAmt: '0.00',
+  ...over,
+});
+
+export const itemRowIn = (over: Partial<SchemeItemInput> = {}): SchemeItemInput => ({
+  priId: 'I1',
+  priKind: 'ITEM',
+  priScopeId: 'ITEM1',
+  priUnitId: null,
+  priIsExclude: false,
+  priDiscPerc: '0.0000',
+  priDiscQty: '0.0000',
+  priDiscAmt: '0.00',
+  priMinQty: '0.000',
+  priFactor: '1.0000',
+  priMaxBenefit: '0.00',
+  priMatchPriority: 4,
+  ...over,
+});
+
+export const partyRowIn = (over: Partial<SchemePartyInput> = {}): SchemePartyInput => ({
+  prpId: 'P1',
+  prpKind: 'CUSTOMER',
+  prpScopeId: 'CUST1',
+  prpIsExclude: false,
+  prpMatchPriority: 4,
+  ...over,
+});
+
+export const branchRowIn = (over: Partial<SchemeBranchInput> = {}): SchemeBranchInput => ({
+  prbId: 'R1',
+  prbBranchId: 'BR1',
+  prbIsExclude: false,
+  ...over,
+});
+
+export const docCtx = (over: Partial<PromoDocContext> = {}): PromoDocContext => ({
+  compId: 'C1',
+  branchId: 'BR1',
+  docDate: '2026-11-19',
+  docTime: '10:30:00',
+  billType: 'CREDIT',
+  custId: 'CUST1',
+  custGroupId: 'GRP1',
+  areaId: 'AREA1',
+  cityId: 'CITY1',
+  priceLevelId: 1,
+  promotionsEnabled: true,
+  ...over,
+});
+
+export const promoLine = (over: Partial<PromoLine> = {}): PromoLine => ({
+  row: 0,
+  itemId: 'ITEM1',
+  unitId: 'U-PCS',
+  groupId: '',
+  categoryId: '',
+  brandId: '',
+  sectionId: '',
+  netQty: 10,
+  rate: 100,
+  gross: 1000,
+  netGross: 1000,
+  taxable: 1000,
+  schemeFlag: true,
+  isFree: false,
+  hasManualDisc: false,
+  ...over,
+});

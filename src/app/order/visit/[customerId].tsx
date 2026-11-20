@@ -20,6 +20,7 @@ import { contextChosen, fixFound, orderCleared, resumesVisit, visitStarted } fro
 import { num, toPaise } from '@/features/orders/order-math';
 import { isRecentOpen, SO_TONES, soState, type SoState } from '@/features/orders/order-status';
 import { companyQuery, isGstRegistered, oldestOpenBillQuery, orderRef, shopOrderLinesQuery, visitCustomerQuery } from '@/features/orders/queries';
+import { openReceipt } from '@/features/receipts/open-receipt';
 import { formatDay } from '@/lib/date-range';
 import { formatAmount, todayISO } from '@/lib/money';
 import { store, useAppDispatch, useAppSelector } from '@/store';
@@ -130,6 +131,8 @@ export default function VisitScreen() {
   ];
   const barColor = credit.usedPerc >= 100 ? colors.danger : credit.usedPerc >= 75 ? '#B45309' : colors.success;
   const noCompany = companies.length === 0;
+  // Collect payment opens Receipt (canvas 5b, step 1) for the visit's company.
+  const canCollect = !noCompany;
 
   return (
     <View style={st.root}>
@@ -185,6 +188,13 @@ export default function VisitScreen() {
             </View>
           ) : null}
           <Text style={st.asOf}>{balance !== null && syncedOn ? t('customerDetail.asOfSync', { date: formatDay(syncedOn.slice(0, 10), names) }) : t('customerDetail.noLedgerYet')}</Text>
+          {canCollect ? (
+            <Pressable accessibilityRole="button" onPress={() => openReceipt(t, customerId, companyId || null)} style={({ pressed }) => [st.collect, pressed && { opacity: 0.85 }]}>
+              <Ionicons name="receipt-outline" size={18} color={colors.primary} />
+              <Text style={st.collectText}>{t('so.collectPayment')}</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+            </Pressable>
+          ) : null}
         </View>
 
         {noCompany ? (
@@ -282,6 +292,8 @@ const st = StyleSheet.create({
   noteInfo: { backgroundColor: colors.bg },
   noteText: { flex: 1, fontSize: font.sm },
   asOf: { fontSize: 12, color: colors.textMuted },
+  collect: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44, borderTopWidth: 1, borderTopColor: '#F1EDE4', paddingTop: spacing.sm },
+  collectText: { flex: 1, fontSize: font.md, fontWeight: '600', color: colors.primary },
   ctxRow: { flexDirection: 'row', gap: spacing.sm },
   pickCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderColor: colors.primary, borderStyle: 'dashed' },
   pickText: { fontSize: font.md, fontWeight: '600', color: colors.primary },
