@@ -218,3 +218,24 @@ test('open items ask for the credits too; an older VK Nex that refuses the key i
   // Credits asked once; refused, so bills only from then on.
   assert.deepEqual(asked, [true, false, false]);
 });
+
+test('bank list: GET /mobile/banks/list with the phone uid and the token (answer shape as :3011 gave it)', async () => {
+  const s = fakeServer((c) =>
+    c.url.endsWith('/auth/login')
+      ? { status: 200, body: { access_token: 't' } }
+      : {
+          status: 200,
+          body: {
+            success: true,
+            message: 'Banks fetched successfully',
+            data: { items: [{ bankId: '019fcbcf-5f56-7955-a5b0-df53816f6915', name: 'Abhyudaya Co-operative Bank', shortName: 'ABHYUDAYA' }], total: 1 },
+          },
+        },
+  );
+  const api = createVkNexClient({ baseUrl: base, appVersion: '1.0.0', credentials: creds, fetch: s.fetch, deviceUid: 'VKSMAN-0123456789AB' });
+  const got = await api.bankList();
+  assert.deepEqual(got.items.map((b) => [b.name, b.shortName]), [['Abhyudaya Co-operative Bank', 'ABHYUDAYA']]);
+  assert.equal(s.calls[1]!.method, 'GET');
+  assert.equal(s.calls[1]!.url, `${base}/mobile/banks/list?deviceUid=VKSMAN-0123456789AB`);
+  assert.equal(s.calls[1]!.headers.Authorization, 'Bearer t');
+});

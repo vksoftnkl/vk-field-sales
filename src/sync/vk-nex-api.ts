@@ -84,6 +84,25 @@ export interface CustomerSearchRow {
   cusCode: string | null;
   cusPhone1: string | null;
   cusGstNo: string | null;
+  /** The ledger's closing today in the login company; null when VK Nex read none (no company on the login). */
+  balance?: SidedAmount | null;
+  /**
+   * What the customer's unpaid bills still owe ('12350.00'), VK Nex's Party Outstanding "owed";
+   * with the bill count and the oldest bill's date. Absent from a VK Nex older than 2026-11-20.
+   */
+  outstanding?: string | null;
+  outstandingBills?: number | null;
+  oldestBillDate?: string | null;
+}
+
+/** One page of GET /mobile/customers/list. */
+export interface CustomerListPage {
+  items: CustomerSearchRow[];
+  hasMore: boolean;
+  /** The day VK Nex read the balances at; null when it read none. */
+  balanceAsOn?: string | null;
+  /** The company they are read in (the login's); absent from a VK Nex older than 2026-11-20. */
+  companyId?: string | null;
 }
 
 /** A financial year of the company (GET /master-lookups/fiscal-years/by-company/:id). */
@@ -366,11 +385,30 @@ export interface ReceiptSettings {
   ppdEnabled?: boolean | null;
 }
 
+/** One bank of VK Nex's fixed.bank_master, for a cheque's Bank dropdown. */
+export interface MobileBank {
+  bankId: string;
+  /** Goes as tdBankName (VK Nex keeps the name, not an id). */
+  name: string;
+  shortName?: string | null;
+}
+
+/** GET /mobile/banks/list: VK Nex's active banks, by name, all in one answer. */
+export interface BankList {
+  items: MobileBank[];
+  total?: number;
+}
+
 export interface ReceiptOptions {
   companyId?: string;
   branchId: string | null;
   tenders: MobileTender[];
   settings?: ReceiptSettings | null;
+  /**
+   * 'NEFT' | 'IMPS' | 'RTGS': present when /mobile/receipts/create takes a bank transfer's
+   * tdTransferType (an older VK Nex refuses the key, so the phone sends it only then).
+   */
+  transferTypes?: string[] | null;
 }
 
 /** One open bill of a company's customer, in VK Nex's /receipts/open-items order. Amounts in rupees. */
@@ -635,7 +673,7 @@ export function createVkNexClient(opts: VkNexClientOptions) {
       ),
     /** One page of all customers (200 is VK Nex's largest page). */
     customerListPage: (page: number, pageSize = 200) =>
-      authed<Envelope<{ items: CustomerSearchRow[]; hasMore: boolean }>>('GET', `/mobile/customers/list?page=${page}&pageSize=${pageSize}`).then(
+      authed<Envelope<CustomerListPage>>('GET', `/mobile/customers/list?page=${page}&pageSize=${pageSize}`).then(
         (r) => r.data,
       ),
     /** Changes a customer: the save payload with cusId (only the fields sent change). */
@@ -688,6 +726,11 @@ export function createVkNexClient(opts: VkNexClientOptions) {
     createOrder: (payload: Record<string, unknown>) =>
       authed<Envelope<CreatedOrder>>('POST', '/mobile/orders/create', { ...payload, deviceUid: opts.deviceUid }).then((r) => r.data),
     /** A company's tenders for receipts (and the branch VK Nex books them in). */
+    /**
+     * The bank list for a cheque's Bank dropdown. VK Nex answers only a phone it knows (403
+     * MOBILE_DEVICE_* otherwise), so Sync asks only once the phone is registered.
+     */
+    bankList: () => authed<Envelope<BankList>>('GET', `/mobile/banks/list?deviceUid=${encodeURIComponent(opts.deviceUid ?? '')}`).then((r) => r.data),
     receiptOptions: (companyId: string) => {
       const device = deviceId && opts.deviceUid ? `&deviceUid=${encodeURIComponent(opts.deviceUid)}` : '';
       return authed<Envelope<ReceiptOptions>>('GET', `/mobile/receipts/options?companyId=${encodeURIComponent(companyId)}${device}`).then((r) => r.data);

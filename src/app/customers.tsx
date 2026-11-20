@@ -10,8 +10,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppMenu } from '@/components/app-menu';
 import { MultiPickSheet, type PickOption } from '@/components/sheet';
 import { Chip } from '@/components/ui';
+import { useDateNames } from '@/components/use-date-names';
 import { metaQuery, setMeta } from '@/db/meta';
 import { CompanySheet } from '@/features/company/company-sheet';
+import { sideOf } from '@/features/customers/customer-figures';
 import { countByQuickFilter, filterCustomers, visitStatus, type CustomerRow, type QuickFilter } from '@/features/customers/customer-list';
 import {
   beatCountsQuery,
@@ -22,8 +24,10 @@ import {
   typeCountsQuery,
 } from '@/features/customers/queries';
 import { QuickFilterSheet } from '@/features/customers/quick-filter-sheet';
+import { syncedFrom, usePhoneChanges } from '@/features/customers/use-phone-changes';
 import { pendingOrdersCountQuery, pendingVisitsCountQuery } from '@/features/orders/queries';
 import { pendingReceiptsCountQuery } from '@/features/receipts/queries';
+import { formatDay } from '@/lib/date-range';
 import { daysBetween, formatRupees, todayISO } from '@/lib/money';
 import { serializeIdList } from '@/lib/selection';
 import { colors, font, radius, spacing, statusColors } from '@/theme';
@@ -59,10 +63,17 @@ export default function CustomersScreen() {
 
   const { data: beatRows } = useLiveQuery(beatsQuery());
   const { data: typeRows } = useLiveQuery(customerTypesQuery());
-  // The amounts come from the ledgers Sync saves after the customers: read again when it does.
-  const { data: ledgerMark } = useLiveQuery(metaQuery('ledgerSyncedAt'));
-  const ledgerKey = ledgerMark[0]?.value ?? '';
-  const { data: rows, updatedAt, error: listError } = useLiveQuery(customerListQuery(beatIds, typeIds), [beatKey, typeKey, ledgerKey]);
+  // Balance and outstanding come with the customers at Sync: read again when they are saved.
+  const { data: figuresMark } = useLiveQuery(metaQuery('customerFiguresSyncedAt'));
+  const figuresKey = figuresMark[0]?.value ?? '';
+  const { data: dbRows, updatedAt, error: listError } = useLiveQuery(customerListQuery(beatIds, typeIds), [beatKey, typeKey, figuresKey]);
+  // VK Nex's figures plus this phone's receipts and orders it doesn't have yet.
+  const { shown: figuresOf, syncedOn: figuresSyncedOn } = usePhoneChanges();
+  const rows: CustomerRow[] = useMemo(
+    () => dbRows.map((r) => ({ ...r, ...figuresOf({ cusId: r.cusId, newOnPhone: r.appPendingUpload, synced: syncedFrom(r) }) })),
+    [dbRows, figuresOf],
+  );
+  const names = useDateNames();
   const { data: beatCounts } = useLiveQuery(beatCountsQuery());
   const { data: typeCounts } = useLiveQuery(typeCountsQuery(beatIds), [beatKey]);
   const { data: pendingRows } = useLiveQuery(pendingUploadQuery());
@@ -161,6 +172,12 @@ export default function CustomersScreen() {
         <Chip label={`${t('customers.beat')}: ${beatChoice}`} active={beatIds.length > 0} onPress={() => setOverlay('beat')} />
         <Chip label={`${t('customers.type')}: ${typeChoice}`} active={typeIds.length > 0} onPress={() => setOverlay('type')} />
       </View>
+      {/* When VK Nex's balances were read: every row's figures are as of then, plus this phone's changes. */}
+      {updatedAt ? (
+        <Text style={st.asOf} accessibilityLiveRegion="polite">
+          {figuresSyncedOn ? t('customers.figuresAsOf', { when: whenText(t, figuresSyncedOn, today, names) }) : t('customers.figuresNone')}
+        </Text>
+      ) : null}
 
       <FlatList
         data={shown}
@@ -227,31 +244,54 @@ function Gap() {
   return <View style={{ height: spacing.sm }} />;
 }
 
+/** "today 10:42" or "18 Nov 10:42": when Sync read the figures, in the phone's time. */
+function whenText(t: TFunction, iso: string, today: string, names: ReturnType<typeof useDateNames>): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = todayISO(d);
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${day === today ? t('customers.today') : formatDay(day, names)} ${time}`;
+}
+
+/** "₹8,450 Dr", "₹2,000 Cr", "₹0", or "—" when no Sync has brought it. */
+function balanceText(t: TFunction, balancePaise: number | null): string {
+  if (balancePaise === null) return '—';
+  const b = sideOf(balancePaise);
+  return b.side ? `${formatRupees(b.paise)} ${t(`customers.${b.side === 'Dr' ? 'dr' : 'cr'}`)}` : formatRupees(0);
+}
+
 /**
- * "4 bills · oldest 65 days", "1 bill · 3 days" or "No unpaid bills". Nothing when the phone has
- * no bills but VK Nex's balance says the customer owes (bills don't come from VK Nex yet).
+ * "Outstanding ₹12,350 · 3 bills · oldest 65 days", "No unpaid bills", and "· updated on phone"
+ * when a receipt or order of this phone is in it. Nothing when it isn't known.
  */
-function billLine(t: TFunction, c: CustomerRow, today: string): string {
-  if (c.billCount === 0 || !c.oldestBillDate) return c.outstandingPaise > 0 ? '' : t('customers.noBills');
-  const d = daysBetween(c.oldestBillDate, today);
-  const age = d === 0 ? t('customers.today') : d === 1 ? t('customers.oneDay') : t('customers.nDays', { n: d });
-  if (c.billCount === 1) return `${t('customers.oneBill')} · ${age}`;
-  return `${t('customers.nBills', { n: c.billCount })} · ${t('customers.oldest', { age })}`;
+function outstandingLine(t: TFunction, c: CustomerRow, today: string): string {
+  if (c.outstandingPaise === null) return '';
+  const parts = [c.outstandingPaise > 0 ? t('customers.outstanding', { amount: formatRupees(c.outstandingPaise) }) : t('customers.noBills')];
+  if (c.outstandingPaise > 0 && c.billCount) {
+    if (c.oldestBillDate) {
+      const d = daysBetween(c.oldestBillDate, today);
+      const age = d === 0 ? t('customers.today') : d === 1 ? t('customers.oneDay') : t('customers.nDays', { n: d });
+      parts.push(c.billCount === 1 ? `${t('customers.oneBill')} · ${age}` : `${t('customers.nBills', { n: c.billCount })} · ${t('customers.oldest', { age })}`);
+    } else parts.push(c.billCount === 1 ? t('customers.oneBill') : t('customers.nBills', { n: c.billCount }));
+  }
+  if (c.changedOnPhone) parts.push(t('customers.changedOnPhone'));
+  return parts.join(' · ');
 }
 
 const CustomerCard = memo(function CustomerCard({ c, today }: { c: CustomerRow; today: string }) {
   const { t } = useTranslation();
   const status = visitStatus(c);
   const chip = statusColors[status];
-  const bills = billLine(t, c, today);
-  const amount = formatRupees(c.outstandingPaise);
+  const bills = outstandingLine(t, c, today);
+  const amount = balanceText(t, c.balancePaise);
+  const credit = c.balancePaise !== null && sideOf(c.balancePaise).side === 'Cr';
   const statusText = t(`customers.status.${status}`);
   // VK Nex allows a customer without a name; fall back to the short name or code.
   const name = c.cusName ?? c.cusShort ?? c.cusCode ?? '';
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={[name, amount, bills, statusText].filter(Boolean).join(', ')}
+      accessibilityLabel={[name, `${t('customers.balance')} ${amount}`, bills, statusText].filter(Boolean).join(', ')}
       onPress={() => router.push({ pathname: '/customer/[id]', params: { id: c.cusId } })}
       style={({ pressed }) => [st.card, pressed && { backgroundColor: colors.bg }]}
     >
@@ -260,13 +300,16 @@ const CustomerCard = memo(function CustomerCard({ c, today }: { c: CustomerRow; 
           {name}
         </Text>
         {bills ? (
-          <Text style={st.meta} numberOfLines={1}>
+          <Text style={st.meta} numberOfLines={2}>
             {bills}
           </Text>
         ) : null}
       </View>
       <View style={st.cardRight}>
-        <Text style={st.amount}>{amount}</Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={st.amountLabel}>{t('customers.balance')}</Text>
+          <Text style={[st.amount, credit && { color: colors.success }, c.balancePaise === null && { color: colors.textMuted }]}>{amount}</Text>
+        </View>
         <View style={[st.chip, { backgroundColor: chip.bg }]}>
           <Text style={[st.chipText, { color: chip.fg }]} numberOfLines={1}>
             {statusText}
@@ -346,6 +389,8 @@ const st = StyleSheet.create({
   name: { fontSize: font.md, fontWeight: '700', color: colors.text },
   meta: { marginTop: spacing.xs, fontSize: font.sm, color: colors.textMuted },
   amount: { fontSize: font.md + 1, fontWeight: '700', color: colors.text },
+  amountLabel: { fontSize: 11, color: colors.textMuted },
+  asOf: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, fontSize: 12, color: colors.textMuted },
   chip: { borderRadius: radius.sm + 2, paddingHorizontal: spacing.sm + 2, paddingVertical: 2 },
   chipText: { fontSize: 12, fontWeight: '700' },
   fab: {

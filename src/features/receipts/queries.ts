@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, gte, lte, max, ne } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { getMeta } from '@/db/meta';
-import { branches, customers, openBills, receiptAllocations, receipts, receiptSettings, receiptTenders, tenders } from '@/db/schema';
+import { banks, branches, customers, openBills, receiptAllocations, receipts, receiptSettings, receiptTenders, tenders } from '@/db/schema';
 import { currentContext } from '@/features/company/company';
 import { paiseText } from '@/features/orders/order-math';
 import { accYearOf, billRefNo, seriesCode } from '@/features/sales/bill-number';
@@ -10,7 +10,7 @@ import { todayISO } from '@/lib/money';
 import { uuidv7 } from '@/lib/uuid';
 
 import type { ReceiptDraftState, TenderLine } from './receipt-draft';
-import { amountPaise, surchargePaise } from './receipt-math';
+import { amountPaise, isTransferType, surchargePaise, TENDER_TYPE } from './receipt-math';
 import { receiptSendTried } from './receipt-status';
 import type { plannedRows } from './receipt-plan';
 
@@ -84,6 +84,9 @@ export const tendersQuery = (companyId: string) =>
     .orderBy(asc(tenders.position), asc(tenders.tndName));
 
 export type TenderRow = Awaited<ReturnType<ReturnType<typeof tendersQuery>['all']>>[number];
+
+/** The banks for a cheque's Bank dropdown, as VK Nex lists them (none before a Sync with a VK Nex that sends them). */
+export const banksQuery = () => db.select({ id: banks.bnkId, name: banks.bnkName, shortName: banks.bnkShortName }).from(banks).orderBy(asc(banks.position), asc(banks.bnkName));
 
 /** The company's receipt rules from the last Sync (none from an older VK Nex). */
 export const receiptSettingsQuery = (companyId: string) => db.select().from(receiptSettings).where(eq(receiptSettings.companyId, companyId));
@@ -227,6 +230,7 @@ export function saveReceipt(d: ReceiptToSave, userId: string, deviceUid: string)
               appChequeBranch: l.chequeBranch?.trim().slice(0, BANK_MAX) || null,
               appChequeIfsc: l.chequeIfsc?.trim().toUpperCase().slice(0, IFSC_MAX) || null,
               appChequeDrawer: l.chequeDrawer?.trim().slice(0, BANK_MAX) || null,
+              tdTransferType: l.typeId === TENDER_TYPE.BANK && isTransferType(l.transferType) ? l.transferType : null,
             };
           }),
         )
@@ -393,6 +397,7 @@ export function receiptDraftFor(id: string): ReceiptDraftState | null {
         chequeBranch: l.appChequeBranch ?? '',
         chequeIfsc: l.appChequeIfsc ?? '',
         chequeDrawer: l.appChequeDrawer ?? '',
+        transferType: l.tdTransferType ?? '',
       };
     }),
     remarks: r.avhRemarks ?? '',

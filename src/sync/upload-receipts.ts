@@ -1,6 +1,8 @@
 // Pure TypeScript (no React Native imports) so `npm test` can run it in Node.
 import type { receiptAllocations, receipts, receiptTenders } from '@/db/schema';
 
+import { TENDER_TYPE } from '../features/receipts/receipt-math.ts';
+
 import type { SendResult } from './upload-orders';
 import type { ApiError, CreatedReceipt } from './vk-nex-api';
 
@@ -26,6 +28,11 @@ export interface PendingReceipt {
   allocations?: ReceiptAllocationRow[];
   /** The customer is still waiting to reach VK Nex (or was refused): the receipt waits for it. */
   customerPending: boolean;
+  /**
+   * VK Nex's options listed transferTypes at the last Sync, so its create takes tdTransferType.
+   * Not yet: the key stays out (VK Nex refuses keys it doesn't know) and the type stays on the phone.
+   */
+  takesTransferType?: boolean;
 }
 
 export const RECEIPT_CUSTOMER_NOT_SENT = 'CUSTOMER_NOT_SENT: The customer is not on VK Nex yet; the receipt goes after it.';
@@ -57,7 +64,8 @@ const paise = (v: string | null | undefined): number => Math.round(n(v) * 100);
  * per bill), creditsApplied[] and onAccount; VK Nex re-runs its engine, so these are the plan.
  * A receipt saved before that has none, and VK Nex fills the oldest bills itself, as before.
  * Year, user, collector and row numbers are VK Nex's to fill. deviceUid is added by the client.
- * Amounts go as numbers; a tender's surcharge is inside its tdAmount.
+ * Amounts go as numbers; a tender's surcharge is inside its tdAmount. A bank transfer's type
+ * (NEFT, IMPS, RTGS) goes as tdTransferType only once VK Nex says it takes it.
  */
 export function toReceiptPayload(r: PendingReceipt): Record<string, unknown> {
   const h = r.header;
@@ -105,6 +113,7 @@ export function toReceiptPayload(r: PendingReceipt): Record<string, unknown> {
           tdRefNo: l.tdRefNo,
           tdBankName: l.tdBankName,
           tdInstrumentDate: l.tdInstrumentDate,
+          tdTransferType: r.takesTransferType && l.tdTenderTypeId === TENDER_TYPE.BANK ? l.tdTransferType : null,
           cheque: l.appChequeBranch || l.appChequeIfsc || l.appChequeDrawer ? compact({ bankBranch: l.appChequeBranch, ifsc: l.appChequeIfsc, drawerName: l.appChequeDrawer }) : null,
         }),
       ),

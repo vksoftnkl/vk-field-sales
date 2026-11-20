@@ -16,6 +16,8 @@ import {
   tenderAmountFor,
   tenderBalance,
   tenderProblem,
+  tenderTotals,
+  tenderProblems,
   TENDER_TYPE,
   type PayableBill,
   type TenderLineInput,
@@ -111,8 +113,24 @@ test('payment lines VK Nex would refuse', () => {
   const card = { ...base, typeId: TENDER_TYPE.CARD, needsRef: true };
   assert.equal(tenderProblem({ ...card, refNo: '12' }), 'cardLast4');
   assert.equal(tenderProblem({ ...card, refNo: '1234' }), null);
-  assert.equal(tenderProblem({ ...base, typeId: TENDER_TYPE.UPI, needsRef: true }), 'refNo');
+  assert.equal(tenderProblem({ ...base, typeId: TENDER_TYPE.UPI, needsRef: true }), 'transactionId');
   assert.equal(tenderProblem({ ...base, typeId: TENDER_TYPE.UPI }), null);
+  assert.equal(tenderProblem({ ...base, typeId: TENDER_TYPE.WALLET, needsRef: true }), 'refNo');
+});
+
+test('a bank transfer always needs its transfer type and UTR no., even when the tender does not ask for a reference', () => {
+  const bank: TenderLineInput = { amount: '100', typeId: TENDER_TYPE.BANK, needsRef: false, refNo: '', bankName: '', instrumentDate: null };
+  // Both errors at once, in screen order, so the salesman sees every empty field.
+  assert.deepEqual(tenderProblems(bank), ['transferType', 'utrNo']);
+  assert.deepEqual(tenderProblems({ ...bank, transferType: 'NEFT' }), ['utrNo']);
+  assert.deepEqual(tenderProblems({ ...bank, refNo: '  ' , transferType: 'IMPS' }), ['utrNo']);
+  assert.deepEqual(tenderProblems({ ...bank, refNo: 'UTR123' }), ['transferType']);
+  assert.deepEqual(tenderProblems({ ...bank, refNo: 'UTR123', transferType: 'UPI' }), ['transferType']);
+  assert.deepEqual(tenderProblems({ ...bank, refNo: 'UTR123', transferType: 'RTGS' }), []);
+  assert.equal(tenderProblem({ ...bank, refNo: 'UTR123', transferType: 'RTGS' }), null);
+  assert.deepEqual(tenderProblems({ ...bank, amount: '', refNo: 'UTR123', transferType: 'NEFT' }), ['noAmount']);
+  // A cheque lists all its gaps too.
+  assert.deepEqual(tenderProblems({ ...bank, typeId: TENDER_TYPE.CHEQUE }), ['chequeNo', 'bankName', 'chequeDate']);
 });
 
 test('a tender surcharge: VK Nex back-calculates it, so the phone sends what leaves the principal', () => {
@@ -136,4 +154,20 @@ test('every amount round-trips through VK Nex’s back-calculation exactly', () 
       assert.equal(t - surchargeInside(t, perc, '0'), principal, `${perc}% of ${principal}`);
     }
   }
+});
+
+test("Payment adds each line's surcharge on top of the lines, as a total the customer pays", () => {
+  const lines = [
+    { amount: '100.00', surchargePerc: '0.000', surchargeFlat: '0.00' },
+    { amount: '200.00', surchargePerc: '1.000', surchargeFlat: '0.00' },
+  ];
+  // Cash 100 + UPI 200 at 1%: the bills get 300, the customer pays 302.
+  assert.deepEqual(tenderTotals(lines), { principalPaise: 30000, surchargePaise: 200, totalPaise: 30200 });
+  // A flat fee once per line; an empty line adds nothing.
+  assert.deepEqual(tenderTotals([{ amount: '50', surchargePerc: '0', surchargeFlat: '5.00' }, { amount: '', surchargePerc: '1', surchargeFlat: '0' }]), {
+    principalPaise: 5000,
+    surchargePaise: 500,
+    totalPaise: 5500,
+  });
+  assert.deepEqual(tenderTotals([]), { principalPaise: 0, surchargePaise: 0, totalPaise: 0 });
 });

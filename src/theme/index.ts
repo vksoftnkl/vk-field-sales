@@ -42,6 +42,8 @@ export const offerColors = {
   freeBg: '#F0FDF4',
   freeBorder: '#BBF7D0',
   warn: '#92400E',
+  warnBg: '#FFFBEB',
+  warnBorder: '#FCD34D',
   badgeBorder: '#EBC3C3',
   bannerBorder: '#DFA3A3',
   cardBorder: '#E2B1B1',

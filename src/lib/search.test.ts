@@ -37,3 +37,13 @@ test('the empty-value option ("None") is never filtered out', () => {
   assert.deepEqual(labels('zzz'), ['None']);
   assert.deepEqual(filterOptions(people.slice(1), 'zzz'), []);
 });
+
+test('hidden keywords are searched but the label is what shows (banks by short name)', () => {
+  const bankList = [
+    { value: 'Karur Vysya Bank', label: 'Karur Vysya Bank', keywords: 'KVB' },
+    { value: 'Indian Overseas Bank', label: 'Indian Overseas Bank', keywords: 'IOB' },
+  ];
+  assert.deepEqual(filterOptions(bankList, 'kvb').map((o) => o.label), ['Karur Vysya Bank']);
+  assert.deepEqual(filterOptions(bankList, 'indian iob').map((o) => o.label), ['Indian Overseas Bank']);
+  assert.deepEqual(filterOptions(bankList, 'bank').length, 2);
+});

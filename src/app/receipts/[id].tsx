@@ -116,6 +116,10 @@ export default function ReceiptDetailScreen() {
           {slip.lines.map((l, i) => (
             <Pair key={i} label={[l.name, l.details].filter(Boolean).join(' · ')} value={formatAmount(l.amountPaise)} />
           ))}
+          {slip.surcharges.map((f, i) => (
+            <Pair key={`fee${i}`} label={t('receipt.surchargeOf', { name: f.name })} value={formatAmount(f.paise)} />
+          ))}
+          <Pair label={t('receipt.slip.total')} value={formatAmount(slip.totalPaise)} strong />
           {pdc.map((p) => (
             <View key={p.voucherId} style={st.pdc}>
               <Text style={st.pdcTitle}>{t('receipt.pdcVoucher', { no: p.voucherRefno ?? '' })}</Text>
@@ -203,11 +207,11 @@ export default function ReceiptDetailScreen() {
   );
 }
 
-function Pair({ label, value }: { label: string; value: string }) {
+function Pair({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <View style={st.pair}>
-      <Text style={st.pairLabel}>{label}</Text>
-      <Text style={st.pairValue}>{value}</Text>
+      <Text style={[st.pairLabel, strong && { fontWeight: '700', color: colors.text }]}>{label}</Text>
+      <Text style={[st.pairValue, strong && { fontWeight: '700' }]}>{value}</Text>
     </View>
   );
 }

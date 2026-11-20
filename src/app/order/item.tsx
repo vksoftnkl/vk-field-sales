@@ -14,25 +14,25 @@ import { lineOffersSet, lineRemoved, lineSaved, type SoLine } from '@/features/o
 import { itemName, unitInBase } from '@/features/orders/order-items';
 import { decimalInput, num, priceForLevel, pricedLevels, qtyText, startingPrice, toPaise } from '@/features/orders/order-math';
 import { asOfText } from '@/features/orders/order-status';
-import { lastRates, orderCustomerQuery, priceLevelsQuery, soItemUnitsQuery, soSeedLine, type SoUnitRow } from '@/features/orders/queries';
+import { companyQuery, customerName, lastRates, orderCustomerQuery, priceLevelsQuery, soItemUnitsQuery, soSeedLine, type SoUnitRow } from '@/features/orders/queries';
 import { backOrderQty, DISC_MODES, soLineAmounts, soLineProblem, type DiscMode } from '@/features/orders/so-math';
 import { useUnitQty } from '@/features/orders/unit-sheet';
 import { soLineInUnit } from '@/features/orders/unit-switch';
 import { isShownOffer } from '@/features/schemes/offer-text';
-import { OfferBody } from '@/features/schemes/offer-body';
+import { OfferSection } from '@/features/schemes/offer-body';
 import { OfferSheet } from '@/features/schemes/offer-sheet';
 import { useOrderSchemes } from '@/features/schemes/use-order-schemes';
 import { formatDay } from '@/lib/date-range';
 import { formatAmount } from '@/lib/money';
 import { useAppDispatch, useAppSelector } from '@/store';
-import { colors, font, radius, spacing } from '@/theme';
+import { colors, font, offerColors, radius, spacing } from '@/theme';
 
 const LETTERS = ['', 'A', 'B', 'C', 'D'];
 const pct = (perc: string | null) => String(Number(num(perc).toFixed(3)));
 
 /**
- * Order item (canvas 3b, step 4): the unit (the item's priced units, each with its size in the
- * base unit, "Box · 12 Pcs"; a new line starts in the unit its Add items row showed), price level A–D, quantity and
+ * Order item (canvas 3b, step 4; offers mockup screen 2): the unit (the item's priced units, each with its size in the
+ * base unit, "CASE (24 PKT)"; a new line starts in the unit its Add items row showed), price level A–D, quantity and
  * rate, the item discount as %, ₹ per unit or ₹ for the line, and the line's taxable, GST split and
  * total. A rate below the minimum price or above the MRP is refused here, because VK Nex doesn't
  * check them on phone orders. Last rates come from this phone's bills and orders for the shop.
@@ -47,6 +47,8 @@ export default function OrderItemScreen() {
   const draft = useAppSelector((st) => st.orderDraft);
   const { data: levelNames } = useLiveQuery(priceLevelsQuery());
   const { data: synced } = useLiveQuery(metaQuery('itemsSyncedAt'));
+  const companyId = draft.companyId ?? '';
+  const { data: company } = useLiveQuery(companyQuery(companyId), [companyId]);
 
   // Read once: the form keeps what the salesman types even if a Sync runs meanwhile.
   const [units] = useState(() => (draft.companyId ? soItemUnitsQuery(draft.companyId, itemId).all() : []));
@@ -132,20 +134,20 @@ export default function OrderItemScreen() {
 
   return (
     <View style={st.root}>
-      <ScreenHeader title={t('order.itemTitle')} subtitle={t('so.itemSubtitle', { name, gst: pct(form.taxPerc) })} backLabel={t('so.backToItems')} />
+      <ScreenHeader title={t('order.itemTitle')} subtitle={t('so.itemShop', { name, shop: customerName(customer) })} backLabel={t('so.backToItems')} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView contentContainerStyle={st.form} keyboardShouldPersistTaps="handled">
           {priced.length > 1 ? (
             <View style={{ gap: 6 }}>
               <Text style={st.label}>{t('so.unit')}</Text>
               <View style={st.segment} accessibilityRole="radiogroup" accessibilityLabel={t('so.unit')}>
-                {priced.map((u) => {
+                {priced.map((u, i) => {
                   const on = u.iucId === form.iucId;
-                  // "Box · 12 Pcs": its size in the base unit (the base unit itself is just its name).
+                  // "CASE (24 PKT)": its size in the base unit (the base unit itself is just its name).
                   const conv = unitInBase(u, units);
                   const text = conv ? t('so.unitOf', { unit: u.unitName, n: qtyText(conv.n), base: conv.base }) : u.unitName;
                   return (
-                    <Pressable key={u.iucId} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => pickUnit(u)} style={[st.seg, on && st.segOn]}>
+                    <Pressable key={u.iucId} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => pickUnit(u)} style={[st.seg, i === 0 && st.segFirst, on && st.segOn]}>
                       <Text style={[st.segText, on && st.segTextOn]} numberOfLines={1}>
                         {text}
                       </Text>
@@ -160,7 +162,7 @@ export default function OrderItemScreen() {
             <View style={{ gap: 6 }}>
               <Text style={st.label}>{own ? t('so.levelOwn', { level: LETTERS[own] ?? levelLabel(own) }) : t('order.priceLevel')}</Text>
               <View style={st.segment} accessibilityRole="radiogroup" accessibilityLabel={t('order.priceLevel')}>
-                {levels.map((l) => {
+                {levels.map((l, i) => {
                   const on = form.priceLevel === l;
                   const price = priceForLevel(unit, l)!;
                   return (
@@ -170,7 +172,7 @@ export default function OrderItemScreen() {
                       accessibilityLabel={`${levelLabel(l)} ${formatAmount(toPaise(price) ?? 0)}`}
                       accessibilityState={{ checked: on }}
                       onPress={() => set({ priceLevel: l, price })}
-                      style={[st.seg, st.level, on && st.segOn]}
+                      style={[st.seg, st.level, i === 0 && st.segFirst, on && st.segOn]}
                     >
                       <Text style={[st.levelText, on && st.segTextOn]} numberOfLines={1}>
                         {LETTERS[l]}
@@ -220,13 +222,13 @@ export default function OrderItemScreen() {
           </View>
 
           <View style={{ gap: 6 }}>
-            <Text style={st.label}>{t('so.itemDiscount')}</Text>
+            <Text style={st.label}>{t('so.yourDiscount')}</Text>
             <View style={st.discRow}>
-              <View style={[st.segment, { flex: 1 }]} accessibilityRole="radiogroup" accessibilityLabel={t('so.itemDiscount')}>
-                {DISC_MODES.map((m: DiscMode) => {
+              <View style={[st.segment, { flex: 1 }]} accessibilityRole="radiogroup" accessibilityLabel={t('so.yourDiscount')}>
+                {DISC_MODES.map((m: DiscMode, i) => {
                   const on = form.discMode === m;
                   return (
-                    <Pressable key={m} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => set({ discMode: m })} style={[st.seg, { minHeight: 40 }, on && st.segOn]}>
+                    <Pressable key={m} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => set({ discMode: m })} style={[st.seg, i === 0 && st.segFirst, on && st.segOn]}>
                       <Text style={[st.segText, on && st.segTextOn]}>{t(`so.discModes.${m}`)}</Text>
                     </Pressable>
                   );
@@ -249,24 +251,12 @@ export default function OrderItemScreen() {
 
           {offers.length > 0 ? (
             <View style={st.offerCard} accessibilityLabel={t('offers.card.title')}>
-              <Text style={st.offerTitle} accessibilityRole="header">
-                {t('offers.card.title')}
-              </Text>
-              {offers.map((o) => {
+              {offers.map((o, i) => {
                 const sc = order.scheme(o.schemeId);
                 if (!sc) return null;
                 return (
-                  <View key={o.schemeId} style={st.offer}>
-                    <View style={st.offerHead}>
-                      <Text style={st.offerName}>{sc.name}</Text>
-                      <View style={[st.chip, o.applied ? st.chipOn : st.chipOff]}>
-                        <Text style={[st.chipText, o.applied && { color: '#166534' }]}>{t(o.applied ? 'offers.card.applied' : 'offers.card.notApplied')}</Text>
-                      </View>
-                    </View>
-                    <OfferBody scheme={sc} offer={o} unit={form.unitName} />
-                    <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setSheetId(o.schemeId)} style={st.detailsLink}>
-                      <Text style={st.detailsText}>{t('offers.card.details')}</Text>
-                    </Pressable>
+                  <View key={o.schemeId} style={i > 0 && st.offerNext}>
+                    <OfferSection scheme={sc} offer={o} unit={form.unitName} onDetails={() => setSheetId(o.schemeId)} />
                   </View>
                 );
               })}
@@ -274,18 +264,19 @@ export default function OrderItemScreen() {
                 <View style={st.switchRow}>
                   <View style={{ flex: 1, gap: 1 }}>
                     <Text style={st.switchLabel}>{t('offers.card.switch')}</Text>
-                    <Text style={st.hint}>{applyOffers ? t('offers.card.switchNote') : t('offers.apply.off')}</Text>
+                    {!applyOffers ? <Text style={st.hint}>{t('offers.apply.off')}</Text> : null}
                   </View>
                   <Switch
                     value={offersOnLine}
                     onValueChange={setOffersOnLine}
                     accessibilityLabel={t('offers.card.switch')}
-                    trackColor={{ true: colors.primary, false: colors.inputBorder }}
+                    accessibilityHint={t('offers.card.switchNote')}
+                    trackColor={{ true: colors.success, false: colors.inputBorder }}
                     thumbColor={colors.surface}
                   />
                 </View>
               ) : (
-                <Text style={st.hint}>{t('offers.card.cannot')}</Text>
+                <Text style={[st.hint, st.switchRow]}>{t('offers.card.cannot')}</Text>
               )}
             </View>
           ) : null}
@@ -295,6 +286,7 @@ export default function OrderItemScreen() {
             {a.discPaise > 0 ? <Row label={discLabel} value={`−${formatAmount(a.discPaise)}`} /> : null}
             {a.schemePaise > 0 && ls ? (
               <Row
+                good
                 label={
                   Number(ls.schDiscPerc) > 0
                     ? t('offers.line.perc', { name: ls.schemeName ?? '', perc: ls.schDiscPerc })
@@ -305,7 +297,7 @@ export default function OrderItemScreen() {
                 value={`−${formatAmount(a.schemePaise)}`}
               />
             ) : null}
-            {a.billSchemePaise > 0 ? <Row label={t('offers.orderOfferTotal')} value={`−${formatAmount(a.billSchemePaise)}`} /> : null}
+            {a.billSchemePaise > 0 ? <Row good label={t('offers.orderOfferTotal')} value={`−${formatAmount(a.billSchemePaise)}`} /> : null}
             <Row label={t('so.taxable')} value={formatAmount(a.taxablePaise)} />
             <Row label={rate > 0 ? t('so.gstSplit', { gst: pct(form.taxPerc), half: String(Number((rate / 2).toFixed(3))) }) : t('so.noGst')} value={formatAmount(a.taxPaise)} />
             <View style={st.totalRow} accessible accessibilityLabel={`${t('so.lineTotal')}: ${formatAmount(a.lineTotalPaise)}`}>
@@ -334,14 +326,21 @@ export default function OrderItemScreen() {
               ))
             : null}
         </ScrollView>
-        <OfferSheet scheme={sheetScheme} offer={sheetId ? offers.find((o) => o.schemeId === sheetId) : undefined} unit={form.unitName} syncedOn={schemesSynced[0]?.value ?? null} onClose={() => setSheetId(null)} />
+        <OfferSheet
+          scheme={sheetScheme}
+          offer={sheetId ? offers.find((o) => o.schemeId === sheetId) : undefined}
+          unit={form.unitName}
+          syncedOn={schemesSynced[0]?.value ?? null}
+          companyName={company[0]?.name}
+          onClose={() => setSheetId(null)}
+        />
         <View style={[st.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
           {existing ? (
             <Pressable accessibilityRole="button" onPress={remove} style={({ pressed }) => [st.btn, st.btnRemove, pressed && { opacity: 0.85 }]}>
               <Text style={[st.btnText, { color: colors.danger }]}>{t('so.remove')}</Text>
             </Pressable>
           ) : null}
-          <Pressable accessibilityRole="button" onPress={save} style={({ pressed }) => [st.btn, st.btnPrimary, { flex: 2 }, pressed && { opacity: 0.85 }]}>
+          <Pressable accessibilityRole="button" onPress={save} style={({ pressed }) => [st.btn, st.btnPrimary, pressed && { opacity: 0.85 }]}>
             <Text style={[st.btnText, { color: colors.onPrimary }]}>{t('so.saveLine')}</Text>
           </Pressable>
         </View>
@@ -350,11 +349,12 @@ export default function OrderItemScreen() {
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+/** A totals row; `good` = money an offer took off (green). */
+function Row({ label, value, good }: { label: string; value: string; good?: boolean }) {
   return (
     <View style={st.row}>
-      <Text style={st.rowLabel}>{label}</Text>
-      <Text style={st.rowValue}>{value}</Text>
+      <Text style={[st.rowLabel, good && st.good]}>{label}</Text>
+      <Text style={[st.rowValue, good && st.good]}>{value}</Text>
     </View>
   );
 }
@@ -364,51 +364,45 @@ const st = StyleSheet.create({
   empty: { textAlign: 'center', fontSize: font.md, color: colors.textMuted, padding: spacing.xxl },
   form: { padding: spacing.lg, paddingTop: spacing.md + 2, gap: spacing.md },
   label: { fontSize: font.sm, fontWeight: '500', color: colors.textLabel },
-  segment: { flexDirection: 'row', gap: 4, backgroundColor: '#EEECE9', borderRadius: radius.md + 2, padding: 4 },
-  seg: { flex: 1, minHeight: 44, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  segOn: { backgroundColor: colors.surface },
-  segText: { fontSize: 14, color: colors.textLabel },
-  segTextOn: { color: colors.primary, fontWeight: '600' },
+  // Bordered segments, the chosen one filled maroon (unit, price level, discount kind).
+  segment: { flexDirection: 'row', borderWidth: 1.5, borderColor: colors.inputBorder, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.surface },
+  seg: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderLeftWidth: 1, borderLeftColor: colors.inputBorder },
+  segFirst: { borderLeftWidth: 0 },
+  segOn: { backgroundColor: colors.primary },
+  segText: { fontSize: 14, fontWeight: '600', color: colors.textLabel },
+  segTextOn: { color: colors.onPrimary, fontWeight: '600' },
   level: { minHeight: 48 },
   levelText: { fontSize: 12.5, color: colors.textLabel },
   levelPrice: { fontSize: 12.5, fontWeight: '600', color: colors.textLabel },
-  grid: { flexDirection: 'row', gap: 10 },
+  grid: { flexDirection: 'row', gap: spacing.md },
   cell: { flex: 1 },
   hint: { fontSize: 12, color: colors.textMuted },
   discRow: { flexDirection: 'row', gap: spacing.sm },
   discInput: {
     width: 88,
-    height: 48,
-    borderWidth: 1,
+    height: 44,
+    borderWidth: 1.5,
     borderColor: colors.inputBorder,
-    borderRadius: radius.md + 2,
-    paddingHorizontal: spacing.md + 2,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
     fontSize: 16,
     color: colors.text,
     backgroundColor: colors.surface,
     textAlign: 'right',
   },
   error: { fontSize: font.sm, color: colors.danger },
-  offerCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: '#86EFAC', borderRadius: radius.lg, paddingVertical: spacing.md, paddingHorizontal: spacing.md + 2, gap: spacing.md },
-  offerTitle: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  offer: { gap: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: '#F1EDE4' },
-  offerHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  offerName: { flex: 1, fontSize: font.md, fontWeight: '600', color: colors.primary },
-  chip: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 2 },
-  chipOn: { backgroundColor: '#DCFCE7' },
-  chipOff: { backgroundColor: colors.border },
-  chipText: { fontSize: 12, fontWeight: '600', color: colors.textLabel },
-  detailsLink: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
-  detailsText: { fontSize: 13.5, fontWeight: '600', color: colors.primary },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 48 },
-  switchLabel: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: spacing.md, paddingHorizontal: spacing.md + 2, gap: 6 },
+  offerCard: { backgroundColor: colors.surface, borderWidth: 1.5, borderColor: offerColors.cardBorder, borderRadius: radius.lg, paddingVertical: 11, paddingHorizontal: 13 },
+  offerNext: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44, marginTop: 9, paddingTop: 9, borderTopWidth: 1, borderTopColor: colors.border },
+  switchLabel: { fontSize: 13.5, fontWeight: '600', color: colors.textLabel },
+  card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: 11, paddingHorizontal: spacing.md + 2, gap: 6 },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
-  rowLabel: { flex: 1, fontSize: 14, color: colors.textMuted },
-  rowValue: { fontSize: 14, color: colors.text },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', borderTopWidth: 1, borderTopColor: '#F1EDE4', paddingTop: spacing.sm, marginTop: 2 },
-  totalLabel: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  totalValue: { fontSize: 20, fontWeight: '700', color: colors.text },
+  rowLabel: { flex: 1, fontSize: 13.5, color: colors.textLabel },
+  rowValue: { fontSize: 13.5, fontWeight: '600', color: colors.text },
+  good: { color: offerColors.okText },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm, marginTop: 2 },
+  totalLabel: { fontSize: 16, fontWeight: '700', color: colors.text },
+  totalValue: { fontSize: font.xl, fontWeight: '700', color: colors.text },
   rates: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -422,9 +416,9 @@ const st = StyleSheet.create({
     paddingHorizontal: spacing.md + 2,
   },
   ratesTitle: { fontSize: 14, fontWeight: '600', color: colors.primary },
-  footer: { flexDirection: 'row', gap: 10, paddingTop: spacing.md, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
-  btn: { flex: 1, minHeight: 52, borderRadius: radius.md + 2, alignItems: 'center', justifyContent: 'center' },
-  btnRemove: { backgroundColor: colors.surface, borderWidth: 1, borderColor: '#FCA5A5' },
+  footer: { flexDirection: 'row', gap: spacing.md, paddingTop: spacing.md, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
+  btn: { flex: 1, minHeight: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  btnRemove: { flex: 0, width: 120, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.danger },
   btnPrimary: { backgroundColor: colors.primary },
-  btnText: { fontSize: font.md, fontWeight: '600' },
+  btnText: { fontSize: 16, fontWeight: '700' },
 });

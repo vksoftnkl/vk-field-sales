@@ -11,7 +11,7 @@ import { downloadCustomers } from './download-customers';
 import { downloadSchemes } from './download-schemes';
 import { downloadItems } from './download-items';
 import { downloadLedgers } from './download-ledgers';
-import { downloadReceiptData } from './download-receipt-data';
+import { downloadReceiptData, toLocalBanks } from './download-receipt-data';
 import {
   getDeviceUid,
   getServerAddress,
@@ -32,7 +32,9 @@ import {
   pendingOrders,
   pendingReceipts,
   pendingVisits,
+  saveBanks,
   saveBranches,
+  saveCustomerFigures,
   saveSchemes,
   saveCustomerOptions,
   saveDownloadedCustomers,
@@ -47,8 +49,8 @@ import { updateCustomers, type UpdateOutcome } from './update-customers';
 import { uploadCustomers, type UploadOutcome } from './upload-customers';
 import { uploadOrders, type OrderOutcome } from './upload-orders';
 import { uploadReceipts, type ReceiptOutcome } from './upload-receipts';
-import { uploadVisits, type VisitOutcome } from './upload-visits';
-import { createVkNexClient, type ApiError, type CustomerOptions, type ServerCredentials, type SignedInUser } from './vk-nex-api';
+import { salesmanFromMe, uploadVisits, type VisitOutcome } from './upload-visits';
+import { createVkNexClient, isRouteMissing, type ApiError, type CustomerOptions, type ServerCredentials, type SignedInUser } from './vk-nex-api';
 
 export type SyncStep =
   | 'signIn'
@@ -63,6 +65,7 @@ export type SyncStep =
   | 'branches'
   | 'schemes'
   | 'receiptData'
+  | 'banks'
   | 'receiptStatus'
   | 'ledger';
 
@@ -102,6 +105,10 @@ export interface SyncReport {
   receiptData?: { companies: number; bills: number };
   /** Why they did not come; the phone keeps what it had. */
   receiptDataStoppedBy?: unknown;
+  /** Banks brought for the cheque Bank dropdown (absent: not asked, or VK Nex has no bank route yet). */
+  banks?: { count: number };
+  /** The bank list failed; the phone keeps the one it had. */
+  banksStoppedBy?: unknown;
   /** This phone's receipts changed in VK Nex (cancelled in the office, PDC cleared …). */
   receiptStatus?: { changed: number };
   receiptStatusStoppedBy?: unknown;
@@ -126,12 +133,11 @@ const clientFor = (address: ServerAddress) =>
   createVkNexClient({ baseUrl: apiBaseUrl(address), appVersion: appVersion(), credentials: getServerCredentials, deviceUid: getDeviceUid() });
 
 /**
- * VK Nex's employee_master id of a phone salesman, which a check-in must name (cvSalesmanId).
- * Not known yet: the phone knows its users only by VK Nex's usr_id (from /auth/login), and VK Nex
- * sends no user → employee link. Until it does, check-ins wait on the phone with NO_SALESMAN
- * (see docs/SYNC-API.md, Visits).
+ * VK Nex's employee_master id of a phone salesman, which a check-in must name (cvSalesmanId): the
+ * employee /mobile/me links to the login (read just before the uploads). A login with none keeps
+ * its check-ins waiting with NO_SALESMAN until the office links it (user, 2026-11-20).
  */
-const salesmanOf = (_userId: string): string | null => null;
+const salesmanOf = (userId: string): string | null => salesmanFromMe(getMeta('me'), userId);
 
 /** Short: the login page waits on this, and a phone outside the office gets no answer at all. */
 const LOGIN_TIMEOUT_MS = 10_000;
@@ -382,15 +388,19 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
 
     let downloaded: SyncReport['downloaded'];
     try {
+      // When the list (and with it every balance and outstanding) is read: receipts this phone
+      // sends after it are not in those figures yet (customer-figures.ts).
+      const readAt = new Date().toISOString();
       const got = await downloadCustomers(
         {
           listPage: (page) => api.customerListPage(page),
           get: (cusId) => api.getCustomer(cusId),
           onProgress: (done, total) => onStep('download', done, total),
         },
-        new Date().toISOString(),
+        readAt,
       );
       const saved = saveDownloadedCustomers(got.rows, got.listedIds);
+      saveCustomerFigures(got.figures, readAt);
       downloaded = { ...saved, skipped: got.skipped };
     } catch (e) {
       return { ...sent, stoppedBy: e, stoppedAt: 'download' };
@@ -457,6 +467,22 @@ export function runSync(onStep: (step: SyncStep, done?: number, total?: number) 
       sent = { ...sent, receiptData: { companies: got.companyIds.length, bills: got.bills.length } };
     } catch (e) {
       sent = { ...sent, receiptDataStoppedBy: e };
+    }
+
+    // The bank list for cheques (GET /mobile/banks/list, one list for every company). VK Nex answers
+    // only a registered phone. An older VK Nex has no such route: the phone keeps its list (or
+    // none: then a cheque's bank is typed). Any failure keeps the old list and goes on.
+    if (api.deviceRegistered()) {
+      try {
+        onStep('banks', 0, 0);
+        const rows = toLocalBanks((await api.bankList()).items);
+        if (rows) {
+          saveBanks(rows);
+          sent = { ...sent, banks: { count: rows.length } };
+        }
+      } catch (e) {
+        if (!isRouteMissing(e)) sent = { ...sent, banksStoppedBy: e };
+      }
     }
 
     // This phone's receipts as VK Nex has them now: cancelled in the office, a post-dated cheque

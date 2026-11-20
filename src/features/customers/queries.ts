@@ -1,7 +1,19 @@
-import { and, asc, count, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { beats, customerBills, customers, customerTypes, itemPriceLevels, ledgerYears } from '@/db/schema';
+import {
+  beats,
+  customerBalances,
+  customerBills,
+  customers,
+  customerTypes,
+  itemPriceLevels,
+  ledgerYears,
+  receiptAllocations,
+  receipts,
+  receiptTenders,
+  saleOrder,
+} from '@/db/schema';
 import { stateName } from '@/lib/gst-states';
 import { uuidv7 } from '@/lib/uuid';
 
@@ -37,9 +49,9 @@ const live = () => and(eq(customers.cusIsActive, true), eq(customers.cusIsDelete
 const ledgerBalance = sql<number | null>`(select ${ledgerYears.closingPaise} from ${ledgerYears} where ${ledgerYears.customerId} = ${customers.cusId} order by ${ledgerYears.fromDate} desc limit 1)`;
 
 /**
- * Active shops of the ticked beats and types ([] = all), in visiting order, with their unpaid
- * bills summed up: the same shape as the Qt app's customer list query. The amount is VK Nex's
- * ledger balance once Sync has brought it, else the phone's unpaid bills.
+ * Active shops of the ticked beats and types ([] = all), in visiting order, with their balance and
+ * outstanding as VK Nex gave them at the last Sync (customer_balances; null = none yet). The
+ * Customer list adds this phone's receipts and orders on top (usePhoneChanges).
  */
 export function customerListQuery(beatIds: readonly string[], typeIds: readonly string[]) {
   return db
@@ -54,17 +66,92 @@ export function customerListQuery(beatIds: readonly string[], typeIds: readonly 
       appBilled: customers.appBilled,
       appOrderStatus: customers.appOrderStatus,
       appReceived: customers.appReceived,
-      billCount: sql<number>`count(${customerBills.id})`.mapWith(Number),
-      outstandingPaise: sql<number>`coalesce(${ledgerBalance}, sum(${customerBills.balancePaise}), 0)`.mapWith(Number),
-      oldestBillDate: sql<string | null>`min(${customerBills.billDate})`,
+      appPendingUpload: customers.appPendingUpload,
+      syncedBalancePaise: customerBalances.balancePaise,
+      syncedOutstandingPaise: customerBalances.outstandingPaise,
+      syncedBillCount: customerBalances.billCount,
+      syncedOldestBillDate: customerBalances.oldestBillDate,
     })
     .from(customers)
     .leftJoin(beats, eq(beats.id, customers.cusAreaId))
-    .leftJoin(customerBills, eq(customerBills.customerId, customers.cusId))
+    .leftJoin(customerBalances, eq(customerBalances.customerId, customers.cusId))
     .where(and(live(), inBeats(beatIds), ofTypes(typeIds)))
-    .groupBy(customers.cusId)
     .orderBy(asc(beats.position), asc(beats.name), asc(customers.cusSortOrder), asc(customers.cusName));
 }
+
+export type CustomerListDbRow = Awaited<ReturnType<ReturnType<typeof customerListQuery>['all']>>[number];
+
+/** One customer's balance and outstanding from the last Sync (Customer detail). */
+export const customerFiguresQuery = (cusId: string) => db.select().from(customerBalances).where(eq(customerBalances.customerId, cusId));
+
+/** When VK Nex's figures were read, its day and company (one row; none before a Sync brought them). */
+export const figuresInfoQuery = () =>
+  db
+    .select({ companyId: customerBalances.companyId, asOn: customerBalances.asOn, syncedOn: customerBalances.syncedOn })
+    .from(customerBalances)
+    .orderBy(desc(customerBalances.syncedOn))
+    .limit(1);
+
+/**
+ * This phone's receipts that VK Nex's figures don't have yet: not sent, or sent after the figures
+ * were read (Send now sends without reading them again). Cancelled ones are left out.
+ */
+export const unsyncedReceiptsQuery = (figuresReadAt: string | null) =>
+  db
+    .select({ id: receipts.avhClientUuid, customerId: receipts.avhPartyId, companyId: receipts.avhCompanyId, amount: receipts.avhDocAmount, onAccount: receipts.appOnAccount })
+    .from(receipts)
+    .where(
+      and(
+        figuresReadAt ? or(eq(receipts.appPendingUpload, true), gt(receipts.appSyncedOn, figuresReadAt)) : eq(receipts.appPendingUpload, true),
+        isNull(receipts.appCancelledOn),
+        or(isNull(receipts.avhVoucherStatus), ne(receipts.avhVoucherStatus, 'CANCELLED')),
+      ),
+    );
+
+/** The payment lines and PLANNED rows of those receipts (saved with them, in one transaction). */
+export function receiptDetailsFor(ids: readonly string[]) {
+  if (ids.length === 0) return { lines: [], plan: [] };
+  const lines = [];
+  const plan = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const part = ids.slice(i, i + 500);
+    lines.push(
+      ...db
+        .select({
+          receiptId: receiptTenders.tdSrcDocId,
+          typeId: receiptTenders.tdTenderTypeId,
+          amount: receiptTenders.tdAmount,
+          surcharge: receiptTenders.tdSurchargeAmt,
+          instrumentDate: receiptTenders.tdInstrumentDate,
+        })
+        .from(receiptTenders)
+        .where(inArray(receiptTenders.tdSrcDocId, part))
+        .all(),
+    );
+    plan.push(
+      ...db
+        .select({
+          receiptId: receiptAllocations.ralReceiptId,
+          kind: receiptAllocations.ralKind,
+          amount: receiptAllocations.ralAmount,
+          credit: receiptAllocations.ralCredit,
+          discount: receiptAllocations.ralDiscount,
+          roundoff: receiptAllocations.ralRoundoff,
+        })
+        .from(receiptAllocations)
+        .where(and(inArray(receiptAllocations.ralReceiptId, part), eq(receiptAllocations.ralSource, 'PLANNED')))
+        .all(),
+    );
+  }
+  return { lines, plan };
+}
+
+/** This phone's orders not sent yet, with their totals. */
+export const unsentOrdersQuery = () =>
+  db
+    .select({ customerId: saleOrder.soCustId, companyId: saleOrder.soCompanyId, amount: saleOrder.soOrderAmt })
+    .from(saleOrder)
+    .where(eq(saleOrder.appPendingUpload, true));
 
 /** Live shops of the ticked beats and types, in visiting order, with their address: Choose customer. */
 export const pickCustomersQuery = (beatIds: readonly string[], typeIds: readonly string[]) =>

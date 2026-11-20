@@ -115,31 +115,51 @@ export interface TenderLineInput extends TenderInput {
   instrumentDate: string | null;
   /** Cheques: optional, but VK Nex refuses one that is not a real IFSC. */
   chequeIfsc?: string;
+  /** Bank transfers: NEFT, IMPS or RTGS. */
+  transferType?: string;
 }
 
-export type TenderProblem = 'noAmount' | 'chequeNo' | 'bankName' | 'chequeDate' | 'ifsc' | 'cardLast4' | 'refNo';
+/** How a bank transfer was made; one must be picked on every transfer. */
+export const TRANSFER_TYPES = ['NEFT', 'IMPS', 'RTGS'] as const;
+export type TransferType = (typeof TRANSFER_TYPES)[number];
+export const isTransferType = (v: string | null | undefined): v is TransferType => (TRANSFER_TYPES as readonly string[]).includes(v ?? '');
+
+export type TenderProblem = 'noAmount' | 'chequeNo' | 'bankName' | 'chequeDate' | 'ifsc' | 'cardLast4' | 'transferType' | 'utrNo' | 'transactionId' | 'refNo';
 
 /** An IFSC as VK Nex checks it: 4 letters, 0, then 6 letters or digits. */
 export const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
 /**
- * Why VK Nex would refuse this line, or null: an amount on every line; a cheque needs its number,
- * the customer's bank and its date (VCH_CHEQUE_DETAILS); a card its last 4 digits
- * (TENDER_REF_REQUIRED); any other tender the office marked as needing a reference, that reference.
+ * Everything wrong with this line, in the order the fields are on screen (none = []): an amount on
+ * every line; a cheque needs its number, the customer's bank and its date (VCH_CHEQUE_DETAILS); a
+ * card its last 4 digits (TENDER_REF_REQUIRED); a bank transfer its type (NEFT, IMPS or RTGS) and
+ * its UTR no. (always: the user's rule, 2026-11-19, even where VK Nex's tender doesn't ask for
+ * it); any other tender the office marked as needing a reference, that reference (a UPI's is its
+ * transaction ID).
  */
-export function tenderProblem(t: TenderLineInput): TenderProblem | null {
-  if (amountPaise(t.amount) <= 0) return 'noAmount';
+export function tenderProblems(t: TenderLineInput): TenderProblem[] {
+  const out: TenderProblem[] = [];
+  if (amountPaise(t.amount) <= 0) out.push('noAmount');
+  const ref = t.refNo.trim();
   if (t.typeId === TENDER_TYPE.CHEQUE) {
-    if (!t.refNo.trim()) return 'chequeNo';
-    if (!t.bankName.trim()) return 'bankName';
-    if (!t.instrumentDate) return 'chequeDate';
+    if (!ref) out.push('chequeNo');
+    if (!t.bankName.trim()) out.push('bankName');
+    if (!t.instrumentDate) out.push('chequeDate');
     const ifsc = (t.chequeIfsc ?? '').trim().toUpperCase();
-    if (ifsc && !IFSC_PATTERN.test(ifsc)) return 'ifsc';
-    return null;
+    if (ifsc && !IFSC_PATTERN.test(ifsc)) out.push('ifsc');
+  } else if (t.typeId === TENDER_TYPE.BANK) {
+    if (!isTransferType(t.transferType)) out.push('transferType');
+    if (!ref) out.push('utrNo');
+  } else if (t.typeId === TENDER_TYPE.CARD) {
+    if (t.needsRef && !/^\d{4}$/.test(ref)) out.push('cardLast4');
+  } else if (t.needsRef && !ref) {
+    out.push(t.typeId === TENDER_TYPE.UPI ? 'transactionId' : 'refNo');
   }
-  if (t.typeId === TENDER_TYPE.CARD) return t.needsRef && !/^\d{4}$/.test(t.refNo.trim()) ? 'cardLast4' : null;
-  return t.needsRef && !t.refNo.trim() ? 'refNo' : null;
+  return out;
 }
+
+/** The first thing wrong with this line (see tenderProblems), or null. */
+export const tenderProblem = (t: TenderLineInput): TenderProblem | null => tenderProblems(t)[0] ?? null;
 
 /** '6,350.00' or '6350' → 635000; junk → 0. */
 export function amountPaise(s: string): number {
@@ -186,6 +206,27 @@ export function tenderAmountFor(principalPaise: number, perc: string, flat: stri
 /** What the customer pays on top of a line's amount for its tender's surcharge. */
 export const surchargePaise = (principalPaise: number, perc: string, flat: string): number =>
   tenderAmountFor(principalPaise, perc, flat) - Math.max(0, principalPaise);
+
+/** A payment line as Payment and Review add it up: its amount and its tender's surcharge. */
+export interface TenderWithFee extends TenderInput {
+  surchargePerc: string;
+  surchargeFlat: string;
+}
+
+/**
+ * What the customer pays (Payment, Review): the lines towards the receipt, each line's surcharge
+ * on top (UPI 1% …), and the two together. The bills still get only the lines' amounts.
+ */
+export function tenderTotals(lines: readonly TenderWithFee[]): { principalPaise: number; surchargePaise: number; totalPaise: number } {
+  let principalPaise = 0;
+  let fees = 0;
+  for (const l of lines) {
+    const p = amountPaise(l.amount);
+    principalPaise += p;
+    fees += surchargePaise(p, l.surchargePerc, l.surchargeFlat);
+  }
+  return { principalPaise, surchargePaise: fees, totalPaise: principalPaise + fees };
+}
 
 /** What the payment lines come to, and what is left to account for (+ short, − over). */
 export function tenderBalance(receiptPaise: number, tenders: readonly TenderInput[]): { tenderPaise: number; balancePaise: number } {

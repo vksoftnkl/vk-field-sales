@@ -234,6 +234,28 @@ export const customerBills = sqliteTable(
 );
 
 /**
+ * Each customer's balance and outstanding as GET /mobile/customers/list gave them at the last Sync
+ * (migration 0021), in the login's company:
+ *  - balance: the ledger's closing today (signed paise, Dr + = the customer owes, Cr − = we owe);
+ *  - outstanding: what the customer's unpaid bills still owe (VK Nex's Party Outstanding "owed").
+ * The Customer list adds what this phone has that VK Nex doesn't yet (customer-figures.ts).
+ */
+export const customerBalances = sqliteTable('customer_balances', {
+  customerId: text('customer_id').primaryKey(),
+  /** The company VK Nex read them in; null from a VK Nex that doesn't say. */
+  companyId: text('company_id'),
+  balancePaise: integer('balance_paise').notNull(),
+  /** Null from a VK Nex older than the outstanding figure. */
+  outstandingPaise: integer('outstanding_paise'),
+  /** Unpaid bills, and the bill date (YYYY-MM-DD) of the oldest one. */
+  billCount: integer('bill_count'),
+  oldestBillDate: text('oldest_bill_date'),
+  /** VK Nex's day (balanceAsOn), and when this phone read it (ISO time). */
+  asOn: text('as_on').notNull(),
+  syncedOn: text('synced_on').notNull(),
+});
+
+/**
  * VK Nex's financial years of the company Sync signs in to (public.fiscal_years, only the
  * columns the ledger needs). Sync brings this year and last year.
  */
@@ -651,12 +673,16 @@ export const saleBillItem = sqliteTable(
 
 /**
  * Sales returns made on the phone (credit notes): a copy of VK Nex's sales.sale_return, only the
- * columns the phone fills, same names. A phone return is a FREE return (sr_is_against_bill false:
- * not tied to a bill line), priced at today's price, settled ADJUST (VK Nex sets it against the
- * shop's open bills). The number is the phone's own series, 'R' + the bill series code.
+ * columns the phone fills, same names. Since canvas 6b (migration 0022) a return is against one
+ * of the shop's posted bills by default (sr_bill_id), or with no bill; it has one reason, a settle
+ * mode (ADJUST | ADVANCE) and optionally the godown the goods go into. The money columns hold the
+ * phone's ESTIMATE: VK Nex works every line out from its bill line at Sync and its figures come
+ * back in app_vk_*. sr_return_refno is the phone's own ref ('R' + the bill series code), sent as
+ * srMobileRefno; VK Nex's own number (SRT/…) is app_vk_refno. sr_id goes as srClientUuid.
  *
- * VK Nex has no route for phone returns yet (its lines also need a godown the phone doesn't
- * have), so Sync does not send these: they stay on the phone with app_pending_upload set.
+ * app_status: WAITING (to send) | HELD (a draft in VK Nex the office must clear) | SENT_BACK
+ * (VK Nex refused the post; fix and send again) | POSTED | CANCELLED | OLD (made by the page-6
+ * build before 0022: a free return with no reason id, never sent).
  */
 export const saleReturn = sqliteTable(
   'sale_return',
@@ -699,6 +725,41 @@ export const saleReturn = sqliteTable(
     /** Not yet on VK Nex. */
     appPendingUpload: integer('app_pending_upload', { mode: 'boolean' }).notNull().default(true),
     appSyncError: text('app_sync_error'),
+    // Since migration 0022 (canvas 6b).
+    /** The Switch company branch it was made for. */
+    srBranchId: text('sr_branch_id'),
+    /** The bill the goods came on (null = no bill), with its number and date for the screens. */
+    srBillId: text('sr_bill_id'),
+    srBillAccYear: text('sr_bill_acc_year'),
+    appBillRefno: text('app_bill_refno'),
+    appBillDate: text('app_bill_date'),
+    /** VK Nex's stock_reason_master id and its name. */
+    srReasonId: text('sr_reason_id'),
+    srReturnReason: text('sr_return_reason'),
+    /** Goods go into (null = each bill line's own godown, or the branch's default). */
+    srGodownId: text('sr_godown_id'),
+    /** The shop's debit note no. and date (VK Nex's "their ref"). */
+    srUsrRefno: text('sr_usr_refno'),
+    srUsrRefdate: text('sr_usr_refdate'),
+    srRemarks: text('sr_remarks'),
+    /** The salesman's own split against bills, JSON [{ billId, billAccYear, refno, amount }]; null = VK Nex's plan. */
+    appAdjust: text('app_adjust'),
+    appStatus: text('app_status').notNull().default('WAITING'),
+    /** VK Nex's number (SRT/…), final credit note, and when it last answered. */
+    appVkRefno: text('app_vk_refno'),
+    appVkAmt: numeric('app_vk_amt'),
+    appSyncedOn: text('app_synced_on'),
+    /** Why VK Nex held or sent it back, JSON { code, message, field, line }. */
+    appVkNote: text('app_vk_note'),
+    /** How VK Nex settled it, JSON { mode, credited, settleStatus, adjusted[] }, and its totals JSON. */
+    appVkSettle: text('app_vk_settle'),
+    appVkTotals: text('app_vk_totals'),
+    /** VK Nex's lines, JSON [{ sriLineNo, sriSplitNo, rateSource, taxableAmt, taxAmt, netAmt, bucket }]. */
+    appVkLines: text('app_vk_lines'),
+    appCancelledOn: text('app_cancelled_on'),
+    appCancelReason: text('app_cancel_reason'),
+    /** The office's approval, JSON { status, note } (a held return waiting for an approver). */
+    appApproval: text('app_approval'),
   },
   (t) => [
     index('ix_sr_cust').on(t.srCustId),
@@ -750,9 +811,137 @@ export const saleReturnItem = sqliteTable(
     sriNetAmt: numeric('sri_net_amt').notNull(),
     /** The salesman's notes on the line (VK Nex: 250 long). */
     sriRemarks: text('sri_remarks'),
+    // Since migration 0022 (canvas 6b). sri_condition is RESTOCK | DAMAGED | EXPIRED | SCRAP.
+    /** The bill line it comes back from (null on a no-bill line). */
+    sriBillItemId: text('sri_bill_item_id'),
+    sriBillAccYear: text('sri_bill_acc_year'),
+    /** 0 = the line itself, 1, 2 … = its splits (another condition of the same bill line). */
+    sriSplitNo: integer('sri_split_no').notNull().default(0),
+    /** The unit's name and the item's name when saved (for the slip and lists). */
+    appUnitName: text('app_unit_name'),
+    appItemName: text('app_item_name'),
   },
   (t) => [index('ix_sri_return').on(t.sriReturnId)],
 );
+
+/**
+ * The posted bills a return can come back on (GET /mobile/returns/bill-lines at Sync): every
+ * customer's bills of the last billDays days in the phone's branch, with what each can still take
+ * back. Replaced per company on every Sync. Money as VK Nex's text.
+ */
+export const returnBills = sqliteTable(
+  'return_bills',
+  {
+    sbId: text('sb_id').notNull(),
+    accYear: text('acc_year').notNull(),
+    companyId: text('company_id').notNull(),
+    branchId: text('branch_id'),
+    custId: text('cust_id').notNull(),
+    refno: text('refno').notNull(),
+    /** YYYY-MM-DD */
+    billDate: text('bill_date').notNull(),
+    billAmount: numeric('bill_amount').notNull(),
+    /** Still owed on the bill. */
+    due: numeric('due'),
+    payMode: text('pay_mode'),
+    returnedAmt: numeric('returned_amt'),
+    /** NONE | PARTIAL | FULL */
+    returnStatus: text('return_status'),
+    syncedOn: text('synced_on').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.sbId, t.accYear] }), index('ix_return_bills_cust').on(t.custId, t.companyId, t.billDate)],
+);
+
+/** The lines of those bills, with VK Nex's quantities in base units and its rate per base unit. */
+export const returnBillLines = sqliteTable(
+  'return_bill_lines',
+  {
+    billItemId: text('bill_item_id').notNull(),
+    accYear: text('acc_year').notNull(),
+    sbId: text('sb_id').notNull(),
+    sbAccYear: text('sb_acc_year').notNull(),
+    companyId: text('company_id').notNull(),
+    lineNo: integer('line_no').notNull(),
+    itemId: text('item_id').notNull(),
+    itemName: text('item_name'),
+    itemUnitId: text('item_unit_id').notNull(),
+    unitName: text('unit_name'),
+    toBaseFactor: numeric('to_base_factor').notNull(),
+    billQty: numeric('bill_qty').notNull(),
+    billQtyBase: numeric('bill_qty_base').notNull(),
+    /** Taken back by POSTED returns. */
+    returnedQtyBase: numeric('returned_qty_base').notNull(),
+    qtyLeftBase: numeric('qty_left_base').notNull(),
+    /** Held by other draft returns (information only: the first to post gets them). */
+    onOtherDraftsBase: numeric('on_other_drafts_base').notNull().default('0'),
+    /** Taxable value per BASE unit after every discount: what a returned unit gets back before tax. */
+    ratePreTaxBase: numeric('rate_pre_tax_base').notNull(),
+    /** The bill's rate in its own unit, as printed. */
+    rate: numeric('rate'),
+    taxPerc: numeric('tax_perc').notNull().default('0'),
+    cgstPerc: numeric('cgst_perc').notNull().default('0'),
+    sgstPerc: numeric('sgst_perc').notNull().default('0'),
+    igstPerc: numeric('igst_perc').notNull().default('0'),
+    lotId: text('lot_id'),
+    batchNo: text('batch_no'),
+    expiryDate: text('expiry_date'),
+    godownId: text('godown_id'),
+    isFree: integer('is_free', { mode: 'boolean' }).notNull().default(false),
+    allowReturn: integer('allow_return', { mode: 'boolean' }).notNull().default(true),
+  },
+  (t) => [primaryKey({ columns: [t.billItemId, t.accYear] }), index('ix_return_bill_lines_bill').on(t.sbId, t.sbAccYear), index('ix_return_bill_lines_item').on(t.companyId, t.itemId)],
+);
+
+/** VK Nex's reasons for a sales return (GET /mobile/returns/options), per company. */
+export const returnReasons = sqliteTable(
+  'return_reasons',
+  {
+    companyId: text('company_id').notNull(),
+    reasonId: text('reason_id').notNull(),
+    code: text('code'),
+    name: text('name').notNull(),
+    /** RESTOCK | DAMAGED | EXPIRED | SCRAP: the condition a new line takes. */
+    defaultCondition: text('default_condition'),
+    /** VK Nex gives the bill's freight and loading back for this reason. */
+    refundCharges: integer('refund_charges', { mode: 'boolean' }),
+    /** A claim reason (goods destroyed at the shop): office only, hidden on the phone. */
+    isClaim: integer('is_claim', { mode: 'boolean' }).notNull().default(false),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.reasonId] })],
+);
+
+/** The branch's godowns a return's goods can go into (GET /mobile/returns/options). */
+export const returnGodowns = sqliteTable(
+  'return_godowns',
+  {
+    companyId: text('company_id').notNull(),
+    godownId: text('godown_id').notNull(),
+    branchId: text('branch_id'),
+    name: text('name').notNull(),
+    isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+    position: integer('position').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.godownId] })],
+);
+
+/** A company's return rules and the login's rights on menu 13, as the last Sync read them. */
+export const returnSettings = sqliteTable('return_settings', {
+  companyId: text('company_id').primaryKey(),
+  branchId: text('branch_id'),
+  returnWindowDays: integer('return_window_days').notNull().default(0),
+  freeReturnAllowed: integer('free_return_allowed', { mode: 'boolean' }).notNull().default(true),
+  /** ADJUST | ADVANCE | null (VK Nex then picks ADJUST when the bill still owes, else ADVANCE). */
+  settleDefault: text('settle_default'),
+  expiredLotDays: integer('expired_lot_days'),
+  /** How many days of bills the phone keeps for returns. */
+  billDays: integer('bill_days').notNull().default(90),
+  /** Menu 13 rights; null = VK Nex did not say (no token). */
+  canPost: integer('can_post', { mode: 'boolean' }),
+  /** When the bills were read (VK Nex's asOf, else the phone's time). */
+  billsAsOf: text('bills_as_of'),
+  syncedOn: text('synced_on').notNull(),
+});
 
 /**
  * A customer's open bills in one company, as VK Nex gave them at the last Sync (its
@@ -842,6 +1031,24 @@ export const receiptSettings = sqliteTable('receipt_settings', {
   pdcPostingMode: text('pdc_posting_mode'),
   ppdEnabled: integer('ppd_enabled', { mode: 'boolean' }).notNull().default(false),
   syncedOn: text('synced_on').notNull(),
+  /**
+   * VK Nex listed transferTypes in its options, so its /mobile/receipts/create takes a bank
+   * transfer's tdTransferType (migration 0020). Until then the phone keeps the type and doesn't send it:
+   * VK Nex refuses keys it doesn't know.
+   */
+  appTakesTransferType: integer('app_takes_transfer_type', { mode: 'boolean' }).notNull().default(false),
+});
+
+/**
+ * The banks a cheque can be drawn on (VK Nex's fixed.bank_master, active ones), from GET
+ * /mobile/receipts/options at Sync (migration 0020). The cheque's Bank dropdown lists them; the
+ * NAME is what goes as tdBankName, as on the desktop's bank popup (td_bank_name is not a key).
+ */
+export const banks = sqliteTable('banks', {
+  bnkId: text('bnk_id').primaryKey(),
+  bnkName: text('bnk_name').notNull(),
+  bnkShortName: text('bnk_short_name'),
+  position: integer('position').notNull().default(0),
 });
 
 /**
@@ -927,6 +1134,8 @@ export const receiptTenders = sqliteTable(
     appChequeBranch: text('app_cheque_branch'),
     appChequeIfsc: text('app_cheque_ifsc'),
     appChequeDrawer: text('app_cheque_drawer'),
+    /** Bank transfers: 'NEFT' | 'IMPS' | 'RTGS' (0020); sent as tdTransferType once VK Nex takes it. */
+    tdTransferType: text('td_transfer_type'),
   },
   (t) => [index('ix_td_receipt').on(t.tdSrcDocId)],
 );

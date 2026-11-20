@@ -14,7 +14,7 @@ import { companiesQuery } from '@/features/company/company';
 import { customerName, orderCustomerQuery } from '@/features/orders/queries';
 import { DOC_REF_MAX, readMe, RECEIPT_REMARKS_MAX, receiptBranchFor, sameAmountToday, saveReceipt } from '@/features/receipts/queries';
 import { docRefTyped, receiptCleared, receiptRemarksTyped } from '@/features/receipts/receipt-draft';
-import { amountPaise, TENDER_TYPE } from '@/features/receipts/receipt-math';
+import { amountPaise, surchargePaise, tenderTotals, TENDER_TYPE } from '@/features/receipts/receipt-math';
 import { plannedRows } from '@/features/receipts/receipt-plan';
 import { ppdSlab } from '@/features/receipts/settle';
 import { useReceiptPlan } from '@/features/receipts/use-receipt-plan';
@@ -58,6 +58,9 @@ export default function ReviewReceiptScreen() {
   const usedCredits = sum.credits.filter((cr) => cr.usedPaise > 0);
   const creditKinds = [...new Set(usedCredits.map((cr) => byKey.get(cr.key)?.kind).filter(Boolean))].map((k) => t(`receipt.creditShort.${k}`)).join(' + ');
   const modes = draft.lines.map((l) => l.name.toLocaleLowerCase()).join(' + ');
+  // What the customer pays: the money received plus the modes' surcharges (UPI 1% …), as Payment shows it.
+  const { surchargePaise: feesPaise } = tenderTotals(draft.lines);
+  const paidPaise = sum.receivedPaise + feesPaise;
   const same = useMemo(() => (c ? sameAmountToday(customerId, companyId, sum.receivedPaise, draft.editingId) : 0), [c, customerId, companyId, sum.receivedPaise, draft.editingId]);
   const noCollector = !me.employeeId;
   const collectorNeeded = !!plan.settings?.salesmanMandatory;
@@ -113,10 +116,15 @@ export default function ReviewReceiptScreen() {
     if (sum.problem) return Alert.alert(t('receipt.problems.noAmount'));
     const cleared = settled.filter((b) => b.leftPaise === 0).map((b) => byKey.get(b.key)?.docRefno ?? '');
     const payText = draft.lines
-      .map((l) => (l.typeId === TENDER_TYPE.CHEQUE ? t('receipt.confirmCheque', { no: l.refNo, amount: formatAmount(amountPaise(l.amount)) }) : t('receipt.confirmMode', { name: l.name.toLocaleLowerCase(), amount: formatAmount(amountPaise(l.amount)) })))
+      .map((l) => {
+        const p = amountPaise(l.amount);
+        const fee = surchargePaise(p, l.surchargePerc, l.surchargeFlat);
+        const text = l.typeId === TENDER_TYPE.CHEQUE ? t('receipt.confirmCheque', { no: l.refNo, amount: formatAmount(p) }) : t('receipt.confirmMode', { name: l.name.toLocaleLowerCase(), amount: formatAmount(p) });
+        return fee > 0 ? `${text} ${t('receipt.confirmFee', { amount: formatAmount(fee) })}` : text;
+      })
       .join(t('receipt.and'));
     const text = [
-      t('receipt.confirmHead', { amount: formatAmount(sum.receivedPaise), name: customerName(c), modes: payText }),
+      t('receipt.confirmHead', { amount: formatAmount(paidPaise), name: customerName(c), modes: payText }),
       cleared.length ? t('receipt.confirmCleared', { bills: cleared.join(', ') }) : null,
       sum.creditsPaise > 0 ? t('receipt.confirmCredits', { amount: formatAmount(sum.creditsPaise) }) : null,
       t('receipt.confirmAccount', { amount: formatAmount(sum.onAccountPaise) }),
@@ -138,6 +146,7 @@ export default function ReviewReceiptScreen() {
         <ScrollView contentContainerStyle={st.body} keyboardShouldPersistTaps="handled">
           <View style={st.card}>
             <Row label={t('receipt.receivedVia', { modes })} value={formatAmount(sum.receivedPaise)} />
+            {feesPaise > 0 ? <Text style={st.small}>{t('receipt.feeOnTop', { amount: formatAmount(feesPaise), total: formatAmount(paidPaise) })}</Text> : null}
             {sum.creditsPaise > 0 ? <Row label={t('receipt.creditsUsedVia', { kinds: creditKinds })} value={formatAmount(sum.creditsPaise)} /> : null}
             {sum.discountPaise > 0 ? <Row label={t('receipt.ppdDiscount')} value={formatAmount(sum.discountPaise)} /> : null}
             {sum.roundoffPaise > 0 ? <Row label={t('receipt.roundoff')} value={formatAmount(sum.roundoffPaise)} /> : null}
@@ -224,9 +233,14 @@ export default function ReviewReceiptScreen() {
         <View style={[st.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
           <View style={st.footRow}>
             <Text style={[st.small, { flex: 1 }]} numberOfLines={1}>
-              {draft.lines.map((l) => `${l.name} ${formatAmount(amountPaise(l.amount)).replace(/\.00$/, '')}`).join(' · ')}
+              {[
+                ...draft.lines.map((l) => `${l.name} ${formatAmount(amountPaise(l.amount)).replace(/\.00$/, '')}`),
+                feesPaise > 0 ? t('receipt.surchargeShort', { amount: formatAmount(feesPaise).replace(/\.00$/, '') }) : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </Text>
-            <Text style={st.footAmount}>{formatAmount(sum.receivedPaise)}</Text>
+            <Text style={st.footAmount}>{formatAmount(paidPaise)}</Text>
           </View>
           <Button title={t('receipt.save')} onPress={save} loading={saving} style={{ height: 52 }} />
         </View>

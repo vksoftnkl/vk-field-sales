@@ -158,6 +158,58 @@ export function collectionTotals(receiptIds: readonly string[], lines: readonly 
   return out;
 }
 
+/** A saved payment line: td_amount with its surcharge inside, as VK Nex takes it (rupees text). */
+export interface SavedTender {
+  amount: string;
+  surcharge: string | null;
+}
+
+/**
+ * A saved receipt's money (slip, Receipt detail, My receipts): what went towards the receipt (the
+ * bills and on account), the surcharges paid on top, and the total the customer paid, which is
+ * every payment line plus its surcharge (VK Nex's avh_doc_amount is the same Σ td_amount).
+ */
+export function savedReceiptMoney(lines: readonly SavedTender[]): { receivedPaise: number; surchargePaise: number; totalPaise: number } {
+  let totalPaise = 0;
+  let fees = 0;
+  for (const l of lines) {
+    totalPaise += amountPaise(l.amount);
+    fees += amountPaise(l.surcharge ?? '');
+  }
+  return { receivedPaise: totalPaise - fees, surchargePaise: fees, totalPaise };
+}
+
+/** A bill or credit a receipt settled (receipt_allocations, planned or as VK Nex applied it). */
+export interface SettledRow {
+  kind: 'BILL' | 'CREDIT';
+  /** BILL: cash + credits + discount + round-off on it; CREDIT: what was spent of it. */
+  settledPaise: number;
+  discountPaise: number;
+  roundoffPaise: number;
+}
+
+/**
+ * How the bills were settled: what the bills got in all, and the parts of it that were not this
+ * receipt's money (credits spent, discount, round-off). cashPaise + on account = the money received.
+ */
+export function settledBreakdown(rows: readonly SettledRow[]): { billsPaise: number; creditsPaise: number; discountPaise: number; roundoffPaise: number; cashPaise: number } {
+  let billsPaise = 0;
+  let creditsPaise = 0;
+  let discountPaise = 0;
+  let roundoffPaise = 0;
+  for (const r of rows) {
+    if (r.kind === 'CREDIT') {
+      // The credits spent, once (a bill's share of them is the same money).
+      creditsPaise += r.settledPaise;
+      continue;
+    }
+    billsPaise += r.settledPaise;
+    discountPaise += r.discountPaise;
+    roundoffPaise += r.roundoffPaise;
+  }
+  return { billsPaise, creditsPaise, discountPaise, roundoffPaise, cashPaise: billsPaise - creditsPaise - discountPaise - roundoffPaise };
+}
+
 const ONES = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
 const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
 

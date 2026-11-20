@@ -37,13 +37,13 @@ import { UnitSheet, useUnitEquals, useUnitStock } from '@/features/orders/unit-s
 import { soLineInUnit, unitStartPrice } from '@/features/orders/unit-switch';
 import { badgeText, rupees } from '@/features/schemes/offer-text';
 import { OfferSheet } from '@/features/schemes/offer-sheet';
-import type { PromoScheme } from '@/features/schemes/scheme-types';
+import { PromoCode, type PromoScheme } from '@/features/schemes/scheme-types';
 import { useItemBadges, type ItemBadgeView } from '@/features/schemes/use-item-badges';
 import { useOrderSchemes } from '@/features/schemes/use-order-schemes';
 import { useRefreshItems } from '@/features/orders/use-send-now';
 import { daysBetween, formatAmount, todayISO } from '@/lib/money';
 import { useAppDispatch, useAppSelector } from '@/store';
-import { colors, font, radius, spacing } from '@/theme';
+import { colors, font, offerColors, radius, spacing } from '@/theme';
 
 const GST = (perc: string | null) => String(Number(num(perc).toFixed(3)));
 
@@ -190,7 +190,7 @@ export default function AddItemsScreen() {
         backLabel={t('so.backToVisit')}
         right={
           <Pressable accessibilityRole="button" accessibilityLabel={t('so.refresh')} accessibilityState={{ busy: refreshing }} disabled={refreshing} onPress={() => void refresh()} style={st.headBtn}>
-            {refreshing ? <ActivityIndicator color={colors.onPrimary} /> : <Ionicons name="sync-outline" size={22} color={colors.onPrimary} />}
+            {refreshing ? <ActivityIndicator color={colors.onPrimary} /> : <Ionicons name="refresh" size={22} color={colors.onPrimary} />}
           </Pressable>
         }
       />
@@ -247,13 +247,14 @@ export default function AddItemsScreen() {
             accessibilityRole="button"
             accessibilityHint={t('offers.badgeHint')}
             onPress={() => setSheet({ schemeId: o.schemeId, itemId: null, unit: '' })}
-            style={[st.banner, o.applied && st.bannerOn]}
+            style={({ pressed }) => [st.banner, o.applied && st.bannerOn, pressed && { opacity: 0.85 }]}
           >
-            <Ionicons name={o.applied ? 'checkmark-circle' : 'pricetag-outline'} size={20} color={o.applied ? '#166534' : colors.primary} />
-            <View style={{ flex: 1, gap: 1 }}>
-              <Text style={[st.bannerTitle, o.applied && { color: '#166534' }]}>{t(o.applied ? 'offers.orderApplied' : 'offers.orderOffer', { name: o.name })}</Text>
+            <Ionicons name={o.applied ? 'checkmark-circle-outline' : 'pricetag-outline'} size={22} color={o.applied ? offerColors.okText : colors.primary} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[st.bannerTitle, o.applied && { color: offerColors.okText }]}>{t(o.applied ? 'offers.orderApplied' : 'offers.orderOffer', { name: o.name })}</Text>
               {gap ? <Text style={st.bannerGap}>{gap}</Text> : null}
             </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
         );
       })}
@@ -319,7 +320,7 @@ export default function AddItemsScreen() {
         onPick={(u) => unitItem && pickUnit(unitItem, u)}
         onClose={() => setUnitItem(null)}
       />
-      <OfferSheet scheme={sheetScheme} offer={sheetOffer} unit={sheet?.unit ?? ''} syncedOn={offersAt ?? null} onClose={() => setSheet(null)} />
+      <OfferSheet scheme={sheetScheme} offer={sheetOffer} unit={sheet?.unit ?? ''} syncedOn={offersAt ?? null} companyName={company[0]?.name} onClose={() => setSheet(null)} />
       <ItemFilterSheet visible={filterOpen} value={filter} groups={groups} brands={brands} onApply={setFilter} onClose={() => setFilterOpen(false)} />
     </View>
   );
@@ -403,7 +404,9 @@ const ItemRow = memo(function ItemRow({
               const s = schemeOf(b.schemeId);
               if (!s) return null;
               const text = badgeText(s, b, b.unitName || u.unitName, t);
+              // Green = applied now, outlined = not reached yet; a gift for free goods, else a tick or a tag.
               const on = b.applied && !b.unitMismatch;
+              const icon = s.benefit === PromoCode.FreeItem ? 'gift-outline' : on ? 'checkmark' : 'pricetag-outline';
               return (
                 <Pressable
                   key={b.schemeId}
@@ -411,10 +414,10 @@ const ItemRow = memo(function ItemRow({
                   accessibilityLabel={`${text}. ${t('offers.badgeHint')}`}
                   hitSlop={6}
                   onPress={() => onBadge(b.schemeId, it.itemId, b.unitName || u.unitName)}
-                  style={[st.badge, on && st.badgeOn]}
+                  style={({ pressed }) => [st.badge, on && st.badgeOn, pressed && { opacity: 0.7 }]}
                 >
-                  {on ? <Ionicons name="checkmark" size={13} color="#166534" /> : null}
-                  <Text style={[st.badgeText, on && { color: '#166534' }]} numberOfLines={1}>
+                  <Ionicons name={icon} size={13} color={on ? offerColors.okText : colors.primary} />
+                  <Text style={[st.badgeText, on && { color: offerColors.okText }]} numberOfLines={1}>
                     {text}
                   </Text>
                 </Pressable>
@@ -422,7 +425,7 @@ const ItemRow = memo(function ItemRow({
             })}
           </View>
         ) : null}
-        <Text style={[st.meta, warn && { color: '#92400E' }]}>{meta}</Text>
+        <Text style={[st.meta, warn && { color: offerColors.warn }]}>{meta}</Text>
         {note ? (
           <View style={st.note}>
             <Text style={st.noteText}>{note}</Text>
@@ -474,49 +477,62 @@ const st = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    height: 48,
+    gap: spacing.sm,
+    height: 46,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md + 2,
-    paddingHorizontal: spacing.md + 2,
+    borderColor: colors.inputBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
   },
   searchInput: { flex: 1, fontSize: font.md, color: colors.text, padding: 0 },
   filterBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.md + 2,
+    width: 46,
+    height: 46,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.inputBorder,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterOn: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
   asOfRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: 6 },
-  asOf: { fontSize: 12, color: colors.textMuted },
-  asOfOld: { color: '#92400E', fontWeight: '600' },
+  asOf: { fontSize: 12.5, color: colors.textMuted },
+  asOfOld: { color: offerColors.warn, fontWeight: '600' },
+  // An order offer still to reach: white, dashed maroon; reached: green.
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 10,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.xs,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: '#E7C4C4',
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: offerColors.bannerBorder,
+    borderRadius: radius.md + 2,
+    paddingVertical: 9,
     paddingHorizontal: spacing.md,
   },
-  bannerOn: { backgroundColor: '#F0FDF4', borderColor: '#86EFAC' },
-  bannerTitle: { fontSize: font.sm + 1, fontWeight: '600', color: colors.primary },
-  bannerGap: { fontSize: 12.5, color: colors.textLabel },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 3, maxWidth: '100%', borderRadius: 999, borderWidth: 1, borderColor: '#A8A29E', paddingHorizontal: 8, paddingVertical: 2 },
-  badgeOn: { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' },
-  badgeText: { flexShrink: 1, fontSize: 12, fontWeight: '600', color: colors.textLabel },
+  bannerOn: { backgroundColor: offerColors.okBg, borderColor: offerColors.okBorder, borderStyle: 'solid' },
+  bannerTitle: { fontSize: 13.5, fontWeight: '700', color: colors.text },
+  bannerGap: { fontSize: 12.5, fontWeight: '600', color: offerColors.warn },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 3 },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    maxWidth: '100%',
+    minHeight: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: offerColors.badgeBorder,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 9,
+  },
+  badgeOn: { backgroundColor: offerColors.okBg, borderColor: offerColors.okBorder },
+  badgeText: { flexShrink: 1, fontSize: 12, fontWeight: '700', color: colors.primary },
   result: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -546,21 +562,21 @@ const st = StyleSheet.create({
     paddingLeft: spacing.md + 2,
     paddingRight: 10,
   },
-  rowOn: { backgroundColor: '#F0FDF4', borderColor: '#86EFAC' },
+  rowOn: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
   rowMain: { flex: 1, gap: 3, minWidth: 0 },
-  rowName: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  rateLine: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  rate: { fontSize: font.sm, color: colors.textLabel },
-  mrp: { backgroundColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
-  mrpText: { fontSize: 11.5, fontWeight: '600', color: colors.textLabel },
-  meta: { fontSize: 12, color: colors.textMuted },
+  rowName: { fontSize: font.md, fontWeight: '700', color: colors.text },
+  rateLine: { flexDirection: 'row', alignItems: 'center', columnGap: spacing.sm, rowGap: 3, flexWrap: 'wrap' },
+  rate: { fontSize: font.sm, color: colors.textMuted },
+  mrp: { backgroundColor: offerColors.mrpBg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 7, paddingVertical: 1 },
+  mrpText: { fontSize: 12, fontWeight: '600', color: colors.textLabel },
+  meta: { marginTop: 1, fontSize: 12.5, color: colors.textMuted },
   note: { alignSelf: 'flex-start', backgroundColor: '#FEF3C7', borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 1 },
   noteText: { fontSize: 12, fontWeight: '600', color: '#92400E' },
-  qtyBox: { alignItems: 'center', gap: 2, width: 64 },
+  qtyBox: { alignItems: 'center', gap: 3, width: 64 },
   qty: {
-    width: 64,
-    height: 48,
-    borderWidth: 1,
+    width: 62,
+    height: 44,
+    borderWidth: 1.5,
     borderColor: colors.inputBorder,
     borderRadius: radius.md,
     textAlign: 'center',
@@ -571,7 +587,7 @@ const st = StyleSheet.create({
     padding: 0,
   },
   qtyOff: { backgroundColor: '#EEECE9' },
-  unit: { fontSize: 11.5, color: colors.textMuted },
+  unit: { fontSize: 11.5, fontWeight: '600', color: colors.textMuted },
   unitBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -589,17 +605,17 @@ const st = StyleSheet.create({
   conv: { fontSize: 11.5, color: colors.textMuted },
   footer: { paddingTop: spacing.sm, paddingHorizontal: spacing.lg, backgroundColor: colors.bg },
   proceed: {
-    minHeight: 56,
-    borderRadius: radius.lg,
+    minHeight: 54,
+    borderRadius: radius.md + 2,
     backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
   proceedNote: { fontSize: font.sm, color: colors.onPrimaryMuted },
   proceedTotal: { fontSize: 16, fontWeight: '700', color: colors.onPrimary },
-  proceedRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  proceedText: { fontSize: font.md, fontWeight: '600', color: colors.onPrimary },
+  proceedRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  proceedText: { fontSize: 16, fontWeight: '700', color: colors.onPrimary },
 });

@@ -107,6 +107,8 @@ export default function SyncScreen() {
         return total ? t('sync.stepReceipts', { n, total }) : t('sync.stepReceiptsNone');
       case 'receiptData':
         return total ? t('sync.stepReceiptData', { n, total }) : t('sync.stepReceiptDataNone');
+      case 'banks':
+        return t('sync.stepBanks');
       case 'receiptStatus':
         return t('sync.stepReceiptStatus');
       case 'items':
@@ -195,6 +197,8 @@ export default function SyncScreen() {
         ? t('sync.receiptDataNotOnServer')
         : t('sync.receiptDataFailed', { message: errorText(report.receiptDataStoppedBy) })
     : null;
+  const banksGot = report?.banks;
+  const banksStop = report?.banksStoppedBy ? (isNetworkError(report.banksStoppedBy) ? noAnswer(address) : t('sync.banksFailed', { message: errorText(report.banksStoppedBy) })) : null;
   // An older VK Nex has no status route: nothing to say then.
   const statusChanged = report?.receiptStatus?.changed ?? 0;
   const statusStop =
@@ -246,6 +250,8 @@ export default function SyncScreen() {
       !!schemesStop ||
       !!receiptData ||
       !!receiptDataStop ||
+      !!banksGot ||
+      !!banksStop ||
       statusChanged > 0 ||
       !!statusStop ||
       !!deviceStop ||
@@ -506,6 +512,15 @@ export default function SyncScreen() {
                 </View>
               ) : null}
               {receiptDataStop ? <StatusLine ok={false} text={receiptDataStop} /> : null}
+              {banksGot ? (
+                <View style={st.item}>
+                  <Ionicons name="business-outline" size={20} color={colors.success} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemOk}>{t('sync.banksDone', { count: banksGot.count })}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {banksStop ? <StatusLine ok={false} text={banksStop} /> : null}
               {statusChanged > 0 ? (
                 <View style={st.item}>
                   <Ionicons name="swap-horizontal-outline" size={20} color={colors.success} />

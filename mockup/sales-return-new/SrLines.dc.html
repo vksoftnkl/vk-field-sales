@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sales return: items</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 12px 14px 8px; display: flex; align-items: center; gap: 4px">
+    <a href="SrStart.dc.html" aria-label="Back to bills" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </a>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+      <h1 style="margin: 0; font-size: 19px; font-weight: 600">Return items</h1>
+      <span style="font-size: 13px; color: #F3DADA">SB/2627/02107 · 28 Oct · Sri Murugan Stores</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; overflow: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <span style="font-size: 13px; font-weight: 500; color: #44403C">Why are they coming back? <span aria-hidden="true" style="color: #B91C1C">*</span></span>
+      <button type="button" aria-haspopup="dialog" style="display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 14px; border: 1px solid #D6D3D1; border-radius: 12px; background: #FFFFFF; font: inherit; text-align: left">
+        <span style="flex: 1; font-size: 15px; font-weight: 600">Damaged / leaking</span>
+        <span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 6px; background: #FEE2E2; color: #991B1B">new lines: Damaged</span>
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#57534E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <span style="font-size: 12px; color: #57534E">One reason for the whole return, from VK Nex's list. A line's condition can still be changed.</span>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600">Bill lines (4 of 5)</h2>
+      <span style="display: flex; gap: 2px">
+        <button type="button" style="min-height: 36px; padding: 0 10px; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #8B1D1D">All back</button>
+        <button type="button" style="min-height: 36px; padding: 0 10px; border: 0; background: none; font: inherit; font-size: 13px; color: #57534E">Clear</button>
+      </span>
+    </div>
+
+    <a href="SrLine.dc.html" style="display: flex; flex-direction: column; gap: 6px; background: #FFFFFF; border: 1.5px solid #8B1D1D; border-radius: 12px; padding: 10px 14px; text-decoration: none; color: #1C1917">
+      <span style="display: flex; justify-content: space-between; gap: 8px"><span style="font-size: 15px; font-weight: 600">Sunflower Oil 1L · Gold Drop</span><span style="font-size: 15px; font-weight: 700">₹787.50</span></span>
+      <span style="font-size: 12.5px; color: #57534E">Billed 20 · back before 0 · can return 20 PCS</span>
+      <span style="font-size: 12.5px; color: #57534E">₹150.00 + 5% GST · batch GD2609 · exp 03/27</span>
+      <span style="display: flex; flex-direction: column; gap: 4px; border-top: 1px solid #F1EDE4; padding-top: 6px">
+        <span style="display: flex; justify-content: space-between; font-size: 13.5px"><span><b>3 PCS</b> · <span style="font-weight: 600; padding: 1px 8px; border-radius: 6px; background: #DCFCE7; color: #166534">Good</span></span><span>₹472.50</span></span>
+        <span style="display: flex; justify-content: space-between; font-size: 13.5px"><span>↳ <b>2 PCS</b> · <span style="font-weight: 600; padding: 1px 8px; border-radius: 6px; background: #FEE2E2; color: #991B1B">Damaged</span> · tins leaking</span><span>₹315.00</span></span>
+      </span>
+    </a>
+
+    <a href="SrLine.dc.html" style="display: flex; flex-direction: column; gap: 6px; background: #FFFFFF; border: 1.5px solid #8B1D1D; border-radius: 12px; padding: 10px 14px; text-decoration: none; color: #1C1917">
+      <span style="display: flex; justify-content: space-between; gap: 8px"><span style="font-size: 15px; font-weight: 600">Surf Excel Matic 1kg</span><span style="font-size: 15px; font-weight: 700">₹944.00</span></span>
+      <span style="font-size: 12.5px; color: #57534E">Billed 12 · back before 2 · can return 10 PCS</span>
+      <span style="font-size: 12.5px; color: #57534E">₹200.00 + 18% GST · batch SX1027 · exp 10/27</span>
+      <span style="align-self: flex-start; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 6px; background: #EDE9FE; color: #5B21B6">3 more on a return waiting in the office</span>
+      <span style="display: flex; justify-content: space-between; font-size: 13.5px; border-top: 1px solid #F1EDE4; padding-top: 6px"><span><b>4 PCS</b> · <span style="font-weight: 600; padding: 1px 8px; border-radius: 6px; background: #FEE2E2; color: #991B1B">Damaged</span></span><span>₹944.00</span></span>
+    </a>
+
+    <div style="display: flex; align-items: center; gap: 10px; background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 12px; padding: 10px 14px">
+      <span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 600">Toor Dal 1kg</span><span style="font-size: 12.5px; color: #57534E">Can return 20 PCS · ₹140.00 + 5%</span></span>
+      <a href="SrLine.dc.html" aria-label="Return Toor Dal 1kg" style="width: 44px; height: 44px; border: 1px solid #8B1D1D; border-radius: 10px; display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 20px; font-weight: 600">+</a>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 12px; padding: 10px 14px">
+      <span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 600">Tea 250g <span style="font-size: 12px; font-weight: 600; padding: 1px 6px; border-radius: 6px; background: #F3E8FF; color: #6B21A8">FREE · scheme</span></span><span style="font-size: 12.5px; color: #57534E">Can return 2 PCS · comes back at ₹0.00</span></span>
+      <a href="SrLine.dc.html" aria-label="Return Tea 250g" style="width: 44px; height: 44px; border: 1px solid #8B1D1D; border-radius: 10px; display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 20px; font-weight: 600">+</a>
+    </div>
+
+    <label style="display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; color: #44403C">
+      <input type="checkbox" style="width: 20px; height: 20px; accent-color: #8B1D1D; margin: 0">
+      Show fully returned lines (1)
+    </label>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px 16px; background: #FFFFFF; border-top: 1px solid #E7E5E4">
+    <span style="flex: 1; display: flex; flex-direction: column; gap: 1px">
+      <span style="font-size: 12px; color: #57534E">9 PCS · 3 good · 6 damaged</span>
+      <span style="font-size: 19px; font-weight: 700">₹1,731.50</span>
+    </span>
+    <a href="SrReview.dc.html" style="min-height: 52px; min-width: 150px; border-radius: 12px; background: #8B1D1D; color: #FFFFFF; text-decoration: none; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center">Next: review</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

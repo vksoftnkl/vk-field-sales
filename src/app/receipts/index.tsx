@@ -12,7 +12,7 @@ import { asOfText, hhmm } from '@/features/orders/order-status';
 import { customerName, orderCustomerQuery } from '@/features/orders/queries';
 import { collectionLinesQuery, lastReceiptSentQuery, myReceiptsQuery, pendingReceiptsCountQuery } from '@/features/receipts/queries';
 import { amountPaise } from '@/features/receipts/receipt-math';
-import { collectionTotals, RC_TONES, rcState } from '@/features/receipts/receipt-status';
+import { collectionTotals, RC_TONES, rcState, savedReceiptMoney } from '@/features/receipts/receipt-status';
 import { useSendReceipts } from '@/features/receipts/use-send-receipts';
 import { formatDay, rangeFor, type RangeKey } from '@/lib/date-range';
 import { formatAmount, todayISO } from '@/lib/money';
@@ -53,6 +53,13 @@ export default function MyReceiptsScreen() {
   const modesOf = useMemo(() => {
     const m = new Map<string, string[]>();
     for (const l of lines) m.set(l.receiptId, [...(m.get(l.receiptId) ?? []), l.name]);
+    return m;
+  }, [lines]);
+  // Each receipt's total as its slip shows it: its payment lines with their surcharges, so the
+  // rows add up to Collected (user, 2026-11-20).
+  const totalOf = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of lines) m.set(l.receiptId, (m.get(l.receiptId) ?? 0) + savedReceiptMoney([l]).totalPaise);
     return m;
   }, [lines]);
   const totals = useMemo(
@@ -148,7 +155,7 @@ export default function MyReceiptsScreen() {
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 5 }}>
-                <Text style={[st.amount, r.state === 'cancelled' && st.struck]}>{formatAmount(amountPaise(r.amount))}</Text>
+                <Text style={[st.amount, r.state === 'cancelled' && st.struck]}>{formatAmount(totalOf.get(r.id) ?? amountPaise(r.amount))}</Text>
                 <View style={[st.status, { backgroundColor: tone.bg }]}>
                   <Text style={[st.statusText, { color: tone.fg }]}>{t(`receipt.state.${r.state}`)}</Text>
                 </View>

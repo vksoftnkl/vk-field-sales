@@ -16,7 +16,7 @@ import { decimalInput, paiseText } from '@/features/orders/order-math';
 import { customerName, orderCustomerQuery } from '@/features/orders/queries';
 import { tendersQuery, type TenderRow } from '@/features/receipts/queries';
 import { tenderAdded, tenderChanged, tenderRemoved, type TenderLine } from '@/features/receipts/receipt-draft';
-import { amountPaise, surchargePaise, tenderBalance, tenderProblem, TENDER_TYPE } from '@/features/receipts/receipt-math';
+import { amountPaise, surchargePaise, tenderBalance, tenderProblem, tenderTotals, TENDER_TYPE } from '@/features/receipts/receipt-math';
 import { isPostDated, lineDetails, lineOf, offeredOnPhone } from '@/features/receipts/tender-lines';
 import { useReceiptPlan } from '@/features/receipts/use-receipt-plan';
 import { formatDay } from '@/lib/date-range';
@@ -27,8 +27,9 @@ import { colors, font, radius, spacing } from '@/theme';
 /**
  * Receipt · payment modes (canvas 5b, step 3): how the shop paid the amount received, one line per
  * tender of the company in VK Nex (each once). Cash is typed here; a cheque, UPI or transfer opens
- * its details. A tender's fee is paid on top, so the bills still get the full amount. The modes
- * must add up to the amount received before Review.
+ * its details. A tender's fee (UPI 1% …) is paid on top, so the bills still get the full amount:
+ * it shows as its own line and is in Total paid. The modes (without fees) must add up to the
+ * amount received before Review.
  */
 export default function PaymentModesScreen() {
   const { t } = useTranslation();
@@ -46,6 +47,8 @@ export default function PaymentModesScreen() {
   const offered = tenderRows.filter(offeredOnPhone);
   const toTake = plan.settlement.receivedPaise;
   const { tenderPaise, balancePaise } = tenderBalance(toTake, draft.lines);
+  // What the customer pays: the modes plus their surcharges (user, 2026-11-20).
+  const { totalPaise: paidPaise, surchargePaise: feesPaise } = tenderTotals(draft.lines);
   const [sheet, setSheet] = useState(false);
   const companyName = companyList.find((x) => x.id === companyId)?.name ?? '';
 
@@ -58,16 +61,16 @@ export default function PaymentModesScreen() {
     if (toTake <= 0) return;
     if (draft.lines.length === 0) {
       const first = offered.find((r) => r.appIsDefault) ?? offered.find((r) => r.tndTypeId === TENDER_TYPE.CASH);
-      if (first) dispatch(tenderAdded(lineOf(first, paiseText(toTake))));
+      if (first) dispatch(tenderAdded(lineOf(first, paiseText(toTake), plan.date)));
     } else if (draft.lines.length === 1 && amountPaise(draft.lines[0]!.amount) !== toTake) {
       dispatch(tenderChanged({ tndId: draft.lines[0]!.tndId, patch: { amount: paiseText(toTake) } }));
     }
-  }, [updatedAt, draft.lines, toTake, offered, dispatch]);
+  }, [updatedAt, draft.lines, toTake, offered, dispatch, plan.date]);
 
   const add = (tnd: TenderRow) => {
     setSheet(false);
     // A new line starts with what is still to account for; anything but cash needs its details.
-    dispatch(tenderAdded(lineOf(tnd, balancePaise > 0 ? paiseText(balancePaise) : '')));
+    dispatch(tenderAdded(lineOf(tnd, balancePaise > 0 ? paiseText(balancePaise) : '', plan.date)));
     if (tnd.tndTypeId !== TENDER_TYPE.CASH) router.push({ pathname: '/receipt/mode', params: { tndId: tnd.tndId, isNew: '1' } });
   };
 
@@ -86,7 +89,7 @@ export default function PaymentModesScreen() {
 
   const chip =
     balancePaise === 0
-      ? { text: t('receipt.matches'), bg: '#DCFCE7', fg: '#166534' }
+      ? { text: feesPaise > 0 ? t('receipt.matchesWithFee', { amount: formatAmount(toTake), fee: formatAmount(feesPaise) }) : t('receipt.matches'), bg: '#DCFCE7', fg: '#166534' }
       : balancePaise > 0
         ? { text: t('receipt.short', { amount: formatAmount(balancePaise) }), bg: '#FEF3C7', fg: '#92400E' }
         : { text: t('receipt.over', { amount: formatAmount(-balancePaise) }), bg: '#FEE2E2', fg: colors.danger };
@@ -124,19 +127,25 @@ export default function PaymentModesScreen() {
 
           {draft.lines.length ? (
             <View style={st.sumCard}>
+              {draft.lines.map((l) => (
+                <View key={l.tndId} style={st.sumRow}>
+                  <Text style={st.sumLabel}>{l.name}</Text>
+                  <Text style={st.sumValue}>{formatAmount(amountPaise(l.amount))}</Text>
+                </View>
+              ))}
               {draft.lines.map((l) => {
                 const fee = surchargePaise(amountPaise(l.amount), l.surchargePerc, l.surchargeFlat);
-                return (
-                  <View key={l.tndId} style={st.sumRow}>
-                    <Text style={st.sumLabel}>{fee > 0 ? t('receipt.withFee', { name: l.name, fee: formatAmount(fee) }) : l.name}</Text>
-                    <Text style={st.sumValue}>{formatAmount(amountPaise(l.amount))}</Text>
+                return fee > 0 ? (
+                  <View key={`${l.tndId}-fee`} style={st.sumRow}>
+                    <Text style={[st.sumLabel, { color: '#92400E' }]}>{t('receipt.surchargeOf', { name: l.name })}</Text>
+                    <Text style={[st.sumValue, { color: '#92400E' }]}>{formatAmount(fee)}</Text>
                   </View>
-                );
+                ) : null;
               })}
               <View style={st.rule} />
               <View style={st.sumRow}>
                 <Text style={[st.sumLabel, { fontWeight: '600', color: colors.text }]}>{t('receipt.totalPaid')}</Text>
-                <Text style={[st.sumValue, { fontSize: font.md }]}>{formatAmount(tenderPaise)}</Text>
+                <Text style={[st.sumValue, { fontSize: font.md }]}>{formatAmount(paidPaise)}</Text>
               </View>
               <Text style={[st.chip, { backgroundColor: chip.bg, color: chip.fg }]} accessibilityLiveRegion="polite">
                 {chip.text}
@@ -149,7 +158,7 @@ export default function PaymentModesScreen() {
         <View style={[st.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
           <View style={st.footRow}>
             <Text style={st.small}>{t('receipt.nModes', { count: draft.lines.length })}</Text>
-            <Text style={st.footAmount}>{formatAmount(tenderPaise)}</Text>
+            <Text style={st.footAmount}>{formatAmount(paidPaise)}</Text>
           </View>
           <Button title={t('receipt.nextReview')} onPress={next} disabled={updatedAt !== undefined && offered.length === 0} style={{ height: 52 }} />
         </View>
@@ -186,7 +195,9 @@ function modeHint(t: TFunction, r: TenderRow): string {
     case TENDER_TYPE.CHEQUE:
       return t('receipt.hintCheque');
     case TENDER_TYPE.BANK:
-      return r.appNeedsRef ? t('receipt.hintTransfer') : t('receipt.hintTransferOpt');
+      return t('receipt.hintTransfer');
+    case TENDER_TYPE.UPI:
+      return r.appNeedsRef ? t('receipt.hintRef', { label: t('receipt.transactionId') }) : t('receipt.hintRefOpt');
     default:
       return r.appNeedsRef ? t('receipt.hintRef', { label: r.appRefLabel ?? t('receipt.refNo') }) : t('receipt.hintRefOpt');
   }
@@ -224,7 +235,8 @@ function ModeLine({ line, date, dateText, onEdit, onRemove }: { line: TenderLine
   const problem = tenderProblem(line);
   const pdc = isPostDated(line, date);
   const details = [...lineDetails(line)];
-  if (line.instrumentDate) details.splice(1, 0, dateText(line.instrumentDate));
+  // A cheque's date goes after its number ("004512 · 19 Nov · KVB"); a transfer's last ("NEFT · UTR… · 19 Nov").
+  if (line.instrumentDate) details.splice(line.typeId === TENDER_TYPE.CHEQUE ? 1 : details.length, 0, dateText(line.instrumentDate));
   const fee = surchargePaise(amountPaise(line.amount), line.surchargePerc, line.surchargeFlat);
   return (
     <View style={[st.line, problem && { borderColor: '#FCA5A5' }]}>

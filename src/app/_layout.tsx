@@ -74,7 +74,6 @@ function RootStack() {
         <Stack.Screen name="sales-return/customer" />
         <Stack.Screen name="sales-return/products" />
         <Stack.Screen name="sales-return/item" />
-        <Stack.Screen name="receipt/company/[customerId]" />
         <Stack.Screen name="receipt/[customerId]" />
         <Stack.Screen name="receipt/bill" />
         <Stack.Screen name="receipt/payment" />

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { downloadReceiptData, rupeesToPaise, toLocalOpenBills, toLocalTenders } from './download-receipt-data.ts';
+import { downloadReceiptData, rupeesToPaise, toLocalBanks, toLocalOpenBills, toLocalReceiptSettings, toLocalTenders } from './download-receipt-data.ts';
 import { RECEIPT_CUSTOMER_NOT_SENT, RECEIPT_SEND_TRIED, toReceiptPayload, uploadReceipts, type PendingReceipt } from './upload-receipts.ts';
 import { ApiError, NetworkError, type CreatedReceipt } from './vk-nex-api.ts';
 
@@ -266,4 +266,50 @@ test('a receipt is marked as being sent: a lost answer keeps the mark, no route 
 
   await uploadReceipts([receipt('c')], { ...deps, create: async () => created() });
   assert.equal(notes.get('c'), null);
+});
+
+test("a transfer's type goes as tdTransferType only once VK Nex takes it, and only on the transfer", () => {
+  const base = receipt('r10');
+  const withType = { ...base, lines: base.lines.map((l) => ({ ...l, tdTransferType: 'NEFT' }) as PendingReceipt['lines'][number]) };
+  const keys = (r: PendingReceipt) => (toReceiptPayload(r).tenders as Record<string, unknown>[]).map((t) => [t.tdTenderTypeId, t.tdTransferType]);
+  // An older VK Nex refuses keys it doesn't know: the type stays on the phone.
+  assert.deepEqual(keys(withType), [
+    [1, undefined],
+    [6, undefined],
+  ]);
+  assert.deepEqual(keys({ ...withType, takesTransferType: true }), [
+    [1, undefined],
+    [6, 'NEFT'],
+  ]);
+  // A transfer saved before the type was asked for goes without it.
+  assert.deepEqual(keys({ ...base, takesTransferType: true }), [
+    [1, undefined],
+    [6, undefined],
+  ]);
+});
+
+test('options: listing transferTypes means VK Nex takes the type', () => {
+  const opts = { branchId: null, tenders: [] };
+  assert.equal(toLocalReceiptSettings('co1', opts, 'now').appTakesTransferType, false);
+  assert.equal(toLocalReceiptSettings('co1', { ...opts, transferTypes: [] }, 'now').appTakesTransferType, false);
+  assert.equal(toLocalReceiptSettings('co1', { ...opts, transferTypes: ['NEFT', 'IMPS', 'RTGS'] }, 'now').appTakesTransferType, true);
+});
+
+test('bank list (GET /mobile/banks/list): VK Nex order kept, names once, junk rows dropped, no list = keep the old', () => {
+  assert.equal(toLocalBanks(undefined), null);
+  assert.equal(toLocalBanks(null), null);
+  assert.deepEqual(toLocalBanks([]), []);
+  assert.deepEqual(
+    toLocalBanks([
+      { bankId: 'b1', name: ' Karur Vysya Bank ', shortName: 'KVB' },
+      { bankId: 'b2', name: 'karur vysya bank' },
+      { bankId: '', name: 'No id' },
+      { bankId: 'b3', name: '  ' },
+      { bankId: 'b4', name: 'Indian Bank', shortName: '' },
+    ]),
+    [
+      { bnkId: 'b1', bnkName: 'Karur Vysya Bank', bnkShortName: 'KVB', position: 0 },
+      { bnkId: 'b4', bnkName: 'Indian Bank', bnkShortName: null, position: 1 },
+    ],
+  );
 });

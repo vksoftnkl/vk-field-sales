@@ -14,7 +14,7 @@ import { colors, font, radius, spacing } from '@/theme';
 
 import { readMe, receiptAllocsQuery, receiptLinesQuery, receiptQuery } from './queries';
 import { amountPaise, TENDER_TYPE } from './receipt-math';
-import { amountInWords, rcState, type RcState } from './receipt-status';
+import { amountInWords, rcState, savedReceiptMoney, settledBreakdown, type RcState } from './receipt-status';
 import { useReceiptPlan } from './use-receipt-plan';
 
 export interface SlipLine {
@@ -46,6 +46,11 @@ export interface Slip {
   customerName: string;
   docRefno: string | null;
   lines: SlipLine[];
+  /** The money towards the receipt: the lines without their surcharges (the bills and on account get it). */
+  receivedPaise: number;
+  /** The surcharges paid on top, line by line (UPI 1% …), shown as their own lines. */
+  surcharges: { name: string; paise: number }[];
+  /** What the customer paid: every payment line plus its surcharge (VK Nex's avh_doc_amount, Σ td_amount). */
   totalPaise: number;
   bills: SlipBill[];
   /** True: the bills as VK Nex applied them; false: as planned on the phone. */
@@ -67,7 +72,11 @@ export function useSlip(id: string): { slip: Slip | null; loaded: boolean; raw: 
   const slip = useMemo((): Slip | null => {
     if (!r) return null;
     const postedRows = allocs.filter((a) => a.ralSource === 'POSTED');
-    const rows = postedRows.length ? postedRows : allocs.filter((a) => a.ralSource === 'PLANNED');
+    // VK Nex's rows once it answered with them. None posted but changes noted (adjusted): it put
+    // nothing on the planned bills (paid in the office meanwhile), so the plan is not shown as done.
+    const vkNexApplied = postedRows.length > 0 || (!r.appPendingUpload && !!r.appAdjusted);
+    const rows = vkNexApplied ? postedRows : allocs.filter((a) => a.ralSource === 'PLANNED');
+    const money = savedReceiptMoney(lines.map((l) => ({ amount: l.tdAmount, surcharge: l.tdSurchargeAmt })));
     return {
       id: r.avhClientUuid,
       state: rcState(r),
@@ -82,12 +91,14 @@ export function useSlip(id: string): { slip: Slip | null; loaded: boolean; raw: 
         const bank = [l.tdBankName, l.appChequeBranch].filter(Boolean).join(', ');
         return {
           name: l.appTenderName,
-          details: [l.tdRefNo, l.tdTenderTypeId === TENDER_TYPE.CHEQUE ? bank : null].filter(Boolean).join(' · '),
+          details: [l.tdTenderTypeId === TENDER_TYPE.BANK ? l.tdTransferType : null, l.tdRefNo, l.tdTenderTypeId === TENDER_TYPE.CHEQUE ? bank : null].filter(Boolean).join(' · '),
           amountPaise: amountPaise(l.tdAmount) - fee,
           feePaise: fee,
         };
       }),
-      totalPaise: amountPaise(r.avhDocAmount),
+      receivedPaise: money.receivedPaise,
+      surcharges: lines.filter((l) => amountPaise(l.tdSurchargeAmt ?? '') > 0).map((l) => ({ name: l.appTenderName, paise: amountPaise(l.tdSurchargeAmt ?? '') })),
+      totalPaise: money.totalPaise,
       bills: rows.map((a) => {
         const cash = amountPaise(a.ralAmount);
         const credit = amountPaise(a.ralCredit);
@@ -103,7 +114,7 @@ export function useSlip(id: string): { slip: Slip | null; loaded: boolean; raw: 
           roundoffPaise: roundoff,
         };
       }),
-      posted: postedRows.length > 0,
+      posted: vkNexApplied,
       onAccountPaise: r.appOnAccount === null ? null : amountPaise(r.appOnAccount),
       balancePaise: Math.max(0, plan.outstandingPaise - plan.creditsHeldPaise),
       collector: me.employeeName,
@@ -125,9 +136,7 @@ function useRaw(id: string) {
 export function slipText(s: Slip, t: TFunction, names: DateNames): string {
   const when = `${formatDay(s.createdOn.slice(0, 10), names)}, ${hhmm(s.createdOn)}`;
   const bills = s.bills.filter((b) => b.kind === 'BILL');
-  // The credits spent, once (a bill's share of them is the same money).
-  const credits = s.bills.reduce((x, b) => x + (b.kind === 'CREDIT' ? b.settledPaise : 0), 0);
-  const discount = bills.reduce((x, b) => x + b.discountPaise, 0);
+  const incl = inclText(s, t);
   return [
     s.companyName,
     t('receipt.slip.heading'),
@@ -137,12 +146,13 @@ export function slipText(s: Slip, t: TFunction, names: DateNames): string {
     `${t('receipt.slip.from')} ${s.customerName}`,
     s.docRefno ? `${t('receipt.slip.shopNo')} ${s.docRefno}` : null,
     '',
-    ...s.lines.map((l) => `${[l.name, l.details].filter(Boolean).join(' ')}  ${formatAmount(l.amountPaise)}${l.feePaise ? ` (+${formatAmount(l.feePaise)})` : ''}`),
+    ...s.lines.map((l) => `${[l.name, l.details].filter(Boolean).join(' ')}  ${formatAmount(l.amountPaise)}`),
+    ...s.surcharges.map((f) => `${t('receipt.surchargeOf', { name: f.name })}  ${formatAmount(f.paise)}`),
     `${t('receipt.slip.total')} ${formatAmount(s.totalPaise)}`,
     amountInWords(s.totalPaise),
     '',
     ...bills.map((b) => `${b.docRefno}  ${formatAmount(b.settledPaise)}`),
-    credits > 0 || discount > 0 ? t('receipt.slip.incl', { credits: formatAmount(credits), discount: formatAmount(discount) }) : null,
+    incl,
     s.onAccountPaise ? `${t('receipt.leftOnAccount')} ${formatAmount(s.onAccountPaise)}` : null,
     `${t('receipt.slip.balance')} ${formatAmount(s.balancePaise)}`,
     '',
@@ -153,14 +163,26 @@ export function slipText(s: Slip, t: TFunction, names: DateNames): string {
     .join('\n');
 }
 
+/**
+ * What the bills' figures hold beside this receipt's money: credits spent, discount and round-off
+ * (null when none). Then the bills, less these, plus on account come to the money received.
+ */
+function inclText(s: Slip, t: TFunction): string | null {
+  const b = settledBreakdown(s.bills);
+  const parts = [
+    b.creditsPaise > 0 ? t('receipt.slip.inclCredits', { amount: formatAmount(b.creditsPaise) }) : null,
+    b.discountPaise > 0 ? t('receipt.slip.inclDiscount', { amount: formatAmount(b.discountPaise) }) : null,
+    b.roundoffPaise > 0 ? t('receipt.slip.inclRoundoff', { amount: formatAmount(b.roundoffPaise) }) : null,
+  ].filter(Boolean);
+  return parts.length ? t('receipt.slip.incl', { parts: parts.join(' · ') }) : null;
+}
+
 /** The receipt slip as a card (Saved, Receipt detail). */
 export function ReceiptSlip({ slip: s }: { slip: Slip }) {
   const { t } = useTranslation();
   const names = useDateNames();
   const bills = s.bills.filter((b) => b.kind === 'BILL');
-  // The credits spent, once (a bill's share of them is the same money).
-  const credits = s.bills.reduce((x, b) => x + (b.kind === 'CREDIT' ? b.settledPaise : 0), 0);
-  const discount = bills.reduce((x, b) => x + b.discountPaise, 0);
+  const incl = inclText(s, t);
   return (
     <View style={st.slip} accessible accessibilityLabel={slipText(s, t, names)}>
       <Text style={st.company}>{s.companyName}</Text>
@@ -173,7 +195,10 @@ export function ReceiptSlip({ slip: s }: { slip: Slip }) {
       {s.docRefno ? <Pair label={t('receipt.slip.shopNo')} value={s.docRefno} /> : null}
       <View style={st.rule} />
       {s.lines.map((l, i) => (
-        <Pair key={i} label={[l.name, l.details].filter(Boolean).join(' ')} value={formatAmount(l.amountPaise)} note={l.feePaise ? t('receipt.slip.fee', { amount: formatAmount(l.feePaise) }) : undefined} />
+        <Pair key={i} label={[l.name, l.details].filter(Boolean).join(' ')} value={formatAmount(l.amountPaise)} />
+      ))}
+      {s.surcharges.map((f, i) => (
+        <Pair key={`fee${i}`} label={t('receipt.surchargeOf', { name: f.name })} value={formatAmount(f.paise)} />
       ))}
       <Pair label={t('receipt.slip.total')} value={formatAmount(s.totalPaise)} strong />
       <Text style={st.words}>{amountInWords(s.totalPaise)}</Text>
@@ -181,7 +206,7 @@ export function ReceiptSlip({ slip: s }: { slip: Slip }) {
       {bills.map((b) => (
         <Pair key={b.key} label={b.docRefno} value={formatAmount(b.settledPaise)} />
       ))}
-      {credits > 0 || discount > 0 ? <Text style={st.small}>{t('receipt.slip.incl', { credits: formatAmount(credits), discount: formatAmount(discount) })}</Text> : null}
+      {incl ? <Text style={st.small}>{incl}</Text> : null}
       {s.onAccountPaise ? <Pair label={t('receipt.leftOnAccount')} value={formatAmount(s.onAccountPaise)} /> : null}
       <Pair label={t('receipt.slip.balance')} value={formatAmount(s.balancePaise)} strong />
       <View style={st.rule} />

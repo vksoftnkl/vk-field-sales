@@ -1,10 +1,11 @@
 // Pure TypeScript (no React Native imports) so `npm test` can run it in Node.
-import type { openBills, receiptSettings, tenders } from '@/db/schema';
+import type { banks, openBills, receiptSettings, tenders } from '@/db/schema';
 
 import { itemKind } from '../features/receipts/settle.ts';
 
-import type { MobileOpenBill, MobileTender, OpenBillsPage, ReceiptOptions } from './vk-nex-api';
+import type { MobileBank, MobileOpenBill, MobileTender, OpenBillsPage, ReceiptOptions } from './vk-nex-api';
 
+export type LocalBank = typeof banks.$inferInsert;
 export type LocalTender = typeof tenders.$inferInsert;
 export type LocalOpenBill = typeof openBills.$inferInsert;
 export type LocalReceiptSettings = typeof receiptSettings.$inferInsert;
@@ -61,7 +62,26 @@ export function toLocalReceiptSettings(companyId: string, opts: ReceiptOptions, 
     pdcPostingMode: s.pdcPostingMode ?? null,
     ppdEnabled: s.ppdEnabled === true,
     syncedOn,
+    // Listing the transfer types is how VK Nex says its create takes tdTransferType.
+    appTakesTransferType: Array.isArray(opts.transferTypes) && opts.transferTypes.length > 0,
   };
+}
+
+/**
+ * GET /mobile/banks/list as the phone keeps it: VK Nex's order, each name once (the name is what
+ * a cheque carries); null when the answer has no list at all, so the phone keeps the one it has.
+ */
+export function toLocalBanks(rows: readonly MobileBank[] | null | undefined): LocalBank[] | null {
+  if (!Array.isArray(rows)) return null;
+  const seen = new Set<string>();
+  const out: LocalBank[] = [];
+  for (const b of rows) {
+    const name = typeof b?.name === 'string' ? b.name.trim() : '';
+    if (typeof b?.bankId !== 'string' || !b.bankId || !name || seen.has(name.toLocaleLowerCase())) continue;
+    seen.add(name.toLocaleLowerCase());
+    out.push({ bnkId: b.bankId, bnkName: name, bnkShortName: b.shortName?.trim() || null, position: out.length });
+  }
+  return out;
 }
 
 /** VK Nex's PPD schedule → the phone's JSON [{ tillDate, perc }], or null when there is none. */
@@ -116,7 +136,7 @@ export interface ReceiptData {
 const MAX_PAGES = 400;
 
 /**
- * Reads every company's tenders and open bills. Throws on the first failure (no answer, a
+ * Reads every company's tenders, open bills and receipt rules. Throws on the first failure (no answer, a
  * refusal, a route VK Nex does not have yet): the caller keeps what the phone had.
  */
 export async function downloadReceiptData(companyIds: readonly string[], deps: ReceiptDataDeps, syncedOn: string): Promise<ReceiptData> {

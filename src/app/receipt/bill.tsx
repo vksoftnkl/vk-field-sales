@@ -92,12 +92,12 @@ export default function BillAdjustmentScreen() {
     setEntry((e) => ({ ...e, [f]: amountPaise(v) > cap ? paiseText(cap) : v }));
   };
 
-  /** Clear bill: receive whatever the credits, discount and round-off leave. */
-  const clearBill = () => {
-    const credit = preview?.creditPaise ?? 0;
-    const need = Math.max(0, bill.pendingPaise - p.discountPaise - p.roundoffPaise - credit);
-    setEntry((e) => ({ ...e, receive: need ? paiseText(need) : '' }));
-  };
+  /**
+   * Clear: takes everything off this bill (receive, discount, round-off), so Save keeps it with
+   * nothing on it and the money goes to the other bills or on account (user, 2026-11-20). Until
+   * then the old figures can be typed again or kept with Back.
+   */
+  const clearBill = () => setEdited({ receive: '', discount: '', roundoff: '' });
 
   const save = () => {
     dispatch(billTyped({ key, entry: { receive: paiseText(p.receivePaise), discount: paiseText(p.discountPaise), roundoff: paiseText(p.roundoffPaise) } }));

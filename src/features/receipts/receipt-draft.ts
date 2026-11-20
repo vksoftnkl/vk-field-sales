@@ -28,6 +28,8 @@ export interface TenderLine {
   chequeBranch?: string;
   chequeIfsc?: string;
   chequeDrawer?: string;
+  /** Bank transfers: 'NEFT' | 'IMPS' | 'RTGS' ('' = not picked yet). */
+  transferType?: string;
 }
 
 /** A bill adjusted by hand (Bill adjustment), as typed (rupees). */

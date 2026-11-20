@@ -12,11 +12,21 @@ export interface CustomerRow {
   appBilled: boolean;
   appOrderStatus: 'ordered' | 'no_order' | null;
   appReceived: boolean;
-  billCount: number;
-  outstandingPaise: number;
-  /** YYYY-MM-DD of the oldest unpaid bill, null when there is none. */
+  /**
+   * The ledger balance (signed paise, Dr +) and what the unpaid bills owe, as VK Nex gave them at
+   * Sync plus this phone's receipts and orders since (customer-figures.ts). null = not known.
+   */
+  balancePaise: number | null;
+  outstandingPaise: number | null;
+  /** Unpaid bills and the oldest one's date (YYYY-MM-DD), VK Nex's; null once the phone changed the figures. */
+  billCount: number | null;
   oldestBillDate: string | null;
+  /** A receipt or order of this phone is in the figures (not on VK Nex's books yet). */
+  changedOnPhone: boolean;
 }
+
+/** What the shop owes for the quick filter: the outstanding, else (older VK Nex) a Dr balance. */
+export const owesPaise = (c: Pick<CustomerRow, 'balancePaise' | 'outstandingPaise'>): number => c.outstandingPaise ?? c.balancePaise ?? 0;
 
 export type VisitStatus = 'billed' | 'ordered' | 'received' | 'noOrder' | 'notVisited';
 
@@ -47,7 +57,7 @@ function passesQuick(c: CustomerRow, quick: QuickFilter): boolean {
     case 'notBilled':
       return !c.appBilled && c.appOrderStatus !== 'ordered';
     case 'notCollected':
-      return c.outstandingPaise > 0 && !c.appReceived;
+      return owesPaise(c) > 0 && !c.appReceived;
     default:
       return true;
   }

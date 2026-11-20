@@ -26,7 +26,24 @@ export const VISIT_REASONS = ['shopClosed', 'noOrder', 'shopBusy', 'ownerAway', 
 
 export const VISIT_CUSTOMER_NOT_SENT = 'CUSTOMER_NOT_SENT: The customer is not on VK Nex yet; the visit goes after it.';
 export const VISIT_NO_COMPANY = 'NO_COMPANY: No company was chosen for this visit.';
-export const VISIT_NO_SALESMAN = "NO_SALESMAN: VK Nex needs this salesman's employee id, and the phone has none yet.";
+export const VISIT_NO_SALESMAN =
+  'NO_SALESMAN: Your VK Nex login is not linked to an employee, and VK Nex needs the salesman on every visit. Ask the office to link the login to its employee on the User screen, then Sync again.';
+
+/**
+ * The salesman of a check-in (cvSalesmanId): the employee VK Nex links to the login that saved it
+ * (user_master.usr_employee_id), from GET /mobile/me as the phone keeps it. Sync reads /mobile/me
+ * right after signing in, before the uploads, so a link made in the office is used at once. null
+ * when the phone has no /mobile/me for that login, or VK Nex links it to no employee.
+ */
+export function salesmanFromMe(meJson: string | null | undefined, userId: string): string | null {
+  try {
+    const me = JSON.parse(meJson ?? 'null') as { userId?: unknown; employeeId?: unknown } | null;
+    if (!me || me.userId !== userId) return null;
+    return typeof me.employeeId === 'string' && me.employeeId ? me.employeeId : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Body for POST /mobile/visits/create (VK Nex's sales.customer_visit). The phone's id goes as

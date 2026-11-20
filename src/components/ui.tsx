@@ -145,6 +145,8 @@ export function PasswordField({ label, ...props }: Omit<TextInputProps, 'secureT
 export interface SelectOption {
   value: string;
   label: string;
+  /** Searched too, never shown (a bank's short name). */
+  keywords?: string;
 }
 
 /** Below this many choices a search box is just in the way; everything fits on screen. */

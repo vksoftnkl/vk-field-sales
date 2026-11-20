@@ -14,7 +14,11 @@ export interface TenderLike {
   tndSurchargeAmount: string;
 }
 
-export const lineOf = (tnd: TenderLike, amount: string): TenderLine => ({
+/**
+ * A new payment line. A bank transfer's date starts as today (the receipt date, `today`), and the
+ * salesman can change it (user, 2026-11-20); a cheque's date is still picked, as it may be post-dated.
+ */
+export const lineOf = (tnd: TenderLike, amount: string, today?: string): TenderLine => ({
   tndId: tnd.tndId,
   typeId: tnd.tndTypeId,
   name: tnd.tndName,
@@ -23,12 +27,13 @@ export const lineOf = (tnd: TenderLike, amount: string): TenderLine => ({
   amount,
   refNo: '',
   bankName: '',
-  instrumentDate: null,
+  instrumentDate: tnd.tndTypeId === TENDER_TYPE.BANK && today ? today : null,
   surchargePerc: tnd.tndSurchargePerc,
   surchargeFlat: tnd.tndSurchargeAmount,
   chequeBranch: '',
   chequeIfsc: '',
   chequeDrawer: '',
+  transferType: '',
 });
 
 /** Phones take cash, cheques, UPI, wallets and transfers; cards are not offered (canvas 5b, Add payment mode). */
@@ -38,8 +43,11 @@ export const offeredOnPhone = (t: { tndTypeId: number }): boolean => t.tndTypeId
 export const isPostDated = (l: { typeId: number; instrumentDate: string | null }, receiptDate: string): boolean =>
   l.typeId === TENDER_TYPE.CHEQUE && !!l.instrumentDate && l.instrumentDate > receiptDate;
 
-/** "No. 004512 · Indian Bank, Tirunelveli Jn" style details of a line, without its date (the screen formats that). */
-export function lineDetails(l: Pick<TenderLine, 'refNo' | 'bankName' | 'chequeBranch'>): string[] {
+/**
+ * "004512 · Indian Bank, Tirunelveli Jn" (cheque) or "NEFT · UTR…" (transfer) style details of a
+ * line, without its date (the screen formats that).
+ */
+export function lineDetails(l: Pick<TenderLine, 'refNo' | 'bankName' | 'chequeBranch' | 'transferType'>): string[] {
   const bank = [l.bankName.trim(), l.chequeBranch?.trim()].filter(Boolean).join(', ');
-  return [l.refNo.trim(), bank].filter(Boolean);
+  return [l.transferType?.trim(), l.refNo.trim(), bank].filter((x): x is string => !!x);
 }

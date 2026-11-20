@@ -8,6 +8,7 @@ import {
   VISIT_CUSTOMER_NOT_SENT,
   VISIT_NO_COMPANY,
   VISIT_NO_SALESMAN,
+  salesmanFromMe,
   type PendingVisit,
   type Visit,
   type VisitUploadDeps,
@@ -136,4 +137,15 @@ test('a refused visit is noted and the next is sent; a 403 stops the visits', as
   const r2 = await uploadVisits([pending(visit('a'))], blocked.deps);
   assert.equal(r2.refusedBy?.code, 'MOBILE_DEVICE_BLOCKED');
   assert.equal(blocked.refused.length, 0);
+});
+
+test("a visit's salesman is the employee VK Nex links to the login that saved it (/mobile/me)", () => {
+  const me = JSON.stringify({ userId: 'usr-1', loginName: 'VIJAYM', employeeId: 'emp-9', employeeName: 'Vijay' });
+  assert.equal(salesmanFromMe(me, 'usr-1'), 'emp-9');
+  // Another login's visit (saved before a switch): not known for it.
+  assert.equal(salesmanFromMe(me, 'usr-2'), null);
+  // A login VK Nex links to no employee, no /mobile/me yet, or junk.
+  assert.equal(salesmanFromMe(JSON.stringify({ userId: 'usr-1', employeeId: null }), 'usr-1'), null);
+  assert.equal(salesmanFromMe(null, 'usr-1'), null);
+  assert.equal(salesmanFromMe('{bad', 'usr-1'), null);
 });

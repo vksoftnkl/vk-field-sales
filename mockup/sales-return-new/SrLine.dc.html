@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sales return: one line</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8B1D1D}a:hover{color:#6B1515}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #F5F3F0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1C1917; overflow: hidden">
+  <header style="background: #8B1D1D; color: #FFFFFF; padding: 8px 12px 14px 8px; display: flex; align-items: center; gap: 4px">
+    <a href="SrLines.dc.html" aria-label="Back to return items" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </a>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+      <h1 style="margin: 0; font-size: 19px; font-weight: 600">Sunflower Oil 1L · Gold Drop</h1>
+      <span style="font-size: 13px; color: #F3DADA">Line 1 of SB/2627/02107</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; overflow: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px">
+    <section aria-label="From the bill" style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 12px 14px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+      <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #57534E">Billed</span><span style="font-size: 15px; font-weight: 600">20 PCS</span></div>
+      <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #57534E">Back before</span><span style="font-size: 15px; font-weight: 600">0</span></div>
+      <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #57534E">Can return</span><span style="font-size: 15px; font-weight: 600; color: #166534">20</span></div>
+      <div style="grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #44403C">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#57534E" stroke-width="2.2" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        ₹150.00 per PCS after the bill's discount · 5% GST · batch GD2609 · exp 03/2027
+      </div>
+    </section>
+
+    <section aria-label="Part 1" style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: flex-end; gap: 10px">
+        <label style="flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #44403C">Qty coming back
+          <input value="3" inputmode="decimal" style="height: 48px; box-sizing: border-box; border: 2px solid #8B1D1D; border-radius: 12px; padding: 0 14px; font: inherit; font-size: 18px; font-weight: 700">
+        </label>
+        <button type="button" aria-label="Unit: PCS. Change unit" style="height: 48px; padding: 0 14px; border: 1px solid #D6D3D1; border-radius: 12px; background: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600">PCS ▾</button>
+      </div>
+      <div role="radiogroup" aria-label="Condition" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+        <button type="button" role="radio" aria-checked="true" style="min-height: 44px; border: 1.5px solid #166534; border-radius: 10px; background: #DCFCE7; font: inherit; font-size: 13px; font-weight: 600; color: #166534">Good</button>
+        <button type="button" role="radio" aria-checked="false" style="min-height: 44px; border: 1px solid #D6D3D1; border-radius: 10px; background: #FFFFFF; font: inherit; font-size: 13px; color: #44403C">Damaged</button>
+        <button type="button" role="radio" aria-checked="false" style="min-height: 44px; border: 1px solid #D6D3D1; border-radius: 10px; background: #FFFFFF; font: inherit; font-size: 13px; color: #44403C">Expired</button>
+        <button type="button" role="radio" aria-checked="false" style="min-height: 44px; border: 1px solid #D6D3D1; border-radius: 10px; background: #FFFFFF; font: inherit; font-size: 13px; color: #44403C">Scrap</button>
+      </div>
+      <span style="font-size: 12px; color: #57534E">Good goes back to saleable stock; the others to VK Nex's damaged, expired or quarantine stock.</span>
+    </section>
+
+    <section aria-label="Split" style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; justify-content: space-between"><span style="font-size: 14px; font-weight: 600">↳ Split · another condition</span><button type="button" style="min-height: 36px; border: 0; background: none; font: inherit; font-size: 13px; color: #B91C1C">Remove split</button></div>
+      <div style="display: flex; gap: 10px">
+        <label style="width: 110px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #44403C">Qty
+          <input value="2" inputmode="decimal" style="height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 12px; padding: 0 12px; font: inherit; font-size: 16px; font-weight: 600">
+        </label>
+        <label style="flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #44403C">Notes
+          <input value="tins leaking" maxlength="250" style="height: 44px; box-sizing: border-box; border: 1px solid #D6D3D1; border-radius: 12px; padding: 0 12px; font: inherit; font-size: 15px">
+        </label>
+      </div>
+      <div role="radiogroup" aria-label="Condition of the split" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+        <button type="button" role="radio" aria-checked="false" style="min-height: 44px; border: 1px solid #D6D3D1; border-radius: 10px; background: #FFFFFF; font: inherit; font-size: 13px; color: #44403C">Good</button>
+        <button type="button" role="radio" aria-checked="true" style="min-height: 44px; border: 1.5px solid #991B1B; border-radius: 10px; background: #FEE2E2; font: inherit; font-size: 13px; font-weight: 600; color: #991B1B">Damaged</button>
+        <button type="button" role="radio" aria-checked="false" style="min-height: 44px; border: 1px solid #D6D3D1; border-radius: 10px; background: #FFFFFF; font: inherit; font-size: 13px; color: #44403C">Expired</button>
+        <button type="button" role="radio" aria-checked="false" style="min-height: 44px; border: 1px solid #D6D3D1; border-radius: 10px; background: #FFFFFF; font: inherit; font-size: 13px; color: #44403C">Scrap</button>
+      </div>
+    </section>
+
+    <button type="button" style="min-height: 44px; border: 1px dashed #A8A29E; border-radius: 12px; background: transparent; font: inherit; font-size: 14px; font-weight: 600; color: #8B1D1D">+ Split again</button>
+
+    <section aria-label="Amount" style="background: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 14px">
+      <span style="display: flex; justify-content: space-between"><span style="color: #57534E">5 PCS × ₹150.00 (taxable)</span><span>₹750.00</span></span>
+      <span style="display: flex; justify-content: space-between"><span style="color: #57534E">GST 5% (CGST 2.5% + SGST 2.5%)</span><span>₹37.50</span></span>
+      <span style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 700; border-top: 1px solid #F1EDE4; padding-top: 6px"><span>Line estimate</span><span>₹787.50</span></span>
+      <span style="font-size: 12.5px; color: #166534">5 of 20 back on this return · 15 can still come back later</span>
+    </section>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px 16px; background: #FFFFFF; border-top: 1px solid #E7E5E4">
+    <a href="SrLines.dc.html" style="min-height: 52px; padding: 0 18px; border-radius: 12px; border: 1px solid #FCA5A5; color: #B91C1C; text-decoration: none; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center">Remove line</a>
+    <a href="SrLines.dc.html" style="flex: 1; min-height: 52px; border-radius: 12px; background: #8B1D1D; color: #FFFFFF; text-decoration: none; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center">Save</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

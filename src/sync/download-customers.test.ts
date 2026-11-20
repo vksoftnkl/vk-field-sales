@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { downloadCustomers, toLocalCustomer, type DownloadDeps } from './download-customers.ts';
+import { downloadCustomers, toLocalCustomer, toLocalFigures, type DownloadDeps } from './download-customers.ts';
 import { ApiError, NetworkError } from './vk-nex-api.ts';
 
 const NOW = '2026-11-16T09:30:00.000Z';
@@ -149,6 +149,37 @@ test('losing the server stops the whole download, and the other workers stop ask
 test('no customers on VK Nex: nothing to read', async () => {
   const v = fakeVkNex([[]], async (id) => customer(id));
   const r = await downloadCustomers(v.deps, NOW);
-  assert.deepEqual(r, { rows: [], listedIds: [], skipped: 0 });
+  // No balanceAsOn on the page: VK Nex read no figures.
+  assert.deepEqual(r, { rows: [], listedIds: [], skipped: 0, figures: null });
   assert.deepEqual(v.got, []);
+});
+
+test('balance and outstanding ride on the list pages: signed paise, once per customer, as of the read', async () => {
+  const pages = [
+    {
+      items: [
+        // As /mobile/customers/list answered on :3011 (2026-11-20).
+        { cusId: 'a', balance: { amount: '8450.00', side: 'DR' as const }, outstanding: '12350.00', outstandingBills: 3, oldestBillDate: '2026-09-08' },
+        { cusId: 'b', balance: { amount: '2000.00', side: 'CR' as const }, outstanding: '0.00', outstandingBills: 0, oldestBillDate: null },
+      ],
+      hasMore: true,
+      balanceAsOn: '2026-11-20',
+      companyId: 'co1',
+    },
+    // 'a' again (pushed onto the next page while paging), and an older VK Nex row with no outstanding.
+    { items: [{ cusId: 'a', balance: { amount: '1.00', side: 'DR' as const } }, { cusId: 'c', balance: { amount: '0.00', side: 'DR' as const } }], hasMore: false, balanceAsOn: '2026-11-20', companyId: 'co1' },
+  ];
+  const deps: DownloadDeps = { listPage: async (page) => pages[page - 1]!, get: async (id) => customer(id) };
+  const r = await downloadCustomers(deps, NOW);
+  assert.deepEqual(r.figures, [
+    { customerId: 'a', companyId: 'co1', balancePaise: 845000, outstandingPaise: 1235000, billCount: 3, oldestBillDate: '2026-09-08', asOn: '2026-11-20', syncedOn: NOW },
+    { customerId: 'b', companyId: 'co1', balancePaise: -200000, outstandingPaise: 0, billCount: 0, oldestBillDate: null, asOn: '2026-11-20', syncedOn: NOW },
+    { customerId: 'c', companyId: 'co1', balancePaise: 0, outstandingPaise: null, billCount: null, oldestBillDate: null, asOn: '2026-11-20', syncedOn: NOW },
+  ]);
+});
+
+test('a list row without a balance (no company on the login) has no figures', () => {
+  const read = { asOn: '2026-11-20', companyId: null, syncedOn: NOW };
+  assert.equal(toLocalFigures({ cusId: 'a', balance: null, outstanding: null }, read), null);
+  assert.equal(toLocalFigures({ cusId: 'a' }, read), null);
 });

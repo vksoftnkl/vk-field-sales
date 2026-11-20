@@ -141,6 +141,27 @@
       "when": 1795072348988,
       "tag": "0019_receipt_workflow",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1795097024237,
+      "tag": "0020_bank_transfer_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1795151590514,
+      "tag": "0021_customer_balances",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1795175492423,
+      "tag": "0022_sales_return_new",
+      "breakpoints": true
     }
   ]
 }

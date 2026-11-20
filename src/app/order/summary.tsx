@@ -39,10 +39,11 @@ import { formatDay } from '@/lib/date-range';
 import { formatAmount, todayISO } from '@/lib/money';
 import { store, useAppDispatch, useAppSelector } from '@/store';
 import { getDeviceUid } from '@/sync/sync-store';
-import { colors, font, radius, spacing } from '@/theme';
+import { colors, font, offerColors, radius, spacing } from '@/theme';
 
 /**
- * Review order (canvas 3b, steps 5–6; was Order summary): the lines, the order's delivery date,
+ * Review order (canvas 3b, steps 5–6; offers mockup screen 3; was Order summary): the lines, each
+ * with the offer that took money off and its free lines under it, the order's delivery date,
  * priority (URGENT needs a remark) and remarks, and the totals with GST, freight, cooly and round off —
  * an estimate, since the office confirms prices and schemes. Over the credit limit or with an
  * overdue bill it warns, never blocks (Qt asks "Order on credit anyway?"). Save order asks first,
@@ -166,7 +167,7 @@ export default function ReviewOrderScreen() {
     else router.back();
   };
 
-  const subtitle = [c ? customerName(c) : '', company[0]?.name ?? ''].filter(Boolean).join(' · ');
+  const subtitle = [c ? customerName(c) : '', company[0]?.name ?? '', branch[0]?.name ?? ''].filter(Boolean).join(' · ');
   const warnText = [
     credit.overdue && credit.oldestDays !== null ? t('so.warnOldest', { days: credit.oldestDays }) : null,
     credit.overLimit
@@ -197,12 +198,12 @@ export default function ReviewOrderScreen() {
             </View>
           ) : null}
 
-          <Text style={st.heading} accessibilityRole="header">
-            {t('so.lines', { count: totals.items })}
+          <Text style={st.heading} accessibilityRole="header" accessibilityLabel={t('so.lines', { count: totals.items })}>
+            {itemsQty.toUpperCase()}
           </Text>
           {draft.lines.length === 0 ? <Text style={st.empty}>{t('order.empty')}</Text> : null}
           {draft.lines.map((l, i) => (
-            <View key={l.itemId} style={{ gap: 10 }}>
+            <View key={l.itemId} style={{ gap: spacing.sm }}>
               <ReviewLine
                 line={order.priced[i] ?? l}
                 scheme={order.lines[i]}
@@ -221,38 +222,8 @@ export default function ReviewOrderScreen() {
             <Text style={st.addMoreText}>{t('so.addMore')}</Text>
           </Pressable>
 
-          <View style={st.card} accessibilityLabel={t('offers.apply.title')}>
-            <View style={st.applyRow}>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={st.applyTitle}>{t('offers.apply.title')}</Text>
-                <Text style={st.smallLabel}>{customer && !customer.cusAllowPromotion ? t('offers.apply.shopNo') : t('offers.apply.note')}</Text>
-              </View>
-              <Switch
-                value={applyOffers}
-                onValueChange={(v) => void dispatch(applyOffersSet(v))}
-                disabled={!customer?.cusAllowPromotion}
-                accessibilityLabel={t('offers.apply.title')}
-                trackColor={{ true: colors.primary, false: colors.inputBorder }}
-                thumbColor={colors.surface}
-              />
-            </View>
-            {applyOffers ? (
-              order.appliedNames.length > 0 ? (
-                <Text style={st.applied}>{t('offers.apply.summary', { count: order.appliedNames.length, what: appliedWhat })}</Text>
-              ) : (
-                <Text style={st.smallLabel}>{t('offers.apply.none')}</Text>
-              )
-            ) : null}
-            {gaps.map((o) => (
-              <Text key={o.schemeId} style={st.gap}>
-                {t('offers.apply.gap', { name: o.name, more: o.unit === 'money' ? t('offers.moreMoney', { amount: rupees(o.nextBand!.more) }) : t('offers.moreQty', { qty: qtyText(o.nextBand!.more) }) })}
-              </Text>
-            ))}
-            {unresolvedFree.length > 0 ? <Text style={st.gap}>{t('offers.missingFree', { names: unresolvedFree.map((f) => f.freeItemName).join(', ') })}</Text> : null}
-          </View>
-
           <Text style={st.heading} accessibilityRole="header">
-            {t('so.orderDetails')}
+            {t('so.orderDetails').toUpperCase()}
           </Text>
           <View style={st.card}>
             <View style={st.pair}>
@@ -285,19 +256,47 @@ export default function ReviewOrderScreen() {
             />
           </View>
 
-          <View style={st.card} accessibilityLabel={t('so.totals')}>
+          <View style={[st.card, { gap: spacing.xs }]} accessibilityLabel={t('offers.apply.title')}>
+            <View style={st.applyRow}>
+              <Text style={st.applyTitle}>{t('offers.apply.title')}</Text>
+              <Switch
+                value={applyOffers}
+                onValueChange={(v) => void dispatch(applyOffersSet(v))}
+                disabled={!customer?.cusAllowPromotion}
+                accessibilityLabel={t('offers.apply.title')}
+                accessibilityHint={t('offers.apply.note')}
+                trackColor={{ true: colors.success, false: colors.inputBorder }}
+                thumbColor={colors.surface}
+              />
+            </View>
+            {customer && !customer.cusAllowPromotion ? (
+              <Text style={st.smallLabel}>{t('offers.apply.shopNo')}</Text>
+            ) : !applyOffers ? (
+              <Text style={st.smallLabel}>{t('offers.apply.off')}</Text>
+            ) : order.appliedNames.length > 0 ? (
+              <Text style={st.applied}>{t('offers.apply.summary', { count: order.appliedNames.length, what: appliedWhat })}</Text>
+            ) : (
+              <Text style={st.smallLabel}>{t('offers.apply.none')}</Text>
+            )}
+            {gaps.map((o) => (
+              <Text key={o.schemeId} style={st.gapLine}>
+                {t('offers.apply.gapName', { name: o.name })}{' '}
+                <Text style={st.gap}>{o.unit === 'money' ? t('offers.moreShort', { amount: rupees(o.nextBand!.more) }) : t('offers.moreQty', { qty: qtyText(o.nextBand!.more) })}</Text>
+              </Text>
+            ))}
+            {unresolvedFree.length > 0 ? <Text style={st.gap}>{t('offers.missingFree', { names: unresolvedFree.map((f) => f.freeItemName).join(', ') })}</Text> : null}
+          </View>
+
+          <View style={[st.card, { gap: 6 }]} accessibilityLabel={t('so.totals')}>
             <TotalRow label={t('so.grossQty', { qty: qtyText(totals.qty) })} value={formatAmount(totals.grossPaise)} />
             {totals.discPaise > 0 ? <TotalRow label={t('so.itemDiscount')} value={`−${formatAmount(totals.discPaise)}`} /> : null}
-            {totals.schemeDiscPaise > 0 ? <TotalRow label={t('offers.schemeDiscount')} value={`−${formatAmount(totals.schemeDiscPaise)}`} /> : null}
-            {totals.billSchemeDiscPaise > 0 ? <TotalRow label={t('offers.orderOfferTotal')} value={`−${formatAmount(totals.billSchemeDiscPaise)}`} /> : null}
+            {totals.schemeDiscPaise > 0 ? <TotalRow good label={t('offers.schemeDiscount')} value={`−${formatAmount(totals.schemeDiscPaise)}`} /> : null}
+            {totals.billSchemeDiscPaise > 0 ? <TotalRow good label={t('offers.orderOfferTotal')} value={`−${formatAmount(totals.billSchemeDiscPaise)}`} /> : null}
             <TotalRow label={t('so.taxable')} value={formatAmount(totals.taxablePaise)} />
             {totals.igstPaise > 0 ? (
               <TotalRow label={t('so.igst')} value={formatAmount(totals.igstPaise)} />
             ) : (
-              <>
-                <TotalRow label={t('so.cgst')} value={formatAmount(totals.cgstPaise)} />
-                <TotalRow label={t('so.sgst')} value={formatAmount(totals.sgstPaise)} />
-              </>
+              <TotalRow label={t('so.gstCombined', { cgst: formatAmount(totals.cgstPaise), sgst: formatAmount(totals.sgstPaise) })} value={formatAmount(totals.cgstPaise + totals.sgstPaise)} />
             )}
             {totals.freightPaise > 0 ? <TotalRow label={t('order.freightLabel')} value={formatAmount(totals.freightPaise)} /> : null}
             {totals.loadPaise > 0 ? <TotalRow label={t('so.loading')} value={formatAmount(totals.loadPaise)} /> : null}
@@ -312,10 +311,6 @@ export default function ReviewOrderScreen() {
           </View>
         </ScrollView>
         <View style={[st.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
-          <View style={{ flex: 1, gap: 1 }}>
-            <Text style={st.smallLabel}>{itemsQty}</Text>
-            <Text style={st.footTotal}>{formatAmount(totals.totalPaise)}</Text>
-          </View>
           <Button title={t('order.saveOrder')} onPress={askSave} disabled={totals.items === 0} style={st.saveBtn} />
         </View>
       </KeyboardAvoidingView>
@@ -388,8 +383,10 @@ function ReviewLine({ line, scheme, back, language, onOpen }: { line: SoLine; sc
         <Text style={st.lineName}>{name}</Text>
         <Text style={st.lineMeta}>{meta}</Text>
         {scheme && a.schemePaise + a.billSchemePaise > 0 ? (
-          <Text style={st.lineScheme}>
-            {[
+          <View style={st.schemeRow}>
+            <Ionicons name="pricetag-outline" size={13} color={offerColors.okText} />
+            <Text style={st.lineScheme}>
+              {[
               a.schemePaise > 0
                 ? Number(scheme.schDiscPerc) > 0
                   ? t('offers.line.perc', { name: scheme.schemeName ?? '', perc: scheme.schDiscPerc })
@@ -402,7 +399,8 @@ function ReviewLine({ line, scheme, back, language, onOpen }: { line: SoLine; sc
             ]
               .filter(Boolean)
               .join(' ')}
-          </Text>
+            </Text>
+          </View>
         ) : null}
         {back > 0 ? (
           <View style={st.lineNote}>
@@ -428,23 +426,27 @@ function FreeLine({ f, back, language }: { f: OrderFreeLine; back: number; langu
           </View>
           <Text style={st.freeName}>{t('offers.freeLine', { qty: f.qtyText, unit: f.freeUnitName, name })}</Text>
         </View>
-        <Text style={st.freeScheme}>{f.schemeName}</Text>
+        <View style={st.schemeRow}>
+          <Ionicons name="gift-outline" size={13} color={offerColors.okText} />
+          <Text style={st.lineScheme}>{f.schemeName}</Text>
+        </View>
         {back > 0 ? (
           <View style={st.lineNote}>
             <Text style={st.lineNoteText}>{t('so.backOrderShort', { qty: qtyText(back), unit: f.freeUnitName })}</Text>
           </View>
         ) : null}
       </View>
-      <Text style={st.lineAmount}>{formatAmount(0)}</Text>
+      <Text style={[st.lineAmount, { color: offerColors.okText }]}>{formatAmount(0)}</Text>
     </View>
   );
 }
 
-function TotalRow({ label, value }: { label: string; value: string }) {
+/** A totals row; `good` = money an offer took off (green). */
+function TotalRow({ label, value, good }: { label: string; value: string; good?: boolean }) {
   return (
     <View style={st.totalRow}>
-      <Text style={st.totalLabel}>{label}</Text>
-      <Text style={st.totalValue}>{value}</Text>
+      <Text style={[st.totalLabel, good && st.good]}>{label}</Text>
+      <Text style={[st.totalValue, good && st.good]}>{value}</Text>
     </View>
   );
 }
@@ -462,51 +464,52 @@ function Fact({ label, value }: { label: string; value: string }) {
 
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  body: { padding: spacing.lg, paddingTop: spacing.md, gap: 10 },
+  body: { padding: spacing.lg, paddingTop: spacing.md + 2, gap: spacing.sm },
   empty: { textAlign: 'center', fontSize: font.md, color: colors.textMuted, padding: spacing.xl },
   warn: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: '#FEF3C7', borderRadius: radius.md + 2, paddingVertical: 10, paddingHorizontal: spacing.md + 2 },
-  warnText: { flex: 1, fontSize: font.sm, lineHeight: 18, color: '#92400E' },
-  heading: { marginTop: 2, fontSize: font.md, fontWeight: '600', color: colors.text },
+  warnText: { flex: 1, fontSize: font.sm, lineHeight: 18, color: offerColors.warn },
+  // "4 ITEMS · 72 QTY + 2 FREE"
+  heading: { marginTop: 2, fontSize: font.sm, fontWeight: '700', letterSpacing: 0.6, color: colors.primary },
   line: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md + 2,
-    paddingVertical: 10,
-    paddingLeft: spacing.md + 2,
-    paddingRight: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
-  lineName: { fontSize: font.md, fontWeight: '600', color: colors.text },
+  lineName: { fontSize: 14.5, fontWeight: '700', color: colors.text },
   lineMeta: { fontSize: 12.5, color: colors.textMuted },
   lineNote: { alignSelf: 'flex-start', backgroundColor: '#FEF3C7', borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 1 },
-  lineNoteText: { fontSize: 12, fontWeight: '600', color: '#92400E' },
-  lineAmount: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  lineScheme: { fontSize: 12.5, fontWeight: '600', color: '#166534' },
+  lineNoteText: { fontSize: 12, fontWeight: '600', color: offerColors.warn },
+  lineAmount: { fontSize: 14.5, fontWeight: '700', color: colors.text },
+  schemeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 1 },
+  lineScheme: { flexShrink: 1, fontSize: 12.5, fontWeight: '600', color: offerColors.okText },
+  // A free line sits under the line that earned it, indented.
   freeLine: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
-    marginLeft: spacing.lg,
-    backgroundColor: '#F0FDF4',
+    marginLeft: 18,
+    backgroundColor: offerColors.freeBg,
     borderWidth: 1,
-    borderColor: '#86EFAC',
+    borderColor: offerColors.freeBorder,
     borderRadius: radius.md + 2,
-    paddingVertical: 10,
-    paddingLeft: spacing.md + 2,
-    paddingRight: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
-  freeHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  freeTag: { backgroundColor: '#166534', borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
-  freeTagText: { fontSize: 11.5, fontWeight: '700', color: colors.onPrimary },
-  freeName: { flex: 1, fontSize: font.md, fontWeight: '600', color: '#166534' },
-  freeScheme: { fontSize: 12.5, color: '#166534' },
-  applyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  applyTitle: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  applied: { fontSize: 14, fontWeight: '600', color: '#166534' },
-  gap: { fontSize: 13, color: '#92400E' },
+  freeHead: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  freeTag: { backgroundColor: colors.success, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
+  freeTagText: { fontSize: 11, fontWeight: '700', color: colors.onPrimary },
+  freeName: { flex: 1, fontSize: 14.5, fontWeight: '700', color: colors.text },
+  applyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, minHeight: 32 },
+  applyTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
+  applied: { fontSize: font.sm, fontWeight: '600', color: offerColors.okText },
+  gapLine: { fontSize: font.sm, color: colors.textMuted },
+  gap: { fontSize: font.sm, fontWeight: '600', color: offerColors.warn },
   addMore: {
     minHeight: 44,
     flexDirection: 'row',
@@ -519,7 +522,7 @@ const st = StyleSheet.create({
     borderRadius: radius.md + 2,
   },
   addMoreText: { fontSize: 14, fontWeight: '600', color: colors.primary },
-  card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: spacing.md, paddingHorizontal: spacing.md + 2, gap: spacing.md },
+  card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: 11, paddingHorizontal: spacing.md + 2, gap: spacing.md },
   pair: { flexDirection: 'row', gap: 10 },
   pairCell: { flex: 1, gap: 4 },
   pairValue: { fontSize: font.md, fontWeight: '600', color: colors.text },
@@ -539,15 +542,15 @@ const st = StyleSheet.create({
   dateText: { fontSize: font.md, color: colors.text },
   error: { fontSize: font.sm, color: colors.danger },
   remarks: { minHeight: 64, textAlignVertical: 'top', paddingTop: spacing.md },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  totalLabel: { fontSize: 14, color: colors.textMuted },
-  totalValue: { fontSize: 14, color: colors.text },
-  grand: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', borderTopWidth: 1, borderTopColor: '#F1EDE4', paddingTop: spacing.sm },
-  grandLabel: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  grandValue: { fontSize: 20, fontWeight: '700', color: colors.text },
-  footer: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingTop: spacing.md, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
-  footTotal: { fontSize: 19, fontWeight: '700', color: colors.text },
-  saveBtn: { height: 52, minWidth: 170 },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
+  totalLabel: { flex: 1, fontSize: 13.5, color: colors.textLabel },
+  totalValue: { fontSize: 13.5, fontWeight: '600', color: colors.text },
+  good: { color: offerColors.okText },
+  grand: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm },
+  grandLabel: { fontSize: 16, fontWeight: '700', color: colors.text },
+  grandValue: { fontSize: font.xl, fontWeight: '700', color: colors.text },
+  footer: { paddingTop: spacing.md, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
+  saveBtn: { height: 52 },
   backdrop: { flex: 1, backgroundColor: 'rgba(28,25,23,0.5)', justifyContent: 'center', paddingHorizontal: spacing.xl },
   dialog: { backgroundColor: colors.surface, borderRadius: 20, paddingTop: 22, paddingHorizontal: 20, paddingBottom: 20, gap: 14 },
   dialogTitle: { fontSize: 19, fontWeight: '600', color: colors.text },

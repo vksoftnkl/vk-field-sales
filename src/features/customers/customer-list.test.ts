@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { addressLine, countByQuickFilter, filterCustomers, visitStatus, type CustomerRow } from './customer-list.ts';
+import { addressLine, countByQuickFilter, filterCustomers, owesPaise, visitStatus, type CustomerRow } from './customer-list.ts';
 
 interface Shop {
   name: string;
@@ -25,9 +25,11 @@ const row = (s: Shop): CustomerRow => ({
   appBilled: s.billed ?? false,
   appOrderStatus: s.orderStatus ?? null,
   appReceived: s.received ?? false,
-  billCount: 0,
+  balancePaise: s.outstandingPaise ?? 0,
   outstandingPaise: s.outstandingPaise ?? 0,
+  billCount: 0,
   oldestBillDate: null,
+  changedOnPhone: false,
 });
 
 test('visit status: bill > order > collection > no order > not visited', () => {
@@ -88,4 +90,15 @@ test('address line: filled parts once each, then the PIN', () => {
     '1/112/B1, Sri Musnam Road, Thillai Nagar, Andimadam - 621801',
   );
   assert.equal(addressLine({ cusAddr1: null, cusAddr2: null, cusAddr3: null, cusCity: null, cusPin: null }), '');
+});
+
+test('No collection reads the outstanding, else (older VK Nex) a Dr balance; an advance owes nothing', () => {
+  const base = row({ name: 'A' });
+  assert.equal(owesPaise({ ...base, balancePaise: 500_000, outstandingPaise: 800_000 }), 800_000);
+  assert.equal(owesPaise({ ...base, balancePaise: 500_000, outstandingPaise: null }), 500_000);
+  assert.equal(owesPaise({ ...base, balancePaise: -200_000, outstandingPaise: null }), -200_000);
+  assert.equal(owesPaise({ ...base, balancePaise: null, outstandingPaise: null }), 0);
+  // Bills open but an advance bigger than them: the outstanding still says the bills are unpaid.
+  const shop = { ...base, balancePaise: -100_000, outstandingPaise: 300_000 };
+  assert.deepEqual(filterCustomers([shop], '', 'notCollected').length, 1);
 });

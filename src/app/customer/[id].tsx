@@ -10,7 +10,9 @@ import { useDateNames } from '@/components/use-date-names';
 import { getMeta } from '@/db/meta';
 import { addressLine } from '@/features/customers/customer-list';
 import { ensureCurrentCompany } from '@/features/company/company';
-import { customerDetailQuery } from '@/features/customers/queries';
+import { sideOf } from '@/features/customers/customer-figures';
+import { customerDetailQuery, customerFiguresQuery } from '@/features/customers/queries';
+import { usePhoneChanges } from '@/features/customers/use-phone-changes';
 import { currentBalance, recentBills, type LedgerRow } from '@/features/ledger/ledger';
 import { openReceipt } from '@/features/receipts/open-receipt';
 import { ledgerRowsQuery, ledgerYearsQuery } from '@/features/ledger/queries';
@@ -39,6 +41,10 @@ export default function CustomerDetailScreen() {
   const balance = currentBalance(years);
   const hasLedger = balance !== null;
   const syncedOn = years.reduce<string | null>((latest, y) => (latest && latest > y.syncedOn ? latest : y.syncedOn), null);
+  // Balance and outstanding as the Customer list shows them: VK Nex's at Sync plus this phone's since.
+  const { data: figRows } = useLiveQuery(customerFiguresQuery(id), [id]);
+  const { shown: figuresOf, syncedOn: figuresSyncedOn } = usePhoneChanges();
+  const synced = figRows[0];
 
   const call = (n: string | null | undefined) => {
     if (n) void Linking.openURL(`tel:${n}`);
@@ -48,7 +54,7 @@ export default function CustomerDetailScreen() {
    * Take order or No order, with the company choice there when there are several.
    */
   const startVisit = () => router.push({ pathname: '/order/visit/[customerId]', params: { customerId: id } });
-  /** Receipt: VK Nex takes a receipt for one company, so with several the salesman picks one first. */
+  /** Receipt: for the company picked in Switch company, as bills are. */
   const startReceipt = () => openReceipt(t, id);
   /** Sales: bills are made for the company picked on the phone (Choose company), as in the Qt app. */
   const startSale = () => {
@@ -100,7 +106,21 @@ export default function CustomerDetailScreen() {
   }
 
   const name = c.cusName ?? c.cusShort ?? c.cusCode ?? '';
-  const owes = balance ?? c.outstandingPaise;
+  const fig = figuresOf({
+    cusId: id,
+    newOnPhone: c.appPendingUpload,
+    synced: synced ? { balancePaise: synced.balancePaise, outstandingPaise: synced.outstandingPaise, billCount: synced.billCount, oldestBillDate: synced.oldestBillDate } : null,
+  });
+  // Without Sync figures (an older VK Nex), the ledger's closing as before.
+  const owes = fig.balancePaise ?? balance ?? c.outstandingPaise;
+  const owesSide = sideOf(owes).side;
+  const owesText = `${formatAmount(Math.abs(owes))}${owesSide ? ` ${t(`customers.${owesSide === 'Dr' ? 'dr' : 'cr'}`)}` : ''}`;
+  const dueText = fig.outstandingPaise === null ? '—' : formatAmount(fig.outstandingPaise);
+  const figuresNote = figuresSyncedOn && synced
+    ? t('customerDetail.asOfSync', { date: formatDay(figuresSyncedOn.slice(0, 10), names) })
+    : hasLedger && syncedOn
+      ? t('customerDetail.asOfSync', { date: formatDay(syncedOn.slice(0, 10), names) })
+      : t('customerDetail.noLedgerYet');
   const address = addressLine(c);
   const mobiles = [
     c.cusPhone1 ? `${t('customerDetail.mobile1')} ${c.cusPhone1}` : null,
@@ -151,14 +171,20 @@ export default function CustomerDetailScreen() {
               </View>
             ))}
           </View>
-          <View style={st.owes} accessible accessibilityLabel={`${t('customerDetail.outstanding')}: ${formatAmount(owes)}`}>
+          <View
+            style={st.owes}
+            accessible
+            accessibilityLabel={`${t('customerDetail.balance')}: ${owesText}. ${t('customerDetail.outstanding')}: ${dueText}. ${figuresNote}`}
+          >
+            <View style={st.owesRow}>
+              <Text style={st.owesLabel}>{t('customerDetail.balance')}</Text>
+              <Text style={[st.owesAmount, owesSide === 'Cr' && { color: colors.success }]}>{owesText}</Text>
+            </View>
             <View style={st.owesRow}>
               <Text style={st.owesLabel}>{t('customerDetail.outstanding')}</Text>
-              <Text style={st.owesAmount}>{formatAmount(owes)}</Text>
+              <Text style={st.dueAmount}>{dueText}</Text>
             </View>
-            <Text style={st.owesNote}>
-              {hasLedger && syncedOn ? t('customerDetail.asOfSync', { date: formatDay(syncedOn.slice(0, 10), names) }) : t('customerDetail.noLedgerYet')}
-            </Text>
+            <Text style={st.owesNote}>{fig.changedOnPhone ? `${figuresNote} ${t('customerDetail.changedOnPhone')}` : figuresNote}</Text>
           </View>
         </View>
 
@@ -264,6 +290,7 @@ const st = StyleSheet.create({
   owesRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: spacing.sm },
   owesLabel: { fontSize: 14, fontWeight: '500', color: colors.primary },
   owesAmount: { fontSize: 22, fontWeight: '700', color: colors.primary },
+  dueAmount: { fontSize: 17, fontWeight: '700', color: colors.primary },
   owesNote: { fontSize: 12, color: colors.textMuted },
   banner: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm + 2, borderRadius: radius.lg - 2, paddingHorizontal: spacing.md + 2, paddingVertical: spacing.md },
   bannerText: { flex: 1, fontSize: font.sm, lineHeight: 18 },

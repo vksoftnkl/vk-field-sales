@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { getMeta, setMeta } from '@/db/meta';
 import {
+  banks,
   beats,
   branches,
   promotionScheme,
@@ -11,6 +12,7 @@ import {
   promotionSchemeParty,
   promotionSchemeSlab,
   companies,
+  customerBalances,
   customerBills,
   customers,
   customerTypes,
@@ -37,13 +39,13 @@ import {
 import { makeDeviceUid } from './device-uid';
 import type { BranchRow } from './download-branches';
 import type { CompanySchemes } from './download-schemes';
-import type { DownloadedCustomer } from './download-customers';
+import type { DownloadedCustomer, LocalCustomerFigures } from './download-customers';
 import type { ItemDownload } from './download-items';
 import type { LedgerDownload } from './download-ledgers';
 import type { ServerAddress } from './server-address';
 import type { PendingCustomer } from './upload-customers';
 import type { PendingOrder } from './upload-orders';
-import type { ReceiptData } from './download-receipt-data';
+import type { LocalBank, ReceiptData } from './download-receipt-data';
 import type { PendingReceipt } from './upload-receipts';
 import type { PendingVisit } from './upload-visits';
 import type { PendingEdit } from './update-customers';
@@ -293,6 +295,19 @@ export function ledgerCustomerIds(): string[] {
 const CHUNK = 200;
 
 /**
+ * The customers' balance and outstanding from the list Sync just read, replacing the old ones in
+ * one go. null (VK Nex read none: the login has no company, or no year holds today) clears them,
+ * so the list never shows figures from another company or an old year as current.
+ */
+export function saveCustomerFigures(rows: readonly LocalCustomerFigures[] | null, syncedOn: string): void {
+  db.transaction((tx) => {
+    tx.delete(customerBalances).run();
+    for (let i = 0; rows && i < rows.length; i += CHUNK) tx.insert(customerBalances).values(rows.slice(i, i + CHUNK)).onConflictDoNothing().run();
+  });
+  setMeta('customerFiguresSyncedAt', syncedOn);
+}
+
+/**
  * The ledger copies of the customers Sync read are replaced with what it just read, in one
  * transaction, so the Ledger screen never shows half a download. A customer VK Nex skipped this
  * time keeps the copy it had.
@@ -377,12 +392,17 @@ export function markOrderRefused(localId: string, error: string): void {
   db.update(saleOrder).set({ appSyncError: error }).where(eq(saleOrder.soId, localId)).run();
 }
 
-/** Receipts not yet on VK Nex, oldest first, with their payment lines. A receipt for a shop still waiting to upload waits for it. */
+/**
+ * Receipts not yet on VK Nex, oldest first, with their payment lines. A receipt for a shop still
+ * waiting to upload waits for it. Whether VK Nex takes a transfer's type is per company, as its
+ * options said at the last Sync.
+ */
 export function pendingReceipts(): PendingReceipt[] {
   const heads = db
-    .select({ header: receipts, customerPending: customers.appPendingUpload })
+    .select({ header: receipts, customerPending: customers.appPendingUpload, takesTransferType: receiptSettings.appTakesTransferType })
     .from(receipts)
     .leftJoin(customers, eq(customers.cusId, receipts.avhPartyId))
+    .leftJoin(receiptSettings, eq(receiptSettings.companyId, receipts.avhCompanyId))
     .where(eq(receipts.appPendingUpload, true))
     .orderBy(asc(receipts.avhCreatedOn))
     .all();
@@ -399,6 +419,7 @@ export function pendingReceipts(): PendingReceipt[] {
     lines: lines.filter((l) => l.tdSrcDocId === h.header.avhClientUuid),
     allocations: allocs.filter((a) => a.ralReceiptId === h.header.avhClientUuid),
     customerPending: h.customerPending === true,
+    takesTransferType: h.takesTransferType === true,
   }));
 }
 
@@ -535,6 +556,14 @@ export function markReceiptRefused(localId: string, error: string): void {
 /** The receipt's sync note while it is being sent (see RECEIPT_SEND_TRIED), or put back after. */
 export function markReceiptTried(localId: string, error: string | null): void {
   db.update(receipts).set({ appSyncError: error }).where(and(eq(receipts.avhClientUuid, localId), eq(receipts.appPendingUpload, true))).run();
+}
+
+/** GET /mobile/banks/list at Sync: the bank list for cheques, replaced whole. */
+export function saveBanks(rows: readonly LocalBank[]): void {
+  db.transaction((tx) => {
+    tx.delete(banks).run();
+    for (let i = 0; i < rows.length; i += CHUNK) tx.insert(banks).values(rows.slice(i, i + CHUNK)).run();
+  });
 }
 
 /**

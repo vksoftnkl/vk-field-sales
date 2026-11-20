@@ -21,6 +21,9 @@ import m0016 from './0016_branches.sql';
 import m0017 from './0017_branch_default.sql';
 import m0018 from './0018_promotion_schemes.sql';
 import m0019 from './0019_receipt_workflow.sql';
+import m0020 from './0020_bank_transfer_fields.sql';
+import m0021 from './0021_customer_balances.sql';
+import m0022 from './0022_sales_return_new.sql';
 
   export default {
     journal,
@@ -44,7 +47,10 @@ m0015,
 m0016,
 m0017,
 m0018,
-m0019
+m0019,
+m0020,
+m0021,
+m0022
     }
   }
   

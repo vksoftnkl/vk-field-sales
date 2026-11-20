@@ -1,19 +1,20 @@
 // Pure TypeScript (no React Native imports) so `npm test` can run it in Node.
-import type { customers } from '@/db/schema';
+import type { customerBalances, customers } from '@/db/schema';
 
-import type { ApiError } from './vk-nex-api';
+import type { ApiError, CustomerSearchRow } from './vk-nex-api';
 
 /** A VK Nex customer as the phone stores it: every synced column, none of the app_* ones. */
 export type DownloadedCustomer = Omit<typeof customers.$inferInsert, `app${string}`>;
 
-/** One row of GET /mobile/customers/list (only the id is needed here). */
-export interface CustomerListRow {
-  cusId: string;
-}
+/** A customer's balance and outstanding as the phone keeps them (customer_balances). */
+export type LocalCustomerFigures = typeof customerBalances.$inferInsert;
+
+/** One row of GET /mobile/customers/list: the id, and the customer's balance and outstanding. */
+export type CustomerListRow = Pick<CustomerSearchRow, 'cusId' | 'balance' | 'outstanding' | 'outstandingBills' | 'oldestBillDate'>;
 
 export interface DownloadDeps {
-  /** GET /mobile/customers/list?page=…: all VK Nex customers that aren't deleted, by name. */
-  listPage(page: number): Promise<{ items: CustomerListRow[]; hasMore: boolean }>;
+  /** GET /mobile/customers/list?page=…: all VK Nex customers that aren't deleted, by name, with their balances. */
+  listPage(page: number): Promise<{ items: CustomerListRow[]; hasMore: boolean; balanceAsOn?: string | null; companyId?: string | null }>;
   /** GET /mobile/customers/get?cusId=…: the whole customer, in VK Nex's field names. */
   get(cusId: string): Promise<Record<string, unknown>>;
   onProgress?(done: number, total: number): void;
@@ -26,6 +27,11 @@ export interface DownloadResult {
   listedIds: string[];
   /** Listed, but `get` refused it (gone in between, or an id VK Nex can't read). */
   skipped: number;
+  /**
+   * Every listed customer's balance and outstanding, from the same list pages. null = VK Nex read
+   * none (the login has no company, or no financial year holds today): the phone then has none.
+   */
+  figures: LocalCustomerFigures[] | null;
 }
 
 const isApi = (e: unknown): e is ApiError => (e as { kind?: unknown } | null)?.kind === 'api';
@@ -46,6 +52,35 @@ const day = (v: unknown): string | null => {
   const s = str(v);
   return s && /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
 };
+
+/** '12350.00' → 1235000; anything else → null. */
+const paiseOf = (v: unknown): number | null => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+};
+
+/**
+ * One list row's figures as the phone keeps them: the balance signed (Dr +, Cr −; VK Nex never
+ * sends a minus), outstanding as VK Nex gave it (null from an older VK Nex). null when the row
+ * has no balance.
+ */
+export function toLocalFigures(
+  r: CustomerListRow,
+  read: { asOn: string; companyId: string | null; syncedOn: string },
+): LocalCustomerFigures | null {
+  const amount = paiseOf(r.balance?.amount);
+  if (amount === null) return null;
+  return {
+    customerId: r.cusId,
+    companyId: read.companyId,
+    balancePaise: r.balance?.side === 'CR' ? -Math.abs(amount) : Math.abs(amount),
+    outstandingPaise: paiseOf(r.outstanding),
+    billCount: typeof r.outstandingBills === 'number' ? r.outstandingBills : null,
+    oldestBillDate: day(r.oldestBillDate),
+    asOn: read.asOn,
+    syncedOn: read.syncedOn,
+  };
+}
 
 /**
  * VK Nex's customer (GET /mobile/customers/get, the desktop payload) → the phone's row. Same field
@@ -145,13 +180,19 @@ export async function downloadCustomers(deps: DownloadDeps, now: string, concurr
   deps.onProgress?.(0, 0);
   const ids: string[] = [];
   const seen = new Set<string>();
+  // The balance and outstanding ride on the list pages, read at `now`: no extra call.
+  let figures: LocalCustomerFigures[] | null = null;
   for (let page = 1; page <= MAX_PAGES; page++) {
     const r = await deps.listPage(page);
+    const asOn = day(r.balanceAsOn);
+    if (asOn) figures ??= [];
     for (const it of r.items) {
       // A customer added on VK Nex while paging can push a row onto the next page twice.
       if (!seen.has(it.cusId)) {
         seen.add(it.cusId);
         ids.push(it.cusId);
+        const f = asOn ? toLocalFigures(it, { asOn, companyId: r.companyId ?? null, syncedOn: now }) : null;
+        if (f) figures?.push(f);
       }
     }
     if (!r.hasMore || r.items.length === 0) break;
@@ -182,5 +223,5 @@ export async function downloadCustomers(deps: DownloadDeps, now: string, concurr
   await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
   if (failure) throw (failure as { error: unknown }).error;
 
-  return { rows: rows.filter((r): r is DownloadedCustomer => r !== null), listedIds: ids, skipped };
+  return { rows: rows.filter((r): r is DownloadedCustomer => r !== null), listedIds: ids, skipped, figures };
 }
